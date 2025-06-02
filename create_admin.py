@@ -19,11 +19,11 @@ def create_admin_user():
         db.create_all()
 
         # 관리자 계정이 있는지 확인
-        admin = User.query.filter_by(username='jhsun').first()
+        admin = User.query.filter_by(username='admin').first()
         if admin is None:
             # 관리자 계정 생성
-            admin = User(username='jhsun', email='jhsun3692@gmail.com')
-            admin.set_password('kk1122')  # 실제 사용 시 더 강력한 비밀번호 사용 권장
+            admin = User(username='admin', email='jhsun3692@gmail.com')
+            admin.set_password('admin123')  # 실제 사용 시 더 강력한 비밀번호 사용 권장
             db.session.add(admin)
             db.session.commit()
             print('관리자 계정이 생성되었습니다.')
