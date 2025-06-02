@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>거래 대시보드</h2>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                잔고 정보
+            </div>
+            <div class="card-body">
+                <p><strong>보유 현금:</strong> {{ "₩{:,.0f}".format(balance_info.cash|default(0)) }}</p>
+                <!-- 다른 잔고 정보 -->
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                실행 중인 봇
+            </div>
+            <div class="card-body">
+                {% if trading_bots %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>티커</th>
+                                <th>전략</th>
+                                <th>상태</th>
+                                <th>작업</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ticker, bot_info in trading_bots.items() %}
+                            <tr>
+                                <td>{{ ticker }}</td>
+                                <td>{{ bot_info.strategy }}</td>
+                                <td>
+                                    {% if bot_info.running %}
+                                    <span class="badge bg-success">실행 중</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">중지됨</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger stop-bot" data-ticker="{{ ticker }}">
+                                        중지
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>실행 중인 봇이 없습니다. <a href="/settings">설정</a>에서 봇을 시작하세요.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                거래 기록
+            </div>
+            <div class="card-body">
+                {% if trade_records %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>날짜/시간</th>
+                                <th>티커</th>
+                                <th>유형</th>
+                                <th>가격</th>
+                                <th>수량</th>
+                                <th>금액</th>
+                                <th>수익률</th>
+                                <th>전략</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in trade_records %}
+                            <tr>
+                                <td>{{ record.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>{{ record.ticker }}</td>
+                                <td>
+                                    {% if record.trade_type == 'BUY' %}
+                                    <span class="badge bg-primary">매수</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">매도</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ "₩{:,.0f}".format(record.price) }}</td>
+                                <td>{{ "{:.4f}".format(record.volume) }}</td>
+                                <td>{{ "₩{:,.0f}".format(record.amount) }}</td>
+                                <td>
+                                    {% if record.profit_loss %}
+                                    <span class="{{ 'text-success' if record.profit_loss > 0 else 'text-danger' }}">
+                                        {{ "{:+.2f}%".format(record.profit_loss) }}
+                                    </span>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>{{ record.strategy }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>아직 거래 기록이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 봇 중지 버튼 이벤트
+        document.querySelectorAll('.stop-bot').forEach(button => {
+            button.addEventListener('click', function() {
+                const ticker = this.getAttribute('data-ticker');
+                if (confirm(`${ticker} 봇을 중지하시겠습니까?`)) {
+                    fetch(`/stop_bot/${ticker}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            alert(data.message);
+                            location.reload();
+                        } else {
+                            alert('오류: ' + data.message);
+                        }
+                    });
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

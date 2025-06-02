@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>거래 봇 설정</h2>
+
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header">
+                거래 설정
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/settings">
+                    {{ form.hidden_tag() }}
+
+                    <div class="mb-3">
+                        {{ form.ticker.label(class="form-label") }}
+                        {{ form.ticker(class="form-control") }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.strategy.label(class="form-label") }}
+                        {{ form.strategy(class="form-select") }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.interval.label(class="form-label") }}
+                        {{ form.interval(class="form-select") }}
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col">
+                            {{ form.window.label(class="form-label") }}
+                            {{ form.window(class="form-control") }}
+                        </div>
+                        <div class="col">
+                            {{ form.multiplier.label(class="form-label") }}
+                            {{ form.multiplier(class="form-control") }}
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col">
+                            {{ form.buy_amount.label(class="form-label") }}
+                            {{ form.buy_amount(class="form-control") }}
+                        </div>
+                        <div class="col">
+                            {{ form.min_cash.label(class="form-label") }}
+                            {{ form.min_cash(class="form-control") }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.sleep_time.label(class="form-label") }}
+                        {{ form.sleep_time(class="form-control") }}
+                    </div>
+
+                    <div id="volatility-settings" style="display: none;">
+                        <h5 class="mt-4">변동성 돌파 전략 설정</h5>
+
+                        <div class="row mb-3">
+                            <div class="col">
+                                {{ form.k.label(class="form-label") }}
+                                {{ form.k(class="form-control") }}
+                            </div>
+                            <div class="col">
+                                {{ form.target_profit.label(class="form-label") }}
+                                {{ form.target_profit(class="form-control") }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col">
+                                {{ form.stop_loss.label(class="form-label") }}
+                                {{ form.stop_loss(class="form-control") }}
+                            </div>
+                            <div class="col">
+                                {{ form.sell_portion.label(class="form-label") }}
+                                {{ form.sell_portion(class="form-control") }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const strategySelect = document.getElementById('strategy');
+        const volatilitySettings = document.getElementById('volatility-settings');
+
+        function toggleSettings() {
+            if (strategySelect.value === 'volatility') {
+                volatilitySettings.style.display = 'block';
+            } else {
+                volatilitySettings.style.display = 'none';
+            }
+        }
+
+        // 초기 상태 설정
+        toggleSettings();
+
+        // 변경 시 설정 토글
+        strategySelect.addEventListener('change', toggleSettings);
+    });
+</script>
+{% endblock %}
