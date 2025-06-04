@@ -1,6 +1,10 @@
 # bot/trading_bot.py
 from app.utils.telegram_utils import TelegramNotifier
 from config import Config
+from app.models import TradeRecord
+from app import db
+import datetime
+import time
 
 
 class UpbitTradingBot:
@@ -12,6 +16,15 @@ class UpbitTradingBot:
         self.api = upbit_api
         self.strategy = strategy
         self.logger = logger
+
+        # 사용자 ID 확인 및 저장
+        self.user_id = None
+        if hasattr(args, 'user_id'):
+            self.user_id = args.user_id
+            self.logger.info(f"봇 초기화: 사용자 ID {self.user_id} (객체 속성)")
+        elif isinstance(args, dict) and 'user_id' in args:
+            self.user_id = args['user_id']
+            self.logger.info(f"봇 초기화: 사용자 ID {self.user_id} (딕셔너리)")
 
         # 텔레그램 알림 초기화
         self.telegram_enabled = Config.TELEGRAM_NOTIFICATIONS_ENABLED
@@ -63,7 +76,6 @@ class UpbitTradingBot:
                 interval = self.args.interval.data
                 window = self.args.window.data
                 multiplier = self.args.multiplier.data
-                print('value : ', interval, window, multiplier)
 
                 self.logger.info(f"볼린저 밴드 전략으로 거래 분석 시작: {ticker}, 간격: {interval}")
 
@@ -105,13 +117,46 @@ class UpbitTradingBot:
 
                 # 매수 완료 텔레그램 알림 전송
                 if order_result and not isinstance(order_result, int) and 'error' not in order_result:
-                    self.send_trade_notification('BUY', ticker, order_result)
+                    # 주문 UUID 추출
+                    order_uuid = order_result.get('uuid')
+                    self.logger.info(f"매수 주문 접수됨, UUID: {order_uuid}")
 
-                    # 거래 기록 저장
-                    amount = float(order_result.get('price', 0))
-                    volume = float(order_result.get('volume', 0))
-                    price = self.api.get_current_price(ticker)
-                    self.record_trade('BUY', ticker, price, volume, amount)
+                    # 거래 체결 확인을 위해 잠시 대기
+                    time.sleep(2)
+
+                    # 현재 시장 가격 조회
+                    current_price = self.api.get_current_price(ticker)
+
+                    # 주문 후 실제 잔고 변화 확인
+                    before_coin = balance_coin or 0
+                    after_coin = self.api.get_balance_coin(ticker) or 0
+
+                    # 실제 매수된 수량 계산
+                    actual_volume = after_coin - before_coin
+
+                    if actual_volume > 0:
+                        self.logger.info(f"매수 체결 확인: {actual_volume} {ticker.split('-')[1]} 매수됨")
+
+                        # 매수 금액 (실제 지불한 금액)
+                        amount = buy_amount  # 주문 금액 사용
+
+                        # 텔레그램 알림 전송
+                        self.send_trade_notification('BUY', ticker, {
+                            'price': amount,
+                            'volume': actual_volume
+                        })
+
+                        # 거래 기록 저장
+                        self.record_trade('BUY', ticker, current_price, actual_volume, amount)
+                    else:
+                        self.logger.warning(f"매수 주문이 접수되었으나 아직 체결되지 않았습니다. UUID: {order_uuid}")
+
+                        # 체결되지 않은 경우, 예상 수량으로 기록
+                        estimated_volume = buy_amount / current_price if current_price else 0
+                        self.logger.info(f"예상 매수 수량: {estimated_volume} (현재가 기준)")
+
+                        # 거래 기록 저장 (예상 수량 사용)
+                        self.record_trade('BUY', ticker, current_price, estimated_volume, buy_amount)
 
                 return order_result
 
@@ -136,14 +181,36 @@ class UpbitTradingBot:
 
                 # 매도 완료 텔레그램 알림 전송
                 if order_result and not isinstance(order_result, int) and 'error' not in order_result:
-                    self.send_trade_notification('SELL', ticker, order_result)
-                    # 거래 기록 저장 (수익률 포함)
-                    volume = float(order_result.get('volume', 0))
-                    price = self.api.get_current_price(ticker)
-                    amount = price * volume
+                    # 주문 UUID 추출
+                    order_uuid = order_result.get('uuid')
+                    self.logger.info(f"매도 주문 접수됨, UUID: {order_uuid}")
+
+                    # 거래 체결 확인을 위해 잠시 대기
+                    time.sleep(2)
+
+                    # 현재 가격 조회
+                    current_price = self.api.get_current_price(ticker)
+
+                    # 매도 수량은 주문 시 명시한 수량을 사용
+                    if sell_portion_value < 1.0:
+                        volume = balance_coin * sell_portion_value
+                    else:
+                        volume = balance_coin
+
+                    # 매도 금액 계산
+                    amount = volume * current_price if current_price else 0
+
+                    # 텔레그램 알림 전송
+                    self.send_trade_notification('SELL', ticker, {
+                        'volume': volume
+                    })
+
+                    # 평균 매수가 조회 및 수익률 계산
                     avg_buy_price = self.api.get_buy_avg(ticker)
-                    profit_loss = ((price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price else None
-                    self.record_trade('SELL', ticker, price, volume, amount, profit_loss)
+                    profit_loss = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price else None
+
+                    # 거래 기록 저장
+                    self.record_trade('SELL', ticker, current_price, volume, amount, profit_loss)
 
                 return order_result
 
@@ -171,17 +238,32 @@ class UpbitTradingBot:
         except Exception as e:
             self.logger.error(f"실행 중 오류 발생: {str(e)}", exc_info=True)
 
-    # trading_bot.py에 메서드 추가
-    # trading_bot.py에 메서드 추가
     def record_trade(self, trade_type, ticker, price, volume, amount, profit_loss=None):
         """거래 기록 저장"""
         try:
-            from app.models import TradeRecord, db
+            from app import app
 
-            # 사용자 ID 가져오기
-            user_id = None
-            if hasattr(self.args, 'user_id') and self.args.user_id:
-                user_id = self.args.user_id
+            # 클래스 변수에서 사용자 ID 확인
+            user_id = self.user_id
+
+            # 없다면 다시 args에서 확인 (초기화 이후 설정되었을 수 있음)
+            if not user_id:
+                if hasattr(self.args, 'user_id'):
+                    user_id = self.args.user_id
+                elif isinstance(self.args, dict) and 'user_id' in self.args:
+                    user_id = self.args['user_id']
+
+            if not user_id:
+                self.logger.error("거래 기록을 저장할 사용자 ID를 찾을 수 없습니다.")
+
+                # 사용자 ID가 없는 경우, 디버깅 정보 출력
+                if hasattr(self.args, '__dict__'):
+                    self.logger.error(f"args 내용: {self.args.__dict__}")
+                elif isinstance(self.args, dict):
+                    self.logger.error(f"args 내용: {self.args}")
+                else:
+                    self.logger.error(f"args 타입: {type(self.args)}")
+                return
 
             # 전략 정보
             strategy = None
@@ -192,22 +274,34 @@ class UpbitTradingBot:
             else:
                 strategy = 'bollinger'
 
-            # 새 거래 기록 생성
-            trade_record = TradeRecord(
-                user_id=user_id,
-                ticker=ticker,
-                trade_type=trade_type,
-                price=price,
-                volume=volume,
-                amount=amount,
-                profit_loss=profit_loss,
-                strategy=strategy
-            )
+            # 매수 수량이 0인 경우 경고 로그 추가
+            if volume <= 0:
+                self.logger.warning(f"기록하려는 거래 수량이 0 이하입니다: {volume}. 거래 유형: {trade_type}")
 
-            # 데이터베이스에 저장
-            db.session.add(trade_record)
-            db.session.commit()
+            self.logger.info(f"거래 기록 저장 시작: {trade_type} {ticker} 수량: {volume:.8f} @ {price:,.2f}원 (사용자 ID: {user_id})")
 
-            self.logger.info(f"거래 기록 저장 완료: {trade_type} {ticker} {volume} @ {price}")
+            # 애플리케이션 컨텍스트 설정
+            with app.app_context():
+                # 새 거래 기록 생성
+                trade_record = TradeRecord(
+                    user_id=user_id,
+                    ticker=ticker,
+                    trade_type=trade_type,
+                    price=float(price) if price else 0,
+                    volume=float(volume) if volume else 0,
+                    amount=float(amount) if amount else 0,
+                    profit_loss=float(profit_loss) if profit_loss else None,
+                    strategy=strategy,
+                    timestamp=datetime.datetime.utcnow()
+                )
+
+                self.logger.info(f"거래 기록 객체 생성됨: {trade_record}")
+
+                # 데이터베이스에 저장
+                db.session.add(trade_record)
+                db.session.commit()
+
+                self.logger.info(f"거래 기록 저장 완료: ID={trade_record.id}")
+
         except Exception as e:
-            self.logger.error(f"거래 기록 저장 중 오류: {str(e)}")
+            self.logger.error(f"거래 기록 저장 중 오류: {str(e)}", exc_info=True)

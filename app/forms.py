@@ -15,6 +15,9 @@ class RegistrationForm(FlaskForm):
     email = StringField('이메일', validators=[DataRequired(), Email()])
     password = PasswordField('비밀번호', validators=[DataRequired()])
     password2 = PasswordField('비밀번호 확인', validators=[DataRequired(), EqualTo('password')])
+    upbit_access_key = StringField('업비트 ACCESS KEY', validators=[DataRequired()])
+    upbit_secret_key = StringField('업비트 SECRET KEY', validators=[DataRequired()])
+
     submit = SubmitField('가입하기')
 
     def validate_username(self, username):
@@ -26,6 +29,31 @@ class RegistrationForm(FlaskForm):
         user = User.query.filter_by(email=email.data).first()
         if user is not None:
             raise ValidationError('이미 사용 중인 이메일입니다.')
+
+
+class ProfileForm(FlaskForm):
+    username = StringField('사용자명', validators=[DataRequired()])
+    email = StringField('이메일', validators=[DataRequired(), Email()])
+    upbit_access_key = StringField('업비트 ACCESS KEY')
+    upbit_secret_key = StringField('업비트 SECRET KEY')
+    submit = SubmitField('프로필 업데이트')
+
+    def __init__(self, original_username, original_email, *args, **kwargs):
+        super(ProfileForm, self).__init__(*args, **kwargs)
+        self.original_username = original_username
+        self.original_email = original_email
+
+    def validate_username(self, username):
+        if username.data != self.original_username:
+            user = User.query.filter_by(username=username.data).first()
+            if user is not None:
+                raise ValidationError('이미 사용 중인 사용자명입니다.')
+
+    def validate_email(self, email):
+        if email.data != self.original_email:
+            user = User.query.filter_by(email=email.data).first()
+            if user is not None:
+                raise ValidationError('이미 사용 중인 이메일입니다.')
 
 
 class TradingSettingsForm(FlaskForm):

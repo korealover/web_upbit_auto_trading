@@ -3,8 +3,6 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard-to-guess-string'
-    UPBIT_ACCESS_KEY = os.environ.get('UPBIT_ACCESS_KEY')
-    UPBIT_SECRET_KEY = os.environ.get('UPBIT_SECRET_KEY')
     UPBIT_SERVER_URL = os.environ.get("UPBIT_SERVER_URL")
 
     # 캐싱 설정
@@ -19,5 +17,5 @@ class Config:
     TELEGRAM_NOTIFICATIONS_ENABLED = os.environ.get("TELEGRAM_NOTIFICATIONS_ENABLED", "False").lower() == "true"
     
     # DB 설정
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(basedir, "app.db")}'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(basedir, "db", "app.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False

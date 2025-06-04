@@ -1,7 +1,7 @@
 from flask import render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
 from app import app, db
-from app.forms import TradingSettingsForm, LoginForm, RegistrationForm
+from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm
 from app.models import User, TradeRecord
 from app.api.upbit_api import UpbitAPI
 from app.bot.trading_bot import UpbitTradingBot
@@ -15,7 +15,7 @@ import time
 # 전역 변수
 trading_bots = {}
 async_handler = AsyncHandler(max_workers=5)
-upbit_api = None
+upbit_apis = {}  # 사용자별 API 객체 저장
 logger = setup_logger('web', 'INFO', 7)
 
 
@@ -55,7 +55,13 @@ def register():
         return redirect(url_for('index'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = User(username=form.username.data, email=form.email.data)
+        user = User(
+            username=form.username.data,
+            email=form.email.data,
+            upbit_access_key=form.upbit_access_key.data,
+            upbit_secret_key=form.upbit_secret_key.data
+        )
+
         user.set_password(form.password.data)
         db.session.add(user)
         db.session.commit()
@@ -67,16 +73,31 @@ def register():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # 현재 실행 중인 봇 정보와 잔고 정보 표시
-    balance_info = {}
-    if upbit_api:
-        balance_info['cash'] = upbit_api.get_balance_cash()
+    # 현재 사용자의 API 객체 확인
+    user_id = current_user.id
+    if user_id not in upbit_apis:
+        # 사용자의 API 키로 새 API 객체 생성
+        upbit_apis[user_id] = UpbitAPI(
+            current_user.upbit_access_key,
+            current_user.upbit_secret_key,
+            async_handler,
+            setup_logger('web', 'INFO', 7)
+        )
 
-    trading_bots = {}
-    # 거래 기록 조회 (최근 20개)
+    # 현재 사용자의 API 객체 사용
+    api = upbit_apis[user_id]
+
+    # 잔고 정보 조회
+    balance_info = {}
+    balance_info['cash'] = api.get_balance_cash()
+
+    # 사용자별 봇 정보 가져오기
+    user_bots = trading_bots.get(user_id, {})
+
+    # 거래 기록 조회
     trade_records = TradeRecord.query.filter_by(user_id=current_user.id).order_by(TradeRecord.timestamp.desc()).limit(20).all()
 
-    return render_template('dashboard.html', balance_info=balance_info, trading_bots=trading_bots, trade_records=trade_records)
+    return render_template('dashboard.html', balance_info=balance_info, trading_bots=user_bots, trade_records=trade_records)
 
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -109,67 +130,87 @@ def start_bot_route(ticker):
 @app.route('/stop_bot/<ticker>', methods=['POST'])
 @login_required
 def stop_bot_route(ticker):
-    if ticker in trading_bots:
+    user_id = current_user.id
+
+    if user_id in trading_bots and ticker in trading_bots[user_id]:
         # 봇 종료 로직
-        trading_bots[ticker]['running'] = False
-        del trading_bots[ticker]
+        trading_bots[user_id][ticker]['running'] = False
+        del trading_bots[user_id][ticker]
         return jsonify({'status': 'success', 'message': f'{ticker} 봇이 종료되었습니다'})
     return jsonify({'status': 'error', 'message': '해당 봇을 찾을 수 없습니다'})
 
 
 def start_bot(ticker, strategy_name, settings):
-    global upbit_api
+    user_id = current_user.id
+
+    # 사용자별 봇 관리 구조 설정
+    if user_id not in trading_bots:
+        trading_bots[user_id] = {}
+
+    # 사용자별 API 객체 설정
+    if user_id not in upbit_apis:
+        upbit_apis[user_id] = UpbitAPI(
+            current_user.upbit_access_key,
+            current_user.upbit_secret_key,
+            async_handler,
+            setup_logger(ticker, 'INFO', 7)
+        )
 
     # 이미 실행 중인 봇이 있으면 종료
-    if ticker in trading_bots:
-        trading_bots[ticker]['running'] = False
+    if ticker in trading_bots[user_id]:
+        trading_bots[user_id][ticker]['running'] = False
         # 봇이 종료될 시간 여유 주기
         time.sleep(1)
 
-    # API 객체가 없으면 초기화
-    if upbit_api is None:
-        upbit_api = UpbitAPI(Config.UPBIT_ACCESS_KEY, Config.UPBIT_SECRET_KEY, async_handler, logger)
+    # 사용자의 API 객체 사용
+    upbit_api = upbit_apis[user_id]
 
     # 전략 생성
+    logger = setup_logger(ticker, 'INFO', 7)
     strategy = create_strategy(strategy_name, upbit_api, logger)
 
     # settings 객체에 user_id 추가
-    if hasattr(settings, 'user_id'):
-        settings.user_id = current_user.id
+    if hasattr(settings, '__dict__'):
+        settings.user_id = user_id
+        logger.info(f"settings 객체에 user_id 추가: {user_id} (속성 설정)")
     elif isinstance(settings, dict):
-        settings['user_id'] = current_user.id
+        settings['user_id'] = user_id
+        logger.info(f"settings 딕셔너리에 user_id 추가: {user_id}")
+    else:
+        logger.warning(f"알 수 없는 settings 유형: {type(settings)}")
 
-    # 봇 생성 (여기서는 args 대신 settings 객체 사용)
+    # 봇 생성
     bot = UpbitTradingBot(settings, upbit_api, strategy, logger)
 
-    # 봇 실행 스레드 생성
-    trading_bots[ticker] = {
+    # 봇 정보 저장
+    trading_bots[user_id][ticker] = {
         'bot': bot,
         'strategy': strategy_name,
         'settings': settings,
         'running': True
     }
 
-    thread = threading.Thread(target=run_bot_thread, args=(ticker,))
+    # 봇 실행 스레드 시작
+    thread = threading.Thread(target=run_bot_thread, args=(user_id, ticker))
     thread.daemon = True
     thread.start()
 
 
-def run_bot_thread(ticker):
-    bot_info = trading_bots[ticker]
+def run_bot_thread(user_id, ticker):
+    bot_info = trading_bots[user_id][ticker]
     bot = bot_info['bot']
 
     try:
         cycle_count = 0
         while bot_info['running']:
             cycle_count += 1
+            logger = bot.logger
             logger.info(f"{ticker} 사이클 #{cycle_count} 시작")
 
             # 거래 사이클 실행
             bot.run_cycle()
 
             # 설정된 시간만큼 대기
-            # TradingSettingsForm 객체에서 sleep_time 필드의 data 속성에 접근
             if hasattr(bot_info['settings'], 'sleep_time'):
                 sleep_time = bot_info['settings'].sleep_time.data
             # AJAX 요청으로부터 받은 데이터인 경우 (딕셔너리)
@@ -181,5 +222,64 @@ def run_bot_thread(ticker):
             time.sleep(sleep_time)
 
     except Exception as e:
-            logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
-            bot_info['running'] = False
+        logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
+        bot_info['running'] = False
+
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    form = ProfileForm(current_user.username, current_user.email)
+    if form.validate_on_submit():
+        current_user.username = form.username.data
+        current_user.email = form.email.data
+
+        # API 키가 입력된 경우에만 업데이트
+        if form.upbit_access_key.data:
+            current_user.upbit_access_key = form.upbit_access_key.data
+        if form.upbit_secret_key.data:
+            current_user.upbit_secret_key = form.upbit_secret_key.data
+
+        db.session.commit()
+
+        # API 객체 재생성 (API 키가 변경된 경우)
+        if form.upbit_access_key.data or form.upbit_secret_key.data:
+            user_id = current_user.id
+            if user_id in upbit_apis:
+                del upbit_apis[user_id]  # 기존 API 객체 제거
+
+            # 만약 사용자의 봇이 실행 중이었다면 중지
+            if user_id in trading_bots:
+                for ticker in list(trading_bots[user_id].keys()):
+                    trading_bots[user_id][ticker]['running'] = False
+                trading_bots[user_id] = {}
+
+        flash('프로필이 업데이트되었습니다.', 'success')
+        return redirect(url_for('profile'))
+    elif request.method == 'GET':
+        form.username.data = current_user.username
+        form.email.data = current_user.email
+        # API 키는 보안상 폼에 미리 채우지 않음
+
+    return render_template('profile.html', title='프로필', form=form)
+
+
+@app.route('/validate_api_keys', methods=['POST'])
+@login_required
+def validate_api_keys():
+    data = request.json
+    access_key = data.get('access_key')
+    secret_key = data.get('secret_key')
+
+    try:
+        # 임시 API 객체 생성하여 잔고 조회 시도
+        from pyupbit import Upbit
+        temp_upbit = Upbit(access_key, secret_key)
+        balance = temp_upbit.get_balance("KRW")
+
+        if balance is not None:
+            return jsonify({'valid': True, 'message': '업비트 API 키가 유효합니다.'})
+        else:
+            return jsonify({'valid': False, 'message': 'API 키로 잔고를 조회할 수 없습니다.'})
+    except Exception as e:
+        return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})

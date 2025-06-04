@@ -86,7 +86,7 @@ def cleanup_expired_cache_entries(expiry_seconds=30):
         now = time.time()
         for cache_key, cache in _CACHE.items():
             expired_keys = [k for k, (_, timestamp) in cache.items()
-                            if now - timestamp >= seconds]
+                            if now - timestamp >= expiry_seconds]
             for k in expired_keys:
                 del cache[k]
 

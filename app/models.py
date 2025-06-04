@@ -9,6 +9,10 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), unique=True, index=True)
     email = db.Column(db.String(120), unique=True, index=True)
     password_hash = db.Column(db.String(128))
+    upbit_access_key = db.Column(db.String(50))  # 업비트 API 접근 키
+    upbit_secret_key = db.Column(db.String(50))  # 업비트 API 비밀 키
+    trade_records = db.relationship('TradeRecord', backref='user', lazy='dynamic')
+
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -35,3 +39,4 @@ class TradeRecord(db.Model):
 
     def __repr__(self):
         return f'<TradeRecord {self.ticker} {self.trade_type} {self.timestamp}>'
+
