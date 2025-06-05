@@ -57,7 +57,7 @@ class ProfileForm(FlaskForm):
 
 
 class TradingSettingsForm(FlaskForm):
-    ticker = StringField('코인 티커', validators=[DataRequired()], default='KRW-XLM')
+    ticker = StringField('코인 티커', validators=[DataRequired()], default='KRW-KAITO')
     interval = SelectField('차트 간격', choices=[
         ('day', '일봉'), ('minute1', '1분'), ('minute3', '3분'),
         ('minute5', '5분'), ('minute10', '10분'), ('minute30', '30분'),
@@ -70,10 +70,10 @@ class TradingSettingsForm(FlaskForm):
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
     multiplier = FloatField('볼린저 밴드 승수', validators=[NumberRange(min=0.1)], default=2.0)
     buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
-    min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=10000)
+    min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=200000)
     sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=30)
     k = FloatField('변동성 계수 (k)', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
     target_profit = FloatField('목표 수익률 (%)', validators=[NumberRange(min=0.1)], default=3.0)
     stop_loss = FloatField('손절 손실률 (%)', validators=[NumberRange(max=0)], default=-2.0)
-    sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=1.0)
+    sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
     submit = SubmitField('설정 저장 및 봇 시작')

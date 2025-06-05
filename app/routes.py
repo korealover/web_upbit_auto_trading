@@ -283,3 +283,98 @@ def validate_api_keys():
             return jsonify({'valid': False, 'message': 'API 키로 잔고를 조회할 수 없습니다.'})
     except Exception as e:
         return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
+
+
+import os
+from datetime import datetime
+
+
+@app.route('/api/logs/<ticker>')
+@login_required
+def get_ticker_logs(ticker):
+    # 로그 디렉토리
+    log_dir = 'logs'
+
+    # 오늘 날짜의 로그 파일 찾기
+    today = datetime.now().strftime('%Y%m%d')
+    ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
+    log_filename = f"{today}_{ticker_symbol}.log"
+    log_path = os.path.join(log_dir, log_filename)
+
+    # 로그 파일이 없으면 빈 배열 반환
+    if not os.path.exists(log_path):
+        return jsonify([])
+
+    # 로그 파일의 마지막 100줄 효율적으로 읽기
+    last_lines = tail_file(log_path, 100)
+
+    # 로그 라인 파싱
+    logs = []
+    for line in last_lines:
+        # 간단한 로그 파싱 (예: "2023-01-01 12:34:56 - INFO - 메시지")
+        parts = line.strip().split(' - ', 2)
+        if len(parts) >= 3:
+            timestamp, level, message = parts
+            logs.append({
+                'timestamp': timestamp,
+                'level': level,
+                'message': message
+            })
+
+    return jsonify(logs)
+
+
+@app.route('/api/active_tickers')
+@login_required
+def get_active_tickers():
+    # 현재 사용자의 활성 티커 목록 반환
+    user_id = current_user.id
+    if user_id in trading_bots:
+        tickers = list(trading_bots[user_id].keys())
+        return jsonify(tickers)
+    return jsonify([])
+
+
+def tail_file(file_path, n=100):
+    """파일의 마지막 n줄 읽기"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # 파일 끝으로 이동
+            f.seek(0, 2)
+            # 파일 크기
+            file_size = f.tell()
+
+            # 빈 파일 체크
+            if file_size == 0:
+                return []
+
+            # 파일 끝에서부터 읽기 시작
+            lines = []
+            chars_read = 0
+            lines_found = 0
+
+            # 파일 끝에서부터 역방향으로 읽기
+            while lines_found < n and chars_read < file_size:
+                # 한 번에 4KB씩 읽음
+                chars_to_read = min(4096, file_size - chars_read)
+                f.seek(file_size - chars_read - chars_to_read)
+                data = f.read(chars_to_read)
+                chars_read += chars_to_read
+
+                # 줄 단위로 분리
+                new_lines = data.split('\n')
+
+                # 이전에 읽은 데이터와 합치기
+                if lines and new_lines[-1]:
+                    lines[0] = new_lines[-1] + lines[0]
+                    new_lines = new_lines[:-1]
+
+                # 새로운 줄 추가
+                lines = new_lines + lines
+                lines_found = len(lines)
+
+            # 빈 줄 제거 및 최대 n줄 반환
+            return [line for line in lines if line.strip()][-n:]
+    except Exception as e:
+        print(f"파일 읽기 오류: {str(e)}")
+        return []

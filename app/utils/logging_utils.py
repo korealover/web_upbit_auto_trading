@@ -18,7 +18,7 @@ def setup_logger(ticker, log_level=logging.INFO, log_rotation_days=7):
     cleanup_old_logs(log_dir, days=log_rotation_days)
 
     # 로거 설정
-    logger = logging.getLogger('upbit_trading')
+    logger = logging.getLogger(ticker)
 
     # 이미 핸들러가 설정되어 있으면 제거
     if logger.handlers:

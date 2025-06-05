@@ -67,6 +67,27 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
+                실시간 로그
+                <div class="float-end">
+                    <select id="ticker-selector" class="form-select form-select-sm">
+                        <option value="">모든 티커</option>
+                        <!-- 활성 티커가 여기에 추가됩니다 -->
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="log-container" style="height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; font-family: monospace;">
+                    <!-- 로그 메시지가 여기에 추가됩니다 -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
                 거래 기록
             </div>
             <div class="card-body">
@@ -127,6 +148,110 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const logContainer = document.getElementById('log-container');
+        const tickerSelector = document.getElementById('ticker-selector');
+        let selectedTicker = '';
+
+        // 활성 티커 로드
+        function loadActiveTickers() {
+            fetch('/api/active_tickers')
+                .then(response => response.json())
+                .then(tickers => {
+                    // 현재 선택된 티커 저장
+                    const currentSelectedTicker = tickerSelector.value;
+
+                    // 기존 옵션 제거 (첫 번째 '모든 티커' 옵션 제외)
+                    while (tickerSelector.options.length > 1) {
+                        tickerSelector.remove(1);
+                    }
+
+                    // 새 티커 옵션 추가
+                    tickers.forEach(ticker => {
+                        const option = document.createElement('option');
+                        option.value = ticker;
+                        option.textContent = ticker;
+                        tickerSelector.appendChild(option);
+                    });
+
+                    // 이전에 선택된 티커가 목록에 있으면 다시 선택
+                    if (currentSelectedTicker && tickers.includes(currentSelectedTicker)) {
+                        tickerSelector.value = currentSelectedTicker;
+                        selectedTicker = currentSelectedTicker;
+                    }
+
+
+                    // 티커가 없으면 메시지 표시
+                    if (tickers.length === 0) {
+                        logContainer.innerHTML = '<div class="text-muted">실행 중인 봇이 없습니다.</div>';
+                    }
+                })
+                .catch(error => console.error('티커 로드 오류:', error));
+        }
+
+        // 티커 변경 이벤트
+        tickerSelector.addEventListener('change', function() {
+            selectedTicker = this.value;
+            logContainer.innerHTML = ''; // 로그 컨테이너 초기화
+            fetchLogs(); // 새 티커의 로그 로드
+        });
+
+        // 로그 폴링 함수
+        function fetchLogs() {
+            // 선택된 티커가 없으면 전체 로그 가져오기
+            const url = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
+
+            fetch(url)
+                .then(response => response.json())
+                .then(logs => {
+                    // 로그 컨테이너 업데이트
+                    logContainer.innerHTML = '';
+
+                    if (logs.length === 0) {
+                        logContainer.innerHTML = '<div class="text-muted">로그가 없습니다.</div>';
+                        return;
+                    }
+
+                    logs.forEach(log => {
+                        const logEntry = document.createElement('div');
+
+                        // 로그 레벨에 따른 스타일 적용
+                        let logClass = '';
+                        switch(log.level) {
+                            case 'ERROR':
+                                logClass = 'text-danger';
+                                break;
+                            case 'WARNING':
+                                logClass = 'text-warning';
+                                break;
+                            case 'INFO':
+                                logClass = 'text-info';
+                                break;
+                            default:
+                                logClass = 'text-secondary';
+                        }
+
+                        logEntry.className = logClass;
+                        logEntry.textContent = `${log.timestamp} - ${log.message}`;
+
+                        // 로그 추가
+                        logContainer.appendChild(logEntry);
+                    });
+
+                    // 자동 스크롤 다운
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                })
+                .catch(error => console.error('로그 가져오기 오류:', error));
+        }
+
+        // 초기 티커 및 로그 로드
+        loadActiveTickers();
+        fetchLogs();
+
+        // 2초마다 로그 업데이트
+        setInterval(fetchLogs, 10000);
+        // 30초마다 활성 티커 업데이트
+        setInterval(loadActiveTickers, 30000);
+
         // 봇 중지 버튼 이벤트
         document.querySelectorAll('.stop-bot').forEach(button => {
             button.addEventListener('click', function() {
