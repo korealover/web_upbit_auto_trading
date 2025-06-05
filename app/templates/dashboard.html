@@ -195,7 +195,7 @@
             fetchLogs(); // 새 티커의 로그 로드
         });
 
-        // 로그 폴링 함수
+        // 로그 폴링 함수 (개선된 버전)
         function fetchLogs() {
             // 선택된 티커가 없으면 전체 로그 가져오기
             const url = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
@@ -207,7 +207,10 @@
                     logContainer.innerHTML = '';
 
                     if (logs.length === 0) {
-                        logContainer.innerHTML = '<div class="text-muted">로그가 없습니다.</div>';
+                        const emptyMessage = document.createElement('div');
+                        emptyMessage.className = 'text-muted';
+                        emptyMessage.textContent = '로그가 없습니다.';
+                        logContainer.appendChild(emptyMessage);
                         return;
                     }
 
@@ -231,7 +234,20 @@
                         }
 
                         logEntry.className = logClass;
-                        logEntry.textContent = `${log.timestamp} - ${log.message}`;
+
+                        // timestamp와 message를 별도의 span으로 생성
+                        const timestampSpan = document.createElement('span');
+                        timestampSpan.textContent = log.timestamp;
+
+                        const separator = document.createTextNode(' - ');
+
+                        const messageSpan = document.createElement('span');
+                        messageSpan.textContent = log.message;
+
+                        // 요소들을 logEntry에 추가
+                        logEntry.appendChild(timestampSpan);
+                        logEntry.appendChild(separator);
+                        logEntry.appendChild(messageSpan);
 
                         // 로그 추가
                         logContainer.appendChild(logEntry);
@@ -240,7 +256,15 @@
                     // 자동 스크롤 다운
                     logContainer.scrollTop = logContainer.scrollHeight;
                 })
-                .catch(error => console.error('로그 가져오기 오류:', error));
+                .catch(error => {
+                    console.error('로그 가져오기 오류:', error);
+
+                    // 오류 메시지 표시
+                    const errorMessage = document.createElement('div');
+                    errorMessage.className = 'text-danger';
+                    errorMessage.textContent = '로그를 가져오는 중 오류가 발생했습니다.';
+                    logContainer.appendChild(errorMessage);
+                });
         }
 
         // 초기 티커 및 로그 로드

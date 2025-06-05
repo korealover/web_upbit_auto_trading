@@ -6,11 +6,14 @@ from app.models import User, TradeRecord
 from app.api.upbit_api import UpbitAPI
 from app.bot.trading_bot import UpbitTradingBot
 from app.strategy import create_strategy
-from app.utils.logging_utils import setup_logger
+from app.utils.logging_utils import setup_logger, get_logger_with_current_date
 from app.utils.async_utils import AsyncHandler
 from config import Config
 import threading
 import time
+import html
+import os
+from datetime import datetime
 
 # 전역 변수
 trading_bots = {}
@@ -153,7 +156,7 @@ def start_bot(ticker, strategy_name, settings):
             current_user.upbit_access_key,
             current_user.upbit_secret_key,
             async_handler,
-            setup_logger(ticker, 'INFO', 7)
+            get_logger_with_current_date(ticker, 'INFO', 7)
         )
 
     # 이미 실행 중인 봇이 있으면 종료
@@ -166,7 +169,7 @@ def start_bot(ticker, strategy_name, settings):
     upbit_api = upbit_apis[user_id]
 
     # 전략 생성
-    logger = setup_logger(ticker, 'INFO', 7)
+    logger = get_logger_with_current_date(ticker, 'INFO', 7)
     strategy = create_strategy(strategy_name, upbit_api, logger)
 
     # settings 객체에 user_id 추가
@@ -204,7 +207,10 @@ def run_bot_thread(user_id, ticker):
         cycle_count = 0
         while bot_info['running']:
             cycle_count += 1
-            logger = bot.logger
+            # 매 사이클마다 로거를 최신 날짜로 업데이트
+            logger = get_logger_with_current_date(ticker, 'INFO', 7)
+            bot.logger = logger  # 봇의 로거 업데이트
+
             logger.info(f"{ticker} 사이클 #{cycle_count} 시작")
 
             # 거래 사이클 실행
@@ -285,8 +291,7 @@ def validate_api_keys():
         return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
 
 
-import os
-from datetime import datetime
+
 
 
 @app.route('/api/logs/<ticker>')
@@ -303,7 +308,19 @@ def get_ticker_logs(ticker):
 
     # 로그 파일이 없으면 빈 배열 반환
     if not os.path.exists(log_path):
-        return jsonify([])
+        # 가장 최근 날짜의 로그 파일 찾기
+        for days_back in range(1, 4):  # 1~3일 전까지 확인
+            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+            old_log_filename = f"{check_date}_{ticker_symbol}.log"
+            old_log_path = os.path.join(log_dir, old_log_filename)
+
+            if os.path.exists(old_log_path):
+                # 이전 날짜의 로그 파일 찾았을 때
+                log_path = old_log_path
+                break
+        else:
+            # 3일 이내에 로그 파일을 찾지 못한 경우
+            return jsonify([])
 
     # 로그 파일의 마지막 100줄 효율적으로 읽기
     last_lines = tail_file(log_path, 100)
@@ -315,6 +332,8 @@ def get_ticker_logs(ticker):
         parts = line.strip().split(' - ', 2)
         if len(parts) >= 3:
             timestamp, level, message = parts
+            # HTML 특수 문자 이스케이프 처리
+            message = html.escape(message)
             logs.append({
                 'timestamp': timestamp,
                 'level': level,
@@ -323,6 +342,52 @@ def get_ticker_logs(ticker):
 
     return jsonify(logs)
 
+
+@app.route('/api/logs')
+@login_required
+def get_all_logs():
+    # 로그 디렉토리
+    log_dir = 'logs'
+
+    # 오늘 날짜의 기본 로그 파일 찾기
+    today = datetime.now().strftime('%Y%m%d')
+    log_filename = f"{today}_web.log"
+    log_path = os.path.join(log_dir, log_filename)
+
+    # 로그 파일이 없으면 빈 배열 반환
+    if not os.path.exists(log_path):
+        # 가장 최근 날짜의 로그 파일 찾기
+        for days_back in range(1, 4):  # 1~3일 전까지 확인
+            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+            old_log_filename = f"{check_date}_web.log"
+            old_log_path = os.path.join(log_dir, old_log_filename)
+
+            if os.path.exists(old_log_path):
+                # 이전 날짜의 로그 파일 찾았을 때
+                log_path = old_log_path
+                break
+        else:
+            # 3일 이내에 로그 파일을 찾지 못한 경우
+            return jsonify([])
+
+    # 로그 파일의 마지막 100줄 효율적으로 읽기
+    last_lines = tail_file(log_path, 100)
+
+    # 로그 라인 파싱
+    logs = []
+    for line in last_lines:
+        parts = line.strip().split(' - ', 2)
+        if len(parts) >= 3:
+            timestamp, level, message = parts
+            # HTML 특수 문자 이스케이프 처리
+            message = html.escape(message)
+            logs.append({
+                'timestamp': timestamp,
+                'level': level,
+                'message': message
+            })
+
+    return jsonify(logs)
 
 @app.route('/api/active_tickers')
 @login_required
