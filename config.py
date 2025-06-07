@@ -3,6 +3,8 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard-to-guess-string'
+    UPBIT_ACCESS_KEY = os.environ.get("UPBIT_ACCESS_KEY")
+    UPBIT_SECRET_KEY = os.environ.get("UPBIT_SECRET_KEY")
     UPBIT_SERVER_URL = os.environ.get("UPBIT_SERVER_URL")
 
     # 캐싱 설정

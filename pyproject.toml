@@ -13,6 +13,7 @@ dependencies = [
     "flask-sqlalchemy>=3.1.1",
     "flask-wtf>=1.2.2",
     "gunicorn>=23.0.0",
+    "matplotlib>=3.10.3",
     "python-dotenv>=1.1.0",
     "python-telegram-bot>=22.1",
     "pyupbit>=0.2.34",
