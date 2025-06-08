@@ -4,7 +4,7 @@
 # 사용법: ./coin_monitor.sh {start|stop|status|restart}
 
 # 설정 변수
-SCRIPT_PATH="/home/korealover/web_upbit_auto_trading/bin" # 스크립트 경로
+SCRIPT_PATH="/home/korealover/web_upbit_auto_trading" # 스크립트 경로
 PID_PATH="/tmp/upbit_bots"
 PYTHON_SCRIPT="$SCRIPT_PATH/coin_monitor.py"  # 실행할 파이썬 스크립트 경로
 PID_FILE="$PID_PATH/coin_monitor.pid"      # PID 파일 경로

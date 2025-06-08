@@ -8,18 +8,55 @@ import asyncio
 import pyupbit
 import logging
 from config import Config
+from logging.handlers import TimedRotatingFileHandler
 
 # 로깅 설정
 os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"logs/coin_monitor_{datetime.now().strftime('%Y%m%d')}.log")
-    ]
-)
-logger = logging.getLogger(__name__)
+
+
+# 로거 설정 함수 정의
+def setup_logger():
+    """일별 로그 파일 자동 생성을 위한 로깅 설정"""
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    # 이미 핸들러가 있다면 모두 제거
+    if logger.handlers:
+        for handler in logger.handlers:
+            logger.removeHandler(handler)
+
+    # 콘솔 핸들러
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+
+    # 파일 핸들러 (매일 자정에 자동으로 새 파일 생성)
+    log_file = os.path.join("logs", "coin_monitor.log")
+    file_handler = TimedRotatingFileHandler(
+        log_file,
+        when='midnight',
+        interval=1,
+        backupCount=30,  # 30일치 로그 파일 보존
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+
+    # 파일명 패턴 설정 (파일명.log.YYYY-MM-DD 형식으로 변경)
+    file_handler.suffix = "%Y%m%d"
+
+    # 포맷 설정
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+
+    # 핸들러 추가
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+# 로거 초기화
+logger = setup_logger()
 
 # 텔레그램 봇 설정
 bot = telegram.Bot(token=Config.TELEGRAM_BOT_TOKEN)
@@ -32,7 +69,7 @@ upbit = pyupbit.Upbit(Config.UPBIT_ACCESS_KEY, Config.UPBIT_SECRET_KEY)
 tickers = []
 
 # 시간 체크를 위한 마지막 보고서 전송 시간 (초기값은 과거)
-last_report_time = datetime(2025, 5, 22)
+last_report_time = datetime(2025, 6, 1)
 
 
 async def send_message(text):
@@ -235,8 +272,8 @@ async def setup():
         account_info = upbit.get_balances()
 
         # 궁금한 코인들
-        # list_tickers = ["KRW-BTC", "KRW-ETH", "KRW-XLM", "KRW-XRP"]
-        list_tickers = []
+        list_tickers = ["KRW-ETH", "KRW-XLM"]
+        # list_tickers = []
         # 보유중인 코인들
         for coin in account_info:
             if coin['currency'] != 'KRW':  # KRW는 제외
@@ -258,10 +295,14 @@ async def setup():
 def is_report_time():
     """현재 시간이 보고서를 보낼 시간인지 확인"""
     now = datetime.now()
-    # 10시, 16시, 22시에 보고서 전송
+    # 10시 ~ 22시에 보고서 전송
     report_times = [
         (10, 0),  # 10시 정각
+        (12, 0),  # 12시 정각
+        (14, 0),  # 14시 정각
         (16, 0),  # 16시 정각
+        (18, 0),  # 18시 정각
+        (20, 0),  # 20시 정각
         (22, 0)  # 22시 정각
     ]
 
