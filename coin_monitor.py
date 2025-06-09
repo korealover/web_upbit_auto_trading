@@ -269,16 +269,34 @@ async def setup():
 
     # 보유 중인 모든 코인 정보 가져오기
     try:
+        # 먼저 account_info의 형태 확인
         account_info = upbit.get_balances()
+        logger.info(f"계정 정보 타입: {type(account_info)}")
+
+        if account_info is None:
+            logger.warning("계정 정보를 가져올 수 없습니다.")
+            account_info = []
+        elif isinstance(account_info, str):
+            # 문자열인 경우 JSON 파싱 시도
+            import json
+            try:
+                logger.info(f"계정 정보(문자열): {account_info[:100]}...")  # 앞부분만 로깅
+                account_info = json.loads(account_info)
+                logger.info("JSON 파싱 성공")
+            except json.JSONDecodeError:
+                logger.error("계정 정보를 JSON으로 파싱할 수 없습니다.")
+                account_info = []
 
         # 궁금한 코인들
         list_tickers = ["KRW-ETH", "KRW-XLM"]
-        # list_tickers = []
+
         # 보유중인 코인들
-        for coin in account_info:
-            if coin['currency'] != 'KRW':  # KRW는 제외
-                ticker = f"KRW-{coin['currency']}"
-                list_tickers.append(ticker)
+        if isinstance(account_info, list):
+            for coin in account_info:
+                if isinstance(coin, dict) and 'currency' in coin and coin['currency'] != 'KRW':
+                    ticker = f"KRW-{coin['currency']}"
+                    list_tickers.append(ticker)
+                    logger.info(f"보유 코인 추가: {ticker}")
 
         set_tickers = set(list_tickers)
         tickers = list(set_tickers)
@@ -288,7 +306,7 @@ async def setup():
         # 시작 메시지 전송
         await send_message("✅ *코인 모니터링 시스템이 시작되었습니다.*")
     except Exception as e:
-        logger.error(f"초기 설정 중 오류 발생: {str(e)}")
+        logger.error(f"초기 설정 중 오류 발생: {str(e)}", exc_info=True)
         await send_message(f"⚠️ *초기 설정 중 오류 발생:* {str(e)}")
 
 
