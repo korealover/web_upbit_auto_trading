@@ -271,10 +271,10 @@
         loadActiveTickers();
         fetchLogs();
 
-        // 2초마다 로그 업데이트
-        setInterval(fetchLogs, 10000);
-        // 30초마다 활성 티커 업데이트
-        setInterval(loadActiveTickers, 30000);
+        // 5초마다 로그 업데이트
+        setInterval(fetchLogs, 5000);
+        // 20초마다 활성 티커 업데이트
+        setInterval(loadActiveTickers, 20000);
 
         // 봇 중지 버튼 이벤트
         document.querySelectorAll('.stop-bot').forEach(button => {
