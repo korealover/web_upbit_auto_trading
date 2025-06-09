@@ -288,8 +288,8 @@ async def setup():
                 account_info = []
 
         # 궁금한 코인들
-        list_tickers = ["KRW-ETH", "KRW-XLM"]
-
+        # list_tickers = ["KRW-ETH", "KRW-XLM"]
+        list_tickers = []
         # 보유중인 코인들
         if isinstance(account_info, list):
             for coin in account_info:
