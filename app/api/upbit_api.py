@@ -129,38 +129,76 @@ class UpbitAPI:
             portion (float): 매도할 비율 (0.0 ~ 1.0)
 
         Returns:
-            dict or int: 주문 결과 또는 오류 코드
+            dict: 주문 결과 또는 오류 정보가 포함된 딕셔너리
         """
-        if portion <= 0 or portion > 1:
-            self.logger.error(f"매도 비율은 0보다 크고 1 이하여야 합니다: {portion}")
-            return 0
+        try:
+            if portion <= 0 or portion > 1:
+                error_msg = f"매도 비율은 0보다 크고 1 이하여야 합니다: {portion}"
+                self.logger.error(error_msg)
+                return {"error": {"name": "invalid_portion", "message": error_msg}}
 
-        # 현재 보유량 확인
-        volume = self.get_balance_coin(ticker)
-        if not volume or volume <= 0:
-            self.logger.warning(f"{ticker} 보유량이 없습니다.")
-            return 0
+            # 현재 보유량 확인
+            volume = self.get_balance_coin(ticker)
+            if not volume or volume <= 0:
+                error_msg = f"{ticker} 보유량이 없습니다."
+                self.logger.warning(error_msg)
+                return {"error": {"name": "no_balance", "message": error_msg}}
 
-        # 매도할 수량 계산
-        sell_volume = volume * portion
+            # 현재가 확인
+            current_price = self.get_current_price(ticker)
+            if not current_price:
+                error_msg = f"{ticker} 현재가를 가져올 수 없습니다."
+                self.logger.error(error_msg)
+                return {"error": {"name": "price_fetch_error", "message": error_msg}}
 
-        # 너무 작은 수량은 거래소에서 오류가 발생할 수 있으므로 확인
-        min_volume = 0.00000001  # 업비트 최소 거래량 확인 필요
-        if sell_volume < min_volume:
-            self.logger.warning(f"매도 수량이 너무 적습니다: {sell_volume} < {min_volume}")
-            return 0
+            # 매도할 수량 계산
+            sell_volume = volume * portion
 
-        self.logger.info(f"분할 매도 시도 ({portion * 100:.1f}%): {ticker}, {sell_volume}")
+            # 최소 주문 금액 확인 (5,000원)
+            min_order_value = 5000
+            estimated_value = sell_volume * current_price
 
-        # 매도 전 캐시 무효화
-        invalidate_cache()
+            # 최소 주문 금액 미만일 경우 자동 조정
+            if estimated_value < min_order_value:
+                self.logger.warning(f"매도 예상 금액({estimated_value:,.2f}원)이 최소 주문 금액({min_order_value}원)보다 작습니다.")
 
-        res = self.fetch_data(lambda: self.upbit.sell_market_order(ticker, sell_volume))
+                # 최소 주문 금액을 충족하는 매도 비율 계산
+                min_sell_portion = min(min_order_value / (volume * current_price), 1.0)
 
-        if res and 'error' in res:
-            self.logger.error(f"분할 매도 주문 오류: {res}")
-            res = 0
-        elif res:
-            self.logger.info(f"분할 매도 주문 성공: {res}")
+                # 최소 주문 금액을 충족하는 비율이 전체의 98% 이상이면 전량 매도로 전환
+                if min_sell_portion >= 0.98:
+                    self.logger.info(f"최소 주문 금액을 충족하기 위해 전량 매도로 변경합니다.")
+                    sell_volume = volume  # 전량 매도
+                else:
+                    # 최소 주문 금액을 충족하는 비율로 조정
+                    new_sell_volume = volume * min_sell_portion
+                    self.logger.info(f"최소 주문 금액 충족을 위해 매도 수량을 {sell_volume:.8f}에서 {new_sell_volume:.8f}로 조정합니다.")
+                    sell_volume = new_sell_volume
 
-        return res
+            # 너무 작은 수량 확인
+            min_volume = 0.00000001  # 업비트 최소 거래량
+            if sell_volume < min_volume:
+                error_msg = f"매도 수량이 너무 적습니다: {sell_volume} < {min_volume}"
+                self.logger.warning(error_msg)
+                return {"error": {"name": "too_small_volume", "message": error_msg}}
+
+            self.logger.info(f"분할 매도 시도: {ticker}, {sell_volume} (원래 비율: {portion * 100:.1f}%)")
+
+            # 매도 전 캐시 무효화
+            invalidate_cache()
+
+            # 업비트 API 호출 및 결과 반환
+            res = self.fetch_data(lambda: self.upbit.sell_market_order(ticker, sell_volume))
+
+            if res and 'error' in res:
+                self.logger.error(f"분할 매도 주문 오류: {res}")
+            elif res:
+                self.logger.info(f"분할 매도 주문 성공: {res}")
+
+            # 원본 응답 그대로 반환 (오류 포함)
+            return res
+
+        except Exception as e:
+            error_msg = f"분할 매도 처리 중 예외 발생: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return {"error": {"name": "execution_error", "message": error_msg}}
