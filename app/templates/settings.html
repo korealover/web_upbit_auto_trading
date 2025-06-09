@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -28,17 +29,7 @@
                         {{ form.interval(class="form-select") }}
                     </div>
 
-                    <div class="row mb-3">
-                        <div class="col">
-                            {{ form.window.label(class="form-label") }}
-                            {{ form.window(class="form-control") }}
-                        </div>
-                        <div class="col">
-                            {{ form.multiplier.label(class="form-label") }}
-                            {{ form.multiplier(class="form-control") }}
-                        </div>
-                    </div>
-
+                    <!-- 공통 설정 -->
                     <div class="row mb-3">
                         <div class="col">
                             {{ form.buy_amount.label(class="form-label") }}
@@ -55,6 +46,30 @@
                         {{ form.sleep_time(class="form-control") }}
                     </div>
 
+                    <!-- 볼린저 밴드 전략 설정 -->
+                    <div id="bollinger-settings">
+                        <h5 class="mt-4">볼린저 밴드 전략 설정</h5>
+
+                        <div class="row mb-3">
+                            <div class="col">
+                                {{ form.window.label(class="form-label") }}
+                                {{ form.window(class="form-control") }}
+                            </div>
+                            <div class="col">
+                                {{ form.multiplier.label(class="form-label") }}
+                                {{ form.multiplier(class="form-control") }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col">
+                                {{ form.sell_portion.label(class="form-label") }}
+                                {{ form.sell_portion(class="form-control") }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 변동성 돌파 전략 설정 -->
                     <div id="volatility-settings" style="display: none;">
                         <h5 class="mt-4">변동성 돌파 전략 설정</h5>
 
@@ -95,13 +110,16 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const strategySelect = document.getElementById('strategy');
+        const bollingerSettings = document.getElementById('bollinger-settings');
         const volatilitySettings = document.getElementById('volatility-settings');
 
         function toggleSettings() {
             if (strategySelect.value === 'volatility') {
                 volatilitySettings.style.display = 'block';
+                bollingerSettings.style.display = 'none';
             } else {
                 volatilitySettings.style.display = 'none';
+                bollingerSettings.style.display = 'block';
             }
         }
 
