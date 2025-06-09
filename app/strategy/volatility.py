@@ -67,9 +67,9 @@ class VolatilityBreakoutStrategy:
         """
         now = datetime.datetime.now()
 
-        # 매도 시간 확인 (오전 8:50 ~ 9:00 사이)
-        sell_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        sell_end = now.replace(hour=23, minute=50, second=0, microsecond=0)
+        # 매도 시간 확인 (오전 8:50 ~ 10:00 사이)
+        sell_start = now.replace(hour=8, minute=50, second=0, microsecond=0)
+        sell_end = now.replace(hour=10, minute=0, second=0, microsecond=0)
 
         # 현재 코인 보유량 확인
         balance_coin = self.api.get_balance_coin(ticker)
