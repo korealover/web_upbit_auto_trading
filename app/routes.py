@@ -26,6 +26,8 @@ logger = setup_logger('web', 'INFO', 7)
 def index():
     return render_template('index.html')
 
+
+# routes.py의 로그인 함수 수정
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -36,6 +38,12 @@ def login():
         if user is None or not user.check_password(form.password.data):
             flash('유효하지 않은 사용자명 또는 비밀번호입니다.', 'danger')
             return redirect(url_for('login'))
+
+        # 계정 승인 확인 (관리자는 항상 로그인 가능)
+        if not user.is_approved and not user.is_admin:
+            flash('귀하의 계정은 아직 관리자 승인 대기 중입니다.', 'warning')
+            return redirect(url_for('login'))
+
         login_user(user, remember=form.remember_me.data)
         next_page = request.args.get('next')
         if not next_page or not next_page.startswith('/'):
@@ -52,6 +60,7 @@ def logout():
     return redirect(url_for('index'))
 
 
+# routes.py의 회원가입 함수 수정
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
@@ -62,15 +71,30 @@ def register():
             username=form.username.data,
             email=form.email.data,
             upbit_access_key=form.upbit_access_key.data,
-            upbit_secret_key=form.upbit_secret_key.data
+            upbit_secret_key=form.upbit_secret_key.data,
+            is_approved=False  # 기본적으로 승인되지 않은 상태
         )
 
         user.set_password(form.password.data)
         db.session.add(user)
         db.session.commit()
-        flash('회원가입이 완료되었습니다! 이제 로그인할 수 있습니다.', 'success')
+
+        # 승인 필요 메시지
+        flash('회원가입이 완료되었습니다! 관리자 승인 후 로그인할 수 있습니다.', 'info')
+
+        # 관리자에게 새 가입자 알림 (선택 사항)
+        notify_admin_new_registration(user)
+
         return redirect(url_for('login'))
     return render_template('register.html', title='회원가입', form=form)
+
+
+def notify_admin_new_registration(user):
+    """관리자에게 새 회원가입 알림"""
+    admins = User.query.filter_by(is_admin=True).all()
+    # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
+    for admin in admins:
+        logger.info(f"관리자 {admin.username}에게 새 회원 {user.username} 가입 알림")
 
 
 @app.route('/dashboard')
@@ -443,3 +467,79 @@ def tail_file(file_path, n=100):
     except Exception as e:
         print(f"파일 읽기 오류: {str(e)}")
         return []
+
+
+# routes.py에 관리자 페이지 추가
+@app.route('/admin')
+@login_required
+def admin_panel():
+    # 관리자 권한 확인
+    if not current_user.is_admin:
+        flash('관리자 권한이 필요합니다.', 'danger')
+        return redirect(url_for('index'))
+
+    # 승인 대기 중인 사용자 목록
+    pending_users = User.query.filter_by(is_approved=False).order_by(User.registered_on.desc()).all()
+
+    # 승인된 사용자 목록
+    approved_users = User.query.filter_by(is_approved=True).order_by(User.username).all()
+
+    return render_template('admin/panel.html',
+                           title='관리자 패널',
+                           pending_users=pending_users,
+                           approved_users=approved_users)
+
+
+@app.route('/admin/approve/<int:user_id>', methods=['POST'])
+@login_required
+def approve_user(user_id):
+    # 관리자 권한 확인
+    if not current_user.is_admin:
+        flash('관리자 권한이 필요합니다.', 'danger')
+        return redirect(url_for('index'))
+
+    user = User.query.get_or_404(user_id)
+    user.is_approved = True
+    user.approved_on = datetime.utcnow()
+    user.approved_by = current_user.id
+    db.session.commit()
+
+    flash(f'사용자 {user.username}의 계정이 승인되었습니다.', 'success')
+
+    # 사용자에게 승인 알림 (선택 사항)
+    notify_user_approval(user)
+
+    return redirect(url_for('admin_panel'))
+
+
+@app.route('/admin/reject/<int:user_id>', methods=['POST'])
+@login_required
+def reject_user(user_id):
+    # 관리자 권한 확인
+    if not current_user.is_admin:
+        flash('관리자 권한이 필요합니다.', 'danger')
+        return redirect(url_for('index'))
+
+    user = User.query.get_or_404(user_id)
+
+    # 사용자에게 거부 알림 (선택 사항)
+    notify_user_rejection(user)
+
+    # 사용자 삭제
+    db.session.delete(user)
+    db.session.commit()
+
+    flash(f'사용자 {user.username}의 가입 요청이 거부되었습니다.', 'info')
+    return redirect(url_for('admin_panel'))
+
+
+def notify_user_approval(user):
+    """사용자에게 계정 승인 알림"""
+    # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
+    logger.info(f"사용자 {user.username}에게 계정 승인 알림")
+
+
+def notify_user_rejection(user):
+    """사용자에게 계정 거부 알림"""
+    # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
+    logger.info(f"사용자 {user.username}에게 계정 거부 알림")

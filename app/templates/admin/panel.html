@@ -1,0 +1,91 @@
+<!-- app/templates/admin/panel.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>관리자 패널</h2>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>승인 대기 중인 사용자 ({{ pending_users|length }}명)</h4>
+        </div>
+        <div class="card-body">
+            {% if pending_users %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>사용자명</th>
+                            <th>이메일</th>
+                            <th>가입일</th>
+                            <th>액션</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in pending_users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.registered_on.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <form action="{{ url_for('approve_user', user_id=user.id) }}" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-success btn-sm">승인</button>
+                                    </form>
+                                    <form action="{{ url_for('reject_user', user_id=user.id) }}" method="post" class="d-inline ms-2">
+                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('정말로 이 사용자의 가입을 거부하시겠습니까?');">거부</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">승인 대기 중인 사용자가 없습니다.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h4>승인된 사용자 ({{ approved_users|length }}명)</h4>
+        </div>
+        <div class="card-body">
+            {% if approved_users %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>사용자명</th>
+                            <th>이메일</th>
+                            <th>승인일</th>
+                            <th>관리자 권한</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in approved_users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.approved_on.strftime('%Y-%m-%d %H:%M') if user.approved_on else 'N/A' }}</td>
+                            <td>
+                                {% if user.is_admin %}
+                                <span class="badge bg-primary">관리자</span>
+                                {% else %}
+                                <span class="badge bg-secondary">일반 사용자</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">승인된 사용자가 없습니다.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

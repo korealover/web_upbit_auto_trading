@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -35,6 +36,20 @@
                         {{ form.password2.label(class="form-label") }}
                         {{ form.password2(class="form-control") }}
                         {% for error in form.password2.errors %}
+                            <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.upbit_access_key.label(class="form-label") }}
+                        {{ form.upbit_access_key(class="form-control", placeholder="업비트 ACCESS KEY를 입력하세요") }}
+                        {% for error in form.upbit_access_key.errors %}
+                            <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.upbit_secret_key.label(class="form-label") }}
+                        {{ form.upbit_secret_key(class="form-control", placeholder="업비트 SECRET KEY를 입력하세요") }}
+                        {% for error in form.upbit_secret_key.errors %}
                             <span class="text-danger">{{ error }}</span>
                         {% endfor %}
                     </div>
