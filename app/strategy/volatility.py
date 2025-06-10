@@ -141,7 +141,7 @@ class VolatilityBreakoutStrategy:
             afternoon_buying = now.hour >= 13 and now.hour < 15  # 오후 1시 ~ 3시
 
             # 4. 매수 신호 조건 강화
-            basic_condition = current_price > target_price and (not balance_coin or balance_coin == 0)
+            basic_condition = current_price > target_price
 
             # 아침 시간대는 기본 조건만으로 매수 (변동성 돌파 전략의 기본 원칙)
             if morning_buying and basic_condition:
@@ -168,7 +168,7 @@ class VolatilityBreakoutStrategy:
         self.logger.info(f"변동성 돌파 전략 - 목표가: {target_price:.2f} / 현재가: {current_price:.2f}")
 
         # 기존 기본 매수 조건 (보유 코인이 없고 현재가 > 목표가)
-        if current_price > target_price and (not balance_coin or balance_coin == 0):
+        if current_price > target_price:
             self.logger.info(f"기본 매수 신호 발생 (현재가 > 목표가: {current_price:.2f} > {target_price:.2f})")
             return 'BUY'
         else:
