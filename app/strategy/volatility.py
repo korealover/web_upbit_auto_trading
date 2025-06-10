@@ -35,6 +35,33 @@ class VolatilityBreakoutStrategy:
             self.logger.error(f"목표가 계산 중 오류: {str(e)}")
             return None
 
+    def calculate_target_price_buy(self, ticker, k):
+        """변동성 돌파 전략 jhsun 수정"""
+        try:
+            # 일봉 데이터 가져오기
+            df = self.api.get_ohlcv_data(ticker, 'day', 2)
+            if df is None or len(df) < 2:
+                self.logger.error("목표가 계산을 위한 OHLCV 데이터를 가져오지 못했습니다.")
+                return None
+
+            # 전일 데이터
+            yesterday = df.iloc[-2]
+            today_open = df.iloc[-1]['open']
+
+            # 변동폭 계산 (전일 고가 - 전일 저가)
+            volatility = (yesterday['high'] + yesterday['low']) / 2
+            self.logger.info(f"전일고가 : {yesterday['high']}, 전일저가 : {yesterday['low']}, 전일평균가 : {volatility:,.2f}")
+
+            # 매수 목표가 = 당일 시가 + (전일 변동폭 * k)
+            target_price = volatility
+
+            self.logger.info(f"변동성 돌파 목표가 계산: 시가({today_open:,.2f}) + 변동폭({volatility:,.2f}) * k({k}) = {target_price:,.2f}")
+            return target_price
+
+        except Exception as e:
+            self.logger.error(f"목표가 계산 중 오류: {str(e)}")
+            return None
+
     def is_trading_time(self):
         """거래 시간 확인 (9시부터 다음날 8시 50분까지)"""
         now = datetime.datetime.now()
@@ -69,7 +96,7 @@ class VolatilityBreakoutStrategy:
 
         # 매도 시간 확인 (오전 8:50 ~ 10:00 사이)
         sell_start = now.replace(hour=8, minute=50, second=0, microsecond=0)
-        sell_end = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        sell_end = now.replace(hour=9, minute=0, second=0, microsecond=0)
 
         # 현재 코인 보유량 확인
         balance_coin = self.api.get_balance_coin(ticker)
@@ -94,9 +121,9 @@ class VolatilityBreakoutStrategy:
                     return 'SELL'
 
                 # 손절 손실률 도달 시 매도
-                if profit_loss <= stop_loss:
-                    self.logger.info(f"손절 손실률({stop_loss}%)에 도달했습니다. 현재 수익률: {profit_loss:.2f}%. 매도 신호 발생")
-                    return 'SELL'
+                # if profit_loss <= stop_loss:
+                #     self.logger.info(f"손절 손실률({stop_loss}%)에 도달했습니다. 현재 수익률: {profit_loss:.2f}%. 매도 신호 발생")
+                #     return 'SELL'
 
         # 목표가 계산
         target_price = self.calculate_target_price(ticker, k)
@@ -126,30 +153,37 @@ class VolatilityBreakoutStrategy:
             today_volume = df_daily.iloc[-1]['volume']
             yesterday_volume = df_daily.iloc[-2]['volume']
             volume_increase = today_volume > yesterday_volume * 1.2  # 20% 이상 증가
+            # self.logger.info(f"추가 지표 계산 : {today_volume:.2f} > {yesterday_volume * 1.2:.2f}) = {volume_increase}")
 
             # 2-2. 전일 양봉 확인
             yesterday_open = df_daily.iloc[-2]['open']
             yesterday_close = df_daily.iloc[-2]['close']
             yesterday_bullish = yesterday_close > yesterday_open
+            # self.logger.info(f"전일 양봉 : {yesterday_close:.2f} > {yesterday_open:.2f}) = {yesterday_bullish}")
 
             # 2-3. 오늘 시가 상승 확인
             today_open = df_daily.iloc[-1]['open']
             today_open_increase = today_open > yesterday_close * 1.01  # 1% 이상 상승 시작
+            # self.logger.info(f"오늘 시가 상승 확인 : {today_open:.2f} > {yesterday_close * 1.01:.2f}) = {today_open_increase}")
 
             # 3. 시간대별 매수 조건 조정
             morning_buying = now.hour >= 10 and now.hour < 12  # 오전 10시 ~ 12시
-            afternoon_buying = now.hour >= 13 and now.hour < 15  # 오후 1시 ~ 3시
+            afternoon_buying = now.hour >= 13 and now.hour < 23  # 오후 1시 ~ 23시
 
             # 4. 매수 신호 조건 강화
-            basic_condition = current_price > target_price
+            # basic_condition = current_price > target_price
+            # self.logger.info(f"매수 신호 조건 강화 : {current_price:.2f} > {target_price:.2f}) = {basic_condition}")
+            target_price_buy = self.calculate_target_price_buy(ticker, k)
+            basic_condition_buy = current_price < target_price_buy
+            self.logger.info(f"매수 가격 수정 : {current_price:.2f} < {target_price_buy:.2f}) = {basic_condition_buy}")
 
             # 아침 시간대는 기본 조건만으로 매수 (변동성 돌파 전략의 기본 원칙)
-            if morning_buying and basic_condition:
+            if morning_buying and basic_condition_buy:
                 self.logger.info(f"오전 매수 신호 발생 (현재가 > 목표가: {current_price:.2f} > {target_price:.2f})")
                 return 'BUY'
 
             # 오후 시간대는 추가 조건 확인
-            if afternoon_buying and basic_condition:
+            if afternoon_buying and basic_condition_buy:
                 # 거래량 증가 또는 전일 양봉일 때만 매수
                 if volume_increase or yesterday_bullish:
                     self.logger.info(f"오후 매수 신호 발생 - 거래량 증가: {volume_increase}, 전일 양봉: {yesterday_bullish}")
@@ -159,7 +193,7 @@ class VolatilityBreakoutStrategy:
 
             # 목표가 초과 폭이 큰 경우 (상승 추세가 강한 경우)
             price_ratio = current_price / target_price
-            if basic_condition and price_ratio > 1.02:  # 목표가보다 2% 이상 높을 때
+            if basic_condition_buy and price_ratio > 1.02:  # 목표가보다 2% 이상 높을 때
                 self.logger.info(f"강한 상승세 감지 - 목표가 대비 {(price_ratio - 1) * 100:.2f}% 높음")
                 return 'BUY'
 
