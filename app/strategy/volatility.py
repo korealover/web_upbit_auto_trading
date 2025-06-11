@@ -96,26 +96,25 @@ class VolatilityBreakoutStrategy:
 
         # 매도 시간 확인 (오전 8:50 ~ 10:00 사이)
         sell_start = now.replace(hour=8, minute=50, second=0, microsecond=0)
-        sell_end = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        sell_end = now.replace(hour=10, minute=0, second=0, microsecond=0)
 
         # 현재 코인 보유량 확인
         balance_coin = self.api.get_balance_coin(ticker)
 
         # 코인을 보유하고 있다면 매도 조건 확인
         if balance_coin and balance_coin > 0:
-            # 1. 시간 기준 매도
-            if sell_start <= now < sell_end:
-                self.logger.info(f"매도 시간에 도달했습니다. 매도 신호 발생")
-                return 'SELL'
-
-            # 2. 수익률 기준 매도
             avg_price = self.api.get_buy_avg(ticker)
             current_price = self.api.get_current_price(ticker)
 
             if avg_price and current_price:
                 profit_loss = (current_price - avg_price) / avg_price * 100
 
-                # 목표 수익률 도달 시 매도
+                # 1. 시간 기준 매도
+                if sell_start <= now < sell_end and current_price > 0.7:
+                    self.logger.info(f"매도 시간에 도달 및 0.7% 이상 수익 발생, 매도 신호 발생")
+                    return 'SELL'
+
+                # 2. 수익률 기준 매도, 목표 수익률 도달 시 매도
                 if profit_loss >= target_profit:
                     self.logger.info(f"목표 수익률({target_profit}%)에 도달했습니다. 현재 수익률: {profit_loss:.2f}%. 매도 신호 발생")
                     return 'SELL'
