@@ -166,8 +166,9 @@ class VolatilityBreakoutStrategy:
             # self.logger.info(f"오늘 시가 상승 확인 : {today_open:.2f} > {yesterday_close * 1.01:.2f}) = {today_open_increase}")
 
             # 3. 시간대별 매수 조건 조정
-            morning_buying = now.hour >= 10 and now.hour < 12  # 오전 10시 ~ 12시
-            afternoon_buying = now.hour >= 13 and now.hour < 23  # 오후 1시 ~ 23시
+            morning_buying = 10 <= now.hour < 12  # 오전 10시 ~ 12시
+            afternoon_buying = 13 <= now.hour < 18  # 오후 1시 ~ 5시
+            event_buying = 20 <= now.hour < 24  # 20시 ~ 23시
 
             # 4. 매수 신호 조건 강화
             # basic_condition = current_price > target_price
@@ -189,6 +190,12 @@ class VolatilityBreakoutStrategy:
                     return 'BUY'
                 else:
                     self.logger.info("오후 시간대 추가 조건 불충족으로 매수 보류")
+
+            # 저녁 시간대 추가 조건 확인
+            if event_buying and basic_condition_buy:
+                # 저녁 매수
+                self.logger.info(f"저녁 매수 신호 발생 (현재가 > 목표가: {current_price:.2f} > {target_price:.2f})")
+                return 'BUY'
 
             # 목표가 초과 폭이 큰 경우 (상승 추세가 강한 경우)
             price_ratio = current_price / target_price
