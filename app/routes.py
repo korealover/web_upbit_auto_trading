@@ -116,16 +116,190 @@ def dashboard():
 
     # 잔고 정보 조회
     balance_info = {}
-    balance_info['cash'] = api.get_balance_cash()
+    try:
+        balance_info['cash'] = api.get_balance_cash()
+
+        # 보유 코인 정보 조회 - pyupbit를 직접 사용
+        try:
+            all_balances = api.upbit.get_balances()  # pyupbit의 get_balances 메서드 사용
+            balance_info['coins'] = []
+            total_balance = balance_info['cash']
+
+            if all_balances:
+                for balance in all_balances:
+                    if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
+                        ticker = f"KRW-{balance['currency']}"
+                        try:
+                            current_price = api.get_current_price(ticker)  # get_ticker를 get_current_price로 변경
+                            coin_value = float(balance['balance']) * current_price
+                            total_balance += coin_value
+
+                            balance_info['coins'].append({
+                                'ticker': ticker,
+                                'balance': float(balance['balance']),
+                                'value': coin_value,
+                                'current_price': current_price
+                            })
+                        except Exception as e:
+                            logger.warning(f"코인 {ticker} 가격 조회 실패: {str(e)}")
+
+            balance_info['total_balance'] = total_balance
+
+        except Exception as e:
+            logger.warning(f"보유 코인 정보 조회 실패: {str(e)}")
+            balance_info['total_balance'] = balance_info['cash']
+            balance_info['coins'] = []
+
+    except Exception as e:
+        logger.error(f"잔고 정보 조회 실패: {str(e)}")
+        balance_info['cash'] = 0
+        balance_info['total_balance'] = 0
+        balance_info['coins'] = []
+
+    # 오늘의 거래 통계 계산
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_records = TradeRecord.query.filter_by(
+        user_id=current_user.id
+    ).filter(
+        TradeRecord.timestamp >= today_start
+    ).all()
+
+    daily_stats = {}
+    if today_records:
+        # 총 거래 횟수
+        daily_stats['total_trades'] = len(today_records)
+
+        # 매수/매도 쌍으로 거래 완료된 것들의 성공 거래 계산
+        successful_trades = 0
+        total_profit = 0
+
+        # 거래 기록을 티커별로 그룹화
+        ticker_trades = {}
+        for record in today_records:
+            if record.ticker not in ticker_trades:
+                ticker_trades[record.ticker] = {'buy': [], 'sell': []}
+
+            if record.trade_type == 'BUY':
+                ticker_trades[record.ticker]['buy'].append(record)
+            else:
+                ticker_trades[record.ticker]['sell'].append(record)
+
+        # 각 티커별로 수익 계산
+        for ticker, trades in ticker_trades.items():
+            buy_trades = sorted(trades['buy'], key=lambda x: x.timestamp)
+            sell_trades = sorted(trades['sell'], key=lambda x: x.timestamp)
+
+            # 간단한 FIFO 방식으로 매수-매도 쌍 매칭
+            buy_index = 0
+            for sell_trade in sell_trades:
+                if buy_index < len(buy_trades):
+                    buy_trade = buy_trades[buy_index]
+
+                    # 수익률 계산
+                    profit_rate = ((float(sell_trade.price) - float(buy_trade.price)) / float(buy_trade.price)) * 100
+
+                    if profit_rate > 0:
+                        successful_trades += 1
+
+                    total_profit += profit_rate
+                    buy_index += 1
+
+        # 승률 계산 (완료된 거래 쌍 기준)
+        completed_trades = min(len([r for r in today_records if r.trade_type == 'BUY']),
+                               len([r for r in today_records if r.trade_type == 'SELL']))
+
+        daily_stats['successful_trades'] = successful_trades
+        daily_stats['daily_return'] = total_profit / completed_trades if completed_trades > 0 else 0
+        daily_stats['win_rate'] = (successful_trades / completed_trades * 100) if completed_trades > 0 else 0
+    else:
+        daily_stats = {
+            'total_trades': 0,
+            'successful_trades': 0,
+            'daily_return': 0,
+            'win_rate': 0
+        }
+
+    # 전략별 성과 계산
+    strategy_performance = {}
+    if today_records:
+        strategy_stats = {}
+
+        for record in today_records:
+            strategy = record.strategy
+            if strategy not in strategy_stats:
+                strategy_stats[strategy] = {'trades': 0, 'profit': 0, 'buy_records': [], 'sell_records': []}
+
+            strategy_stats[strategy]['trades'] += 1
+
+            if record.trade_type == 'BUY':
+                strategy_stats[strategy]['buy_records'].append(record)
+            else:
+                strategy_stats[strategy]['sell_records'].append(record)
+
+        # 각 전략별 수익률 계산
+        for strategy, stats in strategy_stats.items():
+            buy_records = sorted(stats['buy_records'], key=lambda x: x.timestamp)
+            sell_records = sorted(stats['sell_records'], key=lambda x: x.timestamp)
+
+            total_return = 0
+            pair_count = 0
+
+            # 매수-매도 쌍 매칭하여 수익률 계산
+            for i in range(min(len(buy_records), len(sell_records))):
+                buy_price = float(buy_records[i].price)
+                sell_price = float(sell_records[i].price)
+                return_rate = ((sell_price - buy_price) / buy_price) * 100
+                total_return += return_rate
+                pair_count += 1
+
+            strategy_performance[strategy] = {
+                'return': total_return / pair_count if pair_count > 0 else 0,
+                'trades': stats['trades']
+            }
 
     # 사용자별 봇 정보 가져오기
     user_bots = trading_bots.get(user_id, {})
 
-    # 거래 기록 조회
-    trade_records = TradeRecord.query.filter_by(user_id=current_user.id).order_by(TradeRecord.timestamp.desc()).limit(20).all()
+    # 봇 정보에 마지막 신호 시간 추가
+    for ticker, bot_info in user_bots.items():
+        try:
+            # 마지막 로그에서 신호 시간 추출 (선택적 구현)
+            today = datetime.now().strftime('%Y%m%d')
+            ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
+            log_filename = f"{today}_{ticker_symbol}.log"
+            log_path = os.path.join('logs', log_filename)
 
-    return render_template('dashboard.html', balance_info=balance_info, trading_bots=user_bots, trade_records=trade_records)
+            if os.path.exists(log_path):
+                last_lines = tail_file(log_path, 10)
+                for line in reversed(last_lines):
+                    if '매수' in line or '매도' in line or '신호' in line:
+                        # 로그에서 시간 추출
+                        parts = line.split(' - ')
+                        if len(parts) >= 1:
+                            bot_info['last_signal_time'] = parts[0]
+                            break
+                else:
+                    bot_info['last_signal_time'] = None
+            else:
+                bot_info['last_signal_time'] = None
 
+        except Exception as e:
+            logger.warning(f"봇 {ticker} 마지막 신호 시간 조회 실패: {str(e)}")
+            bot_info['last_signal_time'] = None
+
+    # 거래 기록 조회 (최근 20개)
+    trade_records = TradeRecord.query.filter_by(
+        user_id=current_user.id
+    ).order_by(
+        TradeRecord.timestamp.desc()
+    ).limit(20).all()
+
+    return render_template('dashboard.html',
+                           balance_info=balance_info,
+                           trading_bots=user_bots,
+                           trade_records=trade_records,
+                           daily_stats=daily_stats,
+                           strategy_performance=strategy_performance)
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
