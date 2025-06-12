@@ -257,6 +257,7 @@ class UpbitTradingBot:
         """거래 기록 저장"""
         try:
             from app import app
+            from app.models import kst_now  # 한국 시간 함수 import
 
             # 클래스 변수에서 사용자 ID 확인
             user_id = self.user_id
@@ -297,7 +298,7 @@ class UpbitTradingBot:
 
             # 애플리케이션 컨텍스트 설정
             with app.app_context():
-                # 새 거래 기록 생성
+                # 새 거래 기록 생성 - 한국 시간으로 저장
                 trade_record = TradeRecord(
                     user_id=user_id,
                     ticker=ticker,
@@ -307,7 +308,7 @@ class UpbitTradingBot:
                     amount=float(amount) if amount else 0,
                     profit_loss=float(profit_loss) if profit_loss else None,
                     strategy=strategy,
-                    timestamp=datetime.datetime.utcnow()
+                    timestamp=kst_now()  # UTC 대신 한국 시간 사용
                 )
 
                 self.logger.info(f"거래 기록 객체 생성됨: {trade_record}")
@@ -316,7 +317,7 @@ class UpbitTradingBot:
                 db.session.add(trade_record)
                 db.session.commit()
 
-                self.logger.info(f"거래 기록 저장 완료: ID={trade_record.id}")
+                self.logger.info(f"거래 기록 저장 완료: ID={trade_record.id}, 시간={trade_record.timestamp}")
 
         except Exception as e:
             self.logger.error(f"거래 기록 저장 중 오류: {str(e)}", exc_info=True)

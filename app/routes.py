@@ -2,7 +2,7 @@ from flask import render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
 from app import app, db
 from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm
-from app.models import User, TradeRecord
+from app.models import User, TradeRecord, kst_now
 from app.api.upbit_api import UpbitAPI
 from app.bot.trading_bot import UpbitTradingBot
 from app.strategy import create_strategy
@@ -674,7 +674,7 @@ def approve_user(user_id):
 
     user = User.query.get_or_404(user_id)
     user.is_approved = True
-    user.approved_on = datetime.utcnow()
+    user.approved_on = kst_now()
     user.approved_by = current_user.id
     db.session.commit()
 
