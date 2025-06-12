@@ -13,7 +13,7 @@ import threading
 import time
 import html
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # 전역 변수
 trading_bots = {}
@@ -135,6 +135,7 @@ def settings():
         # 폼에서 설정값 추출
         ticker = form.ticker.data
         strategy_name = form.strategy.data
+        # 기타 설정값들...
 
         # 봇 설정 및 시작
         start_bot(ticker, strategy_name, form)
@@ -542,3 +543,70 @@ def notify_user_rejection(user):
     """사용자에게 계정 거부 알림"""
     # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
     logger.info(f"사용자 {user.username}에게 계정 거부 알림")
+
+
+@app.route('/api/trade_records')
+@login_required
+def get_trade_records():
+    """오늘의 모든 거래 기록을 가져옵니다."""
+    # 오늘 날짜의 시작 시간 계산 (00:00:00)
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 오늘 거래 기록만 필터링
+    records = TradeRecord.query.filter_by(
+        user_id=current_user.id
+    ).filter(
+        TradeRecord.timestamp >= today_start
+    ).order_by(
+        TradeRecord.timestamp.desc()
+    ).all()
+
+    # JSON 응답용 데이터 변환
+    result = []
+    for record in records:
+        result.append({
+            'timestamp': record.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'ticker': record.ticker,
+            'trade_type': record.trade_type,
+            'price': record.price,
+            'volume': record.volume,
+            'amount': record.amount,
+            'profit_loss': record.profit_loss,
+            'strategy': record.strategy
+        })
+
+    return jsonify(result)
+
+
+@app.route('/api/trade_records/<ticker>')
+@login_required
+def get_ticker_trade_records(ticker):
+    """특정 티커의 오늘 거래 기록을 가져옵니다."""
+    # 오늘 날짜의 시작 시간 계산 (00:00:00)
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 특정 티커의 오늘 거래 기록만 필터링
+    records = TradeRecord.query.filter_by(
+        user_id=current_user.id,
+        ticker=ticker
+    ).filter(
+        TradeRecord.timestamp >= today_start
+    ).order_by(
+        TradeRecord.timestamp.desc()
+    ).all()
+
+    # JSON 응답용 데이터 변환
+    result = []
+    for record in records:
+        result.append({
+            'timestamp': record.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'ticker': record.ticker,
+            'trade_type': record.trade_type,
+            'price': record.price,
+            'volume': record.volume,
+            'amount': record.amount,
+            'profit_loss': record.profit_loss,
+            'strategy': record.strategy
+        })
+
+    return jsonify(result)

@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -89,56 +90,59 @@
         <div class="card">
             <div class="card-header">
                 거래 기록
+                <span id="trade-records-title">(오늘의 모든 거래)</span>
             </div>
             <div class="card-body">
-                {% if trade_records %}
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>날짜/시간</th>
-                                <th>티커</th>
-                                <th>유형</th>
-                                <th>가격</th>
-                                <th>수량</th>
-                                <th>금액</th>
-                                <th>수익률</th>
-                                <th>전략</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for record in trade_records %}
-                            <tr>
-                                <td>{{ record.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                <td>{{ record.ticker }}</td>
-                                <td>
-                                    {% if record.trade_type == 'BUY' %}
-                                    <span class="badge bg-primary">매수</span>
-                                    {% else %}
-                                    <span class="badge bg-danger">매도</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ "₩{:,.0f}".format(record.price) }}</td>
-                                <td>{{ "{:.4f}".format(record.volume) }}</td>
-                                <td>{{ "₩{:,.0f}".format(record.amount) }}</td>
-                                <td>
-                                    {% if record.profit_loss %}
-                                    <span class="{{ 'text-success' if record.profit_loss > 0 else 'text-danger' }}">
-                                        {{ "{:+.2f}%".format(record.profit_loss) }}
-                                    </span>
-                                    {% else %}
-                                    -
-                                    {% endif %}
-                                </td>
-                                <td>{{ record.strategy }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div id="trade-records-container">
+                    {% if trade_records %}
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="trade-records-table">
+                            <thead>
+                                <tr>
+                                    <th>날짜/시간</th>
+                                    <th>티커</th>
+                                    <th>유형</th>
+                                    <th>가격</th>
+                                    <th>수량</th>
+                                    <th>금액</th>
+                                    <th>수익률</th>
+                                    <th>전략</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in trade_records %}
+                                <tr class="trade-record-row" data-ticker="{{ record.ticker }}">
+                                    <td>{{ record.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>{{ record.ticker }}</td>
+                                    <td>
+                                        {% if record.trade_type == 'BUY' %}
+                                        <span class="badge bg-primary">매수</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">매도</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ "₩{:,.0f}".format(record.price) }}</td>
+                                    <td>{{ "{:.4f}".format(record.volume) }}</td>
+                                    <td>{{ "₩{:,.0f}".format(record.amount) }}</td>
+                                    <td>
+                                        {% if record.profit_loss %}
+                                        <span class="{{ 'text-success' if record.profit_loss > 0 else 'text-danger' }}">
+                                            {{ "{:+.2f}%".format(record.profit_loss) }}
+                                        </span>
+                                        {% else %}
+                                        -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ record.strategy }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p>아직 거래 기록이 없습니다.</p>
+                    {% endif %}
                 </div>
-                {% else %}
-                <p>아직 거래 기록이 없습니다.</p>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -150,7 +154,109 @@
     document.addEventListener('DOMContentLoaded', function() {
         const logContainer = document.getElementById('log-container');
         const tickerSelector = document.getElementById('ticker-selector');
+        const tradeRecordsTitle = document.getElementById('trade-records-title');
+        const tradeRecordRows = document.querySelectorAll('.trade-record-row');
         let selectedTicker = '';
+
+        // 거래 기록 필터링 함수
+        function filterTradeRecords(ticker) {
+            // 타이틀 업데이트
+            if (ticker) {
+                tradeRecordsTitle.textContent = `(오늘의 ${ticker} 거래)`;
+                // API로 특정 티커의 거래 기록 가져오기
+                fetchTradeRecords(ticker);
+            } else {
+                tradeRecordsTitle.textContent = '(오늘의 모든 거래)';
+                // API로 모든 거래 기록 가져오기
+                fetchTradeRecords();
+            }
+        }
+
+        // 거래 기록 가져오기 함수
+        function fetchTradeRecords(ticker = '') {
+            fetch(`/api/trade_records${ticker ? '/' + ticker : ''}`)
+                .then(response => response.json())
+                .then(records => {
+                    updateTradeRecordsTable(records);
+                })
+                .catch(error => {
+                    console.error('거래 기록 가져오기 오류:', error);
+                });
+        }
+
+        // 거래 기록 테이블 업데이트 함수
+        function updateTradeRecordsTable(records) {
+            const tableBody = document.querySelector('#trade-records-table tbody');
+            if (!tableBody) return;
+
+            // 테이블 비우기
+            tableBody.innerHTML = '';
+
+            if (records.length === 0) {
+                const container = document.getElementById('trade-records-container');
+                container.innerHTML = '<p>해당 조건의 거래 기록이 없습니다.</p>';
+                return;
+            }
+
+            // 새 레코드로 테이블 채우기
+            records.forEach(record => {
+                const row = document.createElement('tr');
+                row.className = 'trade-record-row';
+                row.setAttribute('data-ticker', record.ticker);
+
+                // 날짜/시간
+                let cell = document.createElement('td');
+                cell.textContent = record.timestamp;
+                row.appendChild(cell);
+
+                // 티커
+                cell = document.createElement('td');
+                cell.textContent = record.ticker;
+                row.appendChild(cell);
+
+                // 유형
+                cell = document.createElement('td');
+                const badge = document.createElement('span');
+                badge.className = record.trade_type === 'BUY' ? 'badge bg-primary' : 'badge bg-danger';
+                badge.textContent = record.trade_type === 'BUY' ? '매수' : '매도';
+                cell.appendChild(badge);
+                row.appendChild(cell);
+
+                // 가격
+                cell = document.createElement('td');
+                cell.textContent = `₩${Number(record.price).toLocaleString()}`;
+                row.appendChild(cell);
+
+                // 수량
+                cell = document.createElement('td');
+                cell.textContent = parseFloat(record.volume).toFixed(4);
+                row.appendChild(cell);
+
+                // 금액
+                cell = document.createElement('td');
+                cell.textContent = `₩${Number(record.amount).toLocaleString()}`;
+                row.appendChild(cell);
+
+                // 수익률
+                cell = document.createElement('td');
+                if (record.profit_loss) {
+                    const profitSpan = document.createElement('span');
+                    profitSpan.className = parseFloat(record.profit_loss) > 0 ? 'text-success' : 'text-danger';
+                    profitSpan.textContent = `${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%`;
+                    cell.appendChild(profitSpan);
+                } else {
+                    cell.textContent = '-';
+                }
+                row.appendChild(cell);
+
+                // 전략
+                cell = document.createElement('td');
+                cell.textContent = record.strategy;
+                row.appendChild(cell);
+
+                tableBody.appendChild(row);
+            });
+        }
 
         // 활성 티커 로드
         function loadActiveTickers() {
@@ -179,7 +285,6 @@
                         selectedTicker = currentSelectedTicker;
                     }
 
-
                     // 티커가 없으면 메시지 표시
                     if (tickers.length === 0) {
                         logContainer.innerHTML = '<div class="text-muted">실행 중인 봇이 없습니다.</div>';
@@ -193,6 +298,7 @@
             selectedTicker = this.value;
             logContainer.innerHTML = ''; // 로그 컨테이너 초기화
             fetchLogs(); // 새 티커의 로그 로드
+            filterTradeRecords(selectedTicker); // 새 티커의 거래 기록 필터링
         });
 
         // 로그 폴링 함수 (개선된 버전)
@@ -270,9 +376,12 @@
         // 초기 티커 및 로그 로드
         loadActiveTickers();
         fetchLogs();
+        filterTradeRecords(''); // 초기에는 모든 거래 기록 표시
 
         // 5초마다 로그 업데이트
         setInterval(fetchLogs, 5000);
+        // 10초마다 거래 기록 업데이트
+        setInterval(() => filterTradeRecords(selectedTicker), 10000);
         // 20초마다 활성 티커 업데이트
         setInterval(loadActiveTickers, 20000);
 
