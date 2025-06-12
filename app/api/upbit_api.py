@@ -151,29 +151,46 @@ class UpbitAPI:
                 self.logger.error(error_msg)
                 return {"error": {"name": "price_fetch_error", "message": error_msg}}
 
-            # 매도할 수량 계산
+            # 전체 보유 코인의 가치 계산
+            total_value = volume * current_price
+            self.logger.info(f"전체 보유 코인 가치: {total_value:,.2f}원")
+
+            # 매도할 수량 및 예상 금액 계산
             sell_volume = volume * portion
+            estimated_value = sell_volume * current_price
 
             # 최소 주문 금액 확인 (5,000원)
             min_order_value = 5000
-            estimated_value = sell_volume * current_price
 
-            # 최소 주문 금액 미만일 경우 자동 조정
+            self.logger.info(f"원래 매도 계획: {portion * 100:.1f}% ({estimated_value:,.2f}원)")
+
+            # 최소 주문 금액 미만일 경우 처리
             if estimated_value < min_order_value:
                 self.logger.warning(f"매도 예상 금액({estimated_value:,.2f}원)이 최소 주문 금액({min_order_value}원)보다 작습니다.")
 
-                # 최소 주문 금액을 충족하는 매도 비율 계산
-                min_sell_portion = min(min_order_value / (volume * current_price), 1.0)
+                # 전체 보유 가치가 최소 주문 금액보다 작은 경우
+                if total_value < min_order_value:
+                    error_msg = f"전체 보유 코인 가치({total_value:,.2f}원)가 최소 주문 금액({min_order_value}원)보다 작아서 매도할 수 없습니다."
+                    self.logger.warning(error_msg)
+                    return {"error": {"name": "insufficient_total_value", "message": error_msg}}
 
-                # 최소 주문 금액을 충족하는 비율이 전체의 98% 이상이면 전량 매도로 전환
-                if min_sell_portion >= 0.98:
-                    self.logger.info(f"최소 주문 금액을 충족하기 위해 전량 매도로 변경합니다.")
-                    sell_volume = volume  # 전량 매도
+                # 전체 보유 가치는 5,000원 이상이지만 분할 매도 금액이 부족한 경우
+                # 옵션 1: 최소 주문 금액을 충족하는 비율로 조정
+                min_sell_portion = min_order_value / total_value
+
+                if min_sell_portion >= 0.95:  # 95% 이상이면 전량 매도
+                    self.logger.info(f"최소 주문 금액 충족을 위해 전량 매도로 변경합니다.")
+                    sell_volume = volume
+                    new_portion = 1.0
                 else:
                     # 최소 주문 금액을 충족하는 비율로 조정
-                    new_sell_volume = volume * min_sell_portion
-                    self.logger.info(f"최소 주문 금액 충족을 위해 매도 수량을 {sell_volume:.8f}에서 {new_sell_volume:.8f}로 조정합니다.")
-                    sell_volume = new_sell_volume
+                    new_portion = min_sell_portion
+                    sell_volume = volume * new_portion
+                    self.logger.info(f"최소 주문 금액 충족을 위해 매도 비율을 {portion * 100:.1f}%에서 {new_portion * 100:.1f}%로 조정합니다.")
+
+                    # 조정된 매도 금액 재계산
+                    estimated_value = sell_volume * current_price
+                    self.logger.info(f"조정된 매도 예상 금액: {estimated_value:,.2f}원")
 
             # 너무 작은 수량 확인
             min_volume = 0.00000001  # 업비트 최소 거래량
@@ -182,7 +199,11 @@ class UpbitAPI:
                 self.logger.warning(error_msg)
                 return {"error": {"name": "too_small_volume", "message": error_msg}}
 
-            self.logger.info(f"분할 매도 시도: {ticker}, {sell_volume} (원래 비율: {portion * 100:.1f}%)")
+            # 최종 매도 정보 로깅
+            final_estimated_value = sell_volume * current_price
+            final_portion = sell_volume / volume * 100
+
+            self.logger.info(f"최종 매도 계획: {sell_volume:.8f} {ticker.split('-')[1]} ({final_portion:.1f}%, {final_estimated_value:,.2f}원)")
 
             # 매도 전 캐시 무효화
             invalidate_cache()
@@ -194,8 +215,11 @@ class UpbitAPI:
                 self.logger.error(f"분할 매도 주문 오류: {res}")
             elif res:
                 self.logger.info(f"분할 매도 주문 성공: {res}")
+                # 실제 매도된 비율 정보 추가
+                actual_portion = sell_volume / volume
+                res['actual_sell_portion'] = actual_portion
+                res['original_portion'] = portion
 
-            # 원본 응답 그대로 반환 (오류 포함)
             return res
 
         except Exception as e:

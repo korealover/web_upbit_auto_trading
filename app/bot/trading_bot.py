@@ -174,9 +174,19 @@ class UpbitTradingBot:
                         self.record_trade('BUY', ticker, current_price, estimated_volume, buy_amount)
 
                 return order_result
-
             elif signal == 'SELL' and balance_coin and balance_coin > 0:
                 self.logger.info(f"매도 시그널 발생: {balance_coin} {ticker.split('-')[1]} 매도 시도")
+
+                # 현재가 조회하여 보유 코인 가치 확인
+                current_price = self.api.get_current_price(ticker)
+                if current_price:
+                    total_value = balance_coin * current_price
+                    self.logger.info(f"현재 보유 코인 총 가치: {total_value:,.2f}원")
+
+                    # 전체 가치가 5,000원 미만인 경우 경고
+                    if total_value < 5000:
+                        self.logger.warning(f"보유 코인 총 가치({total_value:,.2f}원)가 최소 주문 금액(5,000원) 미만입니다. 매도를 건너뜁니다.")
+                        return None
 
                 # 분할 매도 처리
                 sell_portion = getattr(self.args, 'sell_portion', 1.0)  # 기본값 1.0 (전량 매도)
@@ -187,9 +197,25 @@ class UpbitTradingBot:
                 else:
                     sell_portion_value = sell_portion  # 이미 숫자인 경우
 
+                # 매도 전략 결정
                 if sell_portion_value < 1.0:
                     self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion_value * 100:.1f}% 매도")
                     order_result = self.api.order_sell_market_partial(ticker, sell_portion_value)
+
+                    # 분할 매도에서 오류가 발생한 경우 처리
+                    if order_result and 'error' in order_result:
+                        error_name = order_result['error'].get('name', '')
+
+                        if error_name == 'insufficient_total_value':
+                            self.logger.warning("보유 코인 가치가 부족하여 매도를 건너뜁니다.")
+                            return None
+                        elif error_name == 'too_small_volume':
+                            self.logger.warning("매도 수량이 너무 적어 전량 매도로 전환합니다.")
+                            # 전량 매도로 재시도
+                            order_result = self.api.order_sell_market(ticker, balance_coin)
+                        else:
+                            self.logger.error(f"분할 매도 오류: {order_result['error']['message']}")
+                            return None
                 else:
                     self.logger.info(f"전량 매도 시도: {balance_coin} {ticker.split('-')[1]}")
                     order_result = self.api.order_sell_market(ticker, balance_coin)
@@ -206,8 +232,13 @@ class UpbitTradingBot:
                     # 현재 가격 조회
                     current_price = self.api.get_current_price(ticker)
 
-                    # 매도 수량은 주문 시 명시한 수량을 사용
-                    if sell_portion_value < 1.0:
+                    # 실제 매도된 수량 계산
+                    if 'actual_sell_portion' in order_result:
+                        # 분할 매도에서 조정된 비율 사용
+                        actual_portion = order_result['actual_sell_portion']
+                        volume = balance_coin * actual_portion
+                        self.logger.info(f"실제 매도된 비율: {actual_portion * 100:.1f}% (원래 계획: {sell_portion_value * 100:.1f}%)")
+                    elif sell_portion_value < 1.0:
                         volume = balance_coin * sell_portion_value
                     else:
                         volume = balance_coin
@@ -228,7 +259,6 @@ class UpbitTradingBot:
                     self.record_trade('SELL', ticker, current_price, volume, amount, profit_loss)
 
                 return order_result
-
             else:
                 self.logger.info("포지션 유지 (매수/매도 조건 불충족)")
 
