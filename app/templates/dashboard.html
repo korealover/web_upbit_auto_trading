@@ -1,268 +1,321 @@
+
 {% extends "base.html" %}
 
 {% block content %}
-<!-- 기존 내용 동일 유지 -->
 <h2>거래 대시보드</h2>
 
+<!-- 전략별 요약 정보 카드 -->
 <div class="row mt-4">
-    <div class="col-md-4">
+    <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                잔고 정보
-            </div>
-            <div class="card-body">
-                <p><strong>보유 현금:</strong> {{ "₩{:,.0f}".format(balance_info.cash|default(0)) }}</p>
-                <!-- 다른 잔고 정보 -->
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                실행 중인 봇
+                <h5 class="mb-0">활성 전략 현황</h5>
             </div>
             <div class="card-body">
                 {% if trading_bots %}
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>티커</th>
-                                <th>전략</th>
-                                <th>상태</th>
-                                <th>작업</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for ticker, bot_info in trading_bots.items() %}
-                            <tr>
-                                <td>{{ ticker }}</td>
-                                <td>{{ bot_info.strategy }}</td>
-                                <td>
+                <div class="row">
+                    {% for ticker, bot_info in trading_bots.items() %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-{% if bot_info.running %}success{% else %}danger{% endif %}">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    {{ ticker }}
                                     {% if bot_info.running %}
-                                    <span class="badge bg-success">실행 중</span>
+                                    <span class="badge bg-success">실행중</span>
                                     {% else %}
                                     <span class="badge bg-danger">중지됨</span>
                                     {% endif %}
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-danger stop-bot" data-ticker="{{ ticker }}">
+                                </h6>
+                                <p class="card-text">
+                                    <strong>전략:</strong>
+                                    {% if bot_info.strategy == 'rsi' %}
+                                    📈 RSI 전략
+                                    {% elif bot_info.strategy == 'adaptive' %}
+                                    🎯 어댑티브 전략
+                                    {% elif bot_info.strategy == 'ensemble' %}
+                                    🔥 앙상블 전략
+                                    {% elif bot_info.strategy == 'volatility' %}
+                                    🚀 변동성 돌파
+                                    {% else %}
+                                    📊 볼린저 밴드
+                                    {% endif %}
+                                </p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">
+                                        {% if bot_info.last_signal_time %}
+                                        최근: {{ bot_info.last_signal_time }}
+                                        {% else %}
+                                        신호 대기 중
+                                        {% endif %}
+                                    </small>
+                                    {% if bot_info.running %}
+                                    <button class="btn btn-sm btn-outline-danger stop-bot" data-ticker="{{ ticker }}">
                                         중지
                                     </button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
                 {% else %}
-                <p>실행 중인 봇이 없습니다. <a href="/settings">설정</a>에서 봇을 시작하세요.</p>
+                <div class="text-center">
+                    <p class="mb-3">실행 중인 봇이 없습니다.</p>
+                    <a href="/settings" class="btn btn-primary">새 봇 시작하기</a>
+                </div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
 
+<!-- 잔고 및 성과 정보 -->
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                💰 잔고 정보
+            </div>
+            <div class="card-body">
+                <p><strong>보유 현금:</strong> {{ "₩{:,.0f}".format(balance_info.cash|default(0)) }}</p>
+                <p><strong>총 자산:</strong> {{ "₩{:,.0f}".format(balance_info.total_balance|default(0)) }}</p>
+                {% if balance_info.coins %}
+                <hr>
+                <h6>보유 코인:</h6>
+                {% for coin in balance_info.coins %}
+                <small>{{ coin.ticker }}: {{ "{:.4f}".format(coin.balance) }}</small><br>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                📊 오늘의 성과
+            </div>
+            <div class="card-body">
+                {% if daily_stats %}
+                <p><strong>총 거래 횟수:</strong> {{ daily_stats.total_trades|default(0) }}회</p>
+                <p><strong>성공 거래:</strong> {{ daily_stats.successful_trades|default(0) }}회</p>
+                <p><strong>오늘 수익률:</strong>
+                    <span class="{% if daily_stats.daily_return > 0 %}text-success{% elif daily_stats.daily_return < 0 %}text-danger{% endif %}">
+                        {{ "{:+.2f}%".format(daily_stats.daily_return|default(0)) }}
+                    </span>
+                </p>
+                <p><strong>승률:</strong> {{ "{:.1f}%".format(daily_stats.win_rate|default(0)) }}</p>
+                {% else %}
+                <p><strong>총 거래 횟수:</strong> 0회</p>
+                <p><strong>성공 거래:</strong> 0회</p>
+                <p><strong>오늘 수익률:</strong> <span class="text-muted">0.00%</span></p>
+                <p><strong>승률:</strong> 0.0%</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                🎯 전략별 성과
+            </div>
+            <div class="card-body">
+                {% if strategy_performance %}
+                {% for strategy, perf in strategy_performance.items() %}
+                <div class="mb-2">
+                    <small>
+                        <strong>
+                            {% if strategy == 'rsi' %}📈 RSI
+                            {% elif strategy == 'adaptive' %}🎯 어댑티브
+                            {% elif strategy == 'ensemble' %}🔥 앙상블
+                            {% elif strategy == 'volatility' %}🚀 변동성
+                            {% else %}📊 볼린저{% endif %}
+                        :</strong>
+                        <span class="{% if perf.return > 0 %}text-success{% elif perf.return < 0 %}text-danger{% endif %}">
+                            {{ "{:+.2f}%".format(perf.return) }}
+                        </span>
+                        ({{ perf.trades }}회)
+                    </small>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted">아직 거래 데이터가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 실시간 로그 -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                실시간 로그
-                <div class="float-end">
-                    <select id="ticker-selector" class="form-select form-select-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>📝 실시간 로그</span>
+                <div class="d-flex gap-2">
+                    <select id="ticker-selector" class="form-select form-select-sm" style="width: 120px;">
                         <option value="">모든 티커</option>
-                        <!-- 활성 티커가 여기에 추가됩니다 -->
                     </select>
+                    <button id="refresh-logs-btn" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-sync-alt"></i> 새로고침
+                    </button>
+                    <button id="auto-refresh-toggle" class="btn btn-sm btn-outline-secondary" data-auto="true">
+                        <i class="fas fa-pause"></i> 자동 새로고침
+                    </button>
                 </div>
             </div>
             <div class="card-body">
-                <div id="log-container" style="height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; font-family: monospace;">
-                    <!-- 로그 메시지가 여기에 추가됩니다 -->
+                <div id="log-container" style="height: 350px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; font-family: 'Courier New', monospace; font-size: 0.9em; border-radius: 5px;">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin me-2"></i>로그를 불러오는 중...
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- 거래 기록 -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                거래 기록
-                <span id="trade-records-title">(오늘의 모든 거래)</span>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>📈 거래 기록 <span id="trade-records-title">(오늘의 모든 거래)</span></span>
+                <div class="d-flex gap-2">
+                    <select id="ticker-filter" class="form-select form-select-sm" style="width: 120px;">
+                        <option value="">모든 티커</option>
+                    </select>
+                    <select id="strategy-filter" class="form-select form-select-sm" style="width: 120px;">
+                        <option value="">모든 전략</option>
+                        <option value="rsi">📈 RSI</option>
+                        <option value="adaptive">🎯 어댑티브</option>
+                        <option value="ensemble">🔥 앙상블</option>
+                        <option value="volatility">🚀 변동성</option>
+                        <option value="bollinger">📊 볼린저</option>
+                    </select>
+                    <button id="refresh-trades-btn" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-sync-alt"></i> 새로고침
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div id="trade-records-container">
-                    {% if trade_records %}
-                    <div class="table-responsive">
-                        <table class="table table-striped" id="trade-records-table">
-                            <thead>
-                                <tr>
-                                    <th>날짜/시간</th>
-                                    <th>티커</th>
-                                    <th>유형</th>
-                                    <th>가격</th>
-                                    <th>수량</th>
-                                    <th>금액</th>
-                                    <th>수익률</th>
-                                    <th>전략</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for record in trade_records %}
-                                <tr class="trade-record-row" data-ticker="{{ record.ticker }}">
-                                    <td>{{ record.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                    <td>{{ record.ticker }}</td>
-                                    <td>
-                                        {% if record.trade_type == 'BUY' %}
-                                        <span class="badge bg-primary">매수</span>
-                                        {% else %}
-                                        <span class="badge bg-danger">매도</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ "₩{:,.0f}".format(record.price) }}</td>
-                                    <td>{{ "{:.4f}".format(record.volume) }}</td>
-                                    <td>{{ "₩{:,.0f}".format(record.amount) }}</td>
-                                    <td>
-                                        {% if record.profit_loss %}
-                                        <span class="{{ 'text-success' if record.profit_loss > 0 else 'text-danger' }}">
-                                            {{ "{:+.2f}%".format(record.profit_loss) }}
-                                        </span>
-                                        {% else %}
-                                        -
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ record.strategy }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin me-2"></i>거래 기록을 불러오는 중...
                     </div>
-                    {% else %}
-                    <p>아직 거래 기록이 없습니다.</p>
-                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Toast Container -->
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // DOM 요소들
         const logContainer = document.getElementById('log-container');
         const tickerSelector = document.getElementById('ticker-selector');
+        const strategyFilter = document.getElementById('strategy-filter');
+        const tickerFilter = document.getElementById('ticker-filter');
         const tradeRecordsTitle = document.getElementById('trade-records-title');
+        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+        const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+        const refreshTradesBtn = document.getElementById('refresh-trades-btn');
+
+        // 상태 변수들
         let selectedTicker = '';
+        let selectedStrategy = '';
+        let autoRefreshInterval = null;
+        let isAutoRefresh = true;
 
-        // 거래 기록 필터링 함수
-        function filterTradeRecords(ticker) {
-            console.log("거래 기록 필터링: " + (ticker ? ticker : "모든 티커"));
+        // 초기화
+        init();
 
-            // 타이틀 업데이트
-            if (ticker) {
-                tradeRecordsTitle.textContent = `(오늘의 ${ticker} 거래)`;
-            } else {
-                tradeRecordsTitle.textContent = '(오늘의 모든 거래)';
-            }
-
-            // API 호출하여 거래 기록 가져오기
-            const url = ticker ? `/api/trade_records/${ticker}` : '/api/trade_records';
-
-            fetch(url)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('API 응답 오류: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(records => {
-                    console.log(`${ticker ? ticker : '모든'} 티커 거래 기록 ${records.length}개 로드됨`);
-                    updateTradeRecordsTable(records);
-                })
-                .catch(error => {
-                    console.error('거래 기록 로드 오류:', error);
-
-                    // 오류 메시지 표시
-                    const container = document.getElementById('trade-records-container');
-                    container.innerHTML = `<p class="text-danger">거래 기록을 불러오는 중 오류가 발생했습니다: ${error.message}</p>`;
-                });
+        function init() {
+            loadActiveTickers();
+            loadLogs();
+            loadTradeRecords();
+            startAutoRefresh();
+            attachEventListeners();
         }
 
-        // 거래 기록 테이블 업데이트 함수
-        function updateTradeRecordsTable(records) {
-            const container = document.getElementById('trade-records-container');
-
-            if (!records || records.length === 0) {
-                container.innerHTML = '<p>해당 조건의 거래 기록이 없습니다.</p>';
-                return;
-            }
-
-            // 테이블 생성
-            let tableHtml = `
-                <div class="table-responsive">
-                    <table class="table table-striped" id="trade-records-table">
-                        <thead>
-                            <tr>
-                                <th>날짜/시간</th>
-                                <th>티커</th>
-                                <th>유형</th>
-                                <th>가격</th>
-                                <th>수량</th>
-                                <th>금액</th>
-                                <th>수익률</th>
-                                <th>전략</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-
-            // 레코드 추가
-            records.forEach(record => {
-                const tradeType = record.trade_type === 'BUY' ?
-                    '<span class="badge bg-primary">매수</span>' :
-                    '<span class="badge bg-danger">매도</span>';
-
-                const profitLoss = record.profit_loss !== null ?
-                    `<span class="${record.profit_loss > 0 ? 'text-success' : 'text-danger'}">${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%</span>` :
-                    '-';
-
-                tableHtml += `
-                    <tr class="trade-record-row" data-ticker="${record.ticker}">
-                        <td>${record.timestamp}</td>
-                        <td>${record.ticker}</td>
-                        <td>${tradeType}</td>
-                        <td>₩${Number(record.price).toLocaleString()}</td>
-                        <td>${parseFloat(record.volume).toFixed(4)}</td>
-                        <td>₩${Number(record.amount).toLocaleString()}</td>
-                        <td>${profitLoss}</td>
-                        <td>${record.strategy}</td>
-                    </tr>
-                `;
+        // 이벤트 리스너 연결
+        function attachEventListeners() {
+            // 봇 중지 버튼
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('stop-bot')) {
+                    const ticker = e.target.getAttribute('data-ticker');
+                    stopBot(ticker, e.target);
+                }
             });
 
-            tableHtml += `
-                        </tbody>
-                    </table>
-                </div>
-            `;
+            // 티커 선택기 변경
+            if (tickerSelector) {
+                tickerSelector.addEventListener('change', function() {
+                    selectedTicker = this.value;
+                    loadLogs();
+                });
+            }
 
-            container.innerHTML = tableHtml;
+            // 필터 변경
+            if (strategyFilter) {
+                strategyFilter.addEventListener('change', function() {
+                    selectedStrategy = this.value;
+                    loadTradeRecords();
+                });
+            }
+
+            if (tickerFilter) {
+                tickerFilter.addEventListener('change', function() {
+                    selectedTicker = this.value;
+                    loadTradeRecords();
+                });
+            }
+
+            // 새로고침 버튼
+            if (refreshLogsBtn) {
+                refreshLogsBtn.addEventListener('click', loadLogs);
+            }
+
+            if (refreshTradesBtn) {
+                refreshTradesBtn.addEventListener('click', loadTradeRecords);
+            }
+
+            // 자동 새로고침 토글
+            if (autoRefreshToggle) {
+                autoRefreshToggle.addEventListener('click', toggleAutoRefresh);
+            }
         }
 
-        // 활성 티커 로드
+        // 활성 티커 목록 로드
         function loadActiveTickers() {
             fetch('/api/active_tickers')
                 .then(response => response.json())
                 .then(tickers => {
-                    // 현재 선택된 티커 저장
-                    const currentSelectedTicker = tickerSelector.value;
+                    updateTickerSelectors(tickers);
+                })
+                .catch(error => {
+                    console.error('활성 티커 로드 오류:', error);
+                });
+        }
 
-                    // 기존 옵션 제거 (첫 번째 '모든 티커' 옵션 제외)
-                    while (tickerSelector.options.length > 1) {
-                        tickerSelector.remove(1);
+        // 티커 선택기 업데이트
+        function updateTickerSelectors(tickers) {
+            const selectors = [tickerSelector, tickerFilter];
+
+            selectors.forEach(selector => {
+                if (selector) {
+                    // 기존 옵션 중 "모든 티커" 유지
+                    const defaultOption = selector.querySelector('option[value=""]');
+                    selector.innerHTML = '';
+                    if (defaultOption) {
+                        selector.appendChild(defaultOption);
                     }
 
                     // 새 티커 옵션 추가
@@ -270,140 +323,333 @@
                         const option = document.createElement('option');
                         option.value = ticker;
                         option.textContent = ticker;
-                        tickerSelector.appendChild(option);
-                    });
-
-                    // 이전에 선택된 티커가 목록에 있으면 다시 선택
-                    if (currentSelectedTicker && tickers.includes(currentSelectedTicker)) {
-                        tickerSelector.value = currentSelectedTicker;
-                        selectedTicker = currentSelectedTicker;
-                    }
-
-                    // 티커가 없으면 메시지 표시
-                    if (tickers.length === 0) {
-                        logContainer.innerHTML = '<div class="text-muted">실행 중인 봇이 없습니다.</div>';
-                    }
-                })
-                .catch(error => console.error('티커 로드 오류:', error));
-        }
-
-        // 티커 변경 이벤트
-        tickerSelector.addEventListener('change', function() {
-            selectedTicker = this.value;
-            console.log("티커 변경됨: " + (selectedTicker ? selectedTicker : "모든 티커"));
-
-            logContainer.innerHTML = ''; // 로그 컨테이너 초기화
-            fetchLogs(); // 새 티커의 로그 로드
-            filterTradeRecords(selectedTicker); // 새 티커의 거래 기록 필터링
-        });
-
-        // 로그 폴링 함수 (개선된 버전)
-        function fetchLogs() {
-            // 선택된 티커가 없으면 전체 로그 가져오기
-            const url = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
-
-            fetch(url)
-                .then(response => response.json())
-                .then(logs => {
-                    // 로그 컨테이너 업데이트
-                    logContainer.innerHTML = '';
-
-                    if (logs.length === 0) {
-                        const emptyMessage = document.createElement('div');
-                        emptyMessage.className = 'text-muted';
-                        emptyMessage.textContent = '로그가 없습니다.';
-                        logContainer.appendChild(emptyMessage);
-                        return;
-                    }
-
-                    logs.forEach(log => {
-                        const logEntry = document.createElement('div');
-
-                        // 로그 레벨에 따른 스타일 적용
-                        let logClass = '';
-                        switch(log.level) {
-                            case 'ERROR':
-                                logClass = 'text-danger';
-                                break;
-                            case 'WARNING':
-                                logClass = 'text-warning';
-                                break;
-                            case 'INFO':
-                                logClass = 'text-info';
-                                break;
-                            default:
-                                logClass = 'text-secondary';
-                        }
-
-                        logEntry.className = logClass;
-
-                        // timestamp와 message를 별도의 span으로 생성
-                        const timestampSpan = document.createElement('span');
-                        timestampSpan.textContent = log.timestamp;
-
-                        const separator = document.createTextNode(' - ');
-
-                        const messageSpan = document.createElement('span');
-                        messageSpan.textContent = log.message;
-
-                        // 요소들을 logEntry에 추가
-                        logEntry.appendChild(timestampSpan);
-                        logEntry.appendChild(separator);
-                        logEntry.appendChild(messageSpan);
-
-                        // 로그 추가
-                        logContainer.appendChild(logEntry);
-                    });
-
-                    // 자동 스크롤 다운
-                    logContainer.scrollTop = logContainer.scrollHeight;
-                })
-                .catch(error => {
-                    console.error('로그 가져오기 오류:', error);
-
-                    // 오류 메시지 표시
-                    const errorMessage = document.createElement('div');
-                    errorMessage.className = 'text-danger';
-                    errorMessage.textContent = '로그를 가져오는 중 오류가 발생했습니다.';
-                    logContainer.appendChild(errorMessage);
-                });
-        }
-
-        // 초기 티커 및 로그 로드
-        loadActiveTickers();
-        fetchLogs();
-        filterTradeRecords(''); // 초기에는 모든 거래 기록 표시
-
-        // 5초마다 로그 업데이트
-        setInterval(fetchLogs, 5000);
-        // 10초마다 거래 기록 업데이트
-        setInterval(() => filterTradeRecords(selectedTicker), 10000);
-        // 20초마다 활성 티커 업데이트
-        setInterval(loadActiveTickers, 20000);
-
-        // 봇 중지 버튼 이벤트
-        document.querySelectorAll('.stop-bot').forEach(button => {
-            button.addEventListener('click', function() {
-                const ticker = this.getAttribute('data-ticker');
-                if (confirm(`${ticker} 봇을 중지하시겠습니까?`)) {
-                    fetch(`/stop_bot/${ticker}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            alert(data.message);
-                            location.reload();
-                        } else {
-                            alert('오류: ' + data.message);
-                        }
+                        selector.appendChild(option);
                     });
                 }
             });
-        });
+        }
+
+        // 로그 로드
+        function loadLogs() {
+            const url = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(logs => {
+                    updateLogContainer(logs);
+                })
+                .catch(error => {
+                    console.error('로그 로드 오류:', error);
+                    if (logContainer) {
+                        logContainer.innerHTML = `
+                            <div class="text-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                로그를 불러오는 중 오류가 발생했습니다: ${error.message}
+                            </div>
+                        `;
+                    }
+                });
+        }
+
+        // 로그 컨테이너 업데이트
+        function updateLogContainer(logs) {
+            if (!logContainer) return;
+
+            if (!logs || logs.length === 0) {
+                logContainer.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-info-circle me-2"></i>
+                        표시할 로그가 없습니다.
+                    </div>
+                `;
+                return;
+            }
+
+            const logHtml = logs.map(log => {
+                const levelClass = {
+                    'INFO': 'text-info',
+                    'WARNING': 'text-warning',
+                    'ERROR': 'text-danger',
+                    'DEBUG': 'text-muted'
+                }[log.level] || 'text-dark';
+
+                return `
+                    <div class="log-entry">
+                        <span class="text-muted">${log.timestamp}</span>
+                        <span class="badge bg-secondary ms-2">${log.level}</span>
+                        <span class="${levelClass} ms-2">${log.message}</span>
+                    </div>
+                `;
+            }).join('');
+
+            logContainer.innerHTML = logHtml;
+            scrollToBottom();
+        }
+
+        // 거래 기록 로드
+        function loadTradeRecords() {
+            let url = '/api/trade_records';
+            const params = new URLSearchParams();
+
+            if (selectedTicker) params.append('ticker', selectedTicker);
+            if (selectedStrategy) params.append('strategy', selectedStrategy);
+
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(records => {
+                    updateTradeRecordsTable(records);
+                    updateTradeRecordsTitle();
+                })
+                .catch(error => {
+                    console.error('거래 기록 로드 오류:', error);
+                    const container = document.getElementById('trade-records-container');
+                    if (container) {
+                        container.innerHTML = `
+                            <div class="text-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                거래 기록을 불러오는 중 오류가 발생했습니다: ${error.message}
+                            </div>
+                        `;
+                    }
+                });
+        }
+
+        // 거래 기록 제목 업데이트
+        function updateTradeRecordsTitle() {
+            if (!tradeRecordsTitle) return;
+
+            let titleText = '(오늘의 ';
+            if (selectedTicker && selectedStrategy) {
+                titleText += `${selectedTicker} ${getStrategyDisplayName(selectedStrategy)} `;
+            } else if (selectedTicker) {
+                titleText += `${selectedTicker} `;
+            } else if (selectedStrategy) {
+                titleText += `${getStrategyDisplayName(selectedStrategy)} `;
+            } else {
+                titleText += '모든 ';
+            }
+            titleText += '거래)';
+            tradeRecordsTitle.textContent = titleText;
+        }
+
+        // 전략 표시명 가져오기
+        function getStrategyDisplayName(strategy) {
+            const strategyNames = {
+                'rsi': 'RSI',
+                'adaptive': '어댑티브',
+                'ensemble': '앙상블',
+                'volatility': '변동성',
+                'bollinger': '볼린저'
+            };
+            return strategyNames[strategy] || strategy;
+        }
+
+        // 거래 기록 테이블 업데이트
+        function updateTradeRecordsTable(records) {
+            const container = document.getElementById('trade-records-container');
+            if (!container) return;
+
+            if (!records || records.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-info-circle me-2"></i>
+                        해당 조건의 거래 기록이 없습니다.
+                        <br><small>다른 필터 조건을 시도해보세요.</small>
+                    </div>
+                `;
+                return;
+            }
+
+            let tableHtml = `
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>날짜/시간</th>
+                                <th>티커</th>
+                                <th>전략</th>
+                                <th>유형</th>
+                                <th>가격</th>
+                                <th>수량</th>
+                                <th>금액</th>
+                                <th>수익률</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            records.forEach(record => {
+                const tradeType = record.trade_type === 'BUY' ?
+                    '<span class="badge bg-primary">매수</span>' :
+                    '<span class="badge bg-danger">매도</span>';
+
+                const profitLoss = record.profit_loss !== null ?
+                    `<span class="${record.profit_loss > 0 ? 'text-success' : 'text-danger'}">
+                        ${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%
+                    </span>` : '-';
+
+                tableHtml += `
+                    <tr>
+                        <td>${record.timestamp}</td>
+                        <td>${record.ticker}</td>
+                        <td>${getStrategyBadge(record.strategy)}</td>
+                        <td>${tradeType}</td>
+                        <td>₩${Number(record.price).toLocaleString()}</td>
+                        <td>${parseFloat(record.volume).toFixed(4)}</td>
+                        <td>₩${Number(record.amount).toLocaleString()}</td>
+                        <td>${profitLoss}</td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += '</tbody></table></div>';
+            container.innerHTML = tableHtml;
+        }
+
+        // 전략 배지 HTML 생성
+        function getStrategyBadge(strategy) {
+            const badges = {
+                'rsi': '<span class="badge bg-info">📈 RSI</span>',
+                'adaptive': '<span class="badge bg-success">🎯 어댑티브</span>',
+                'ensemble': '<span class="badge bg-warning">🔥 앙상블</span>',
+                'volatility': '<span class="badge bg-primary">🚀 변동성</span>',
+                'bollinger': '<span class="badge bg-secondary">📊 볼린저</span>'
+            };
+            return badges[strategy] || `<span class="badge bg-light text-dark">${strategy}</span>`;
+        }
+
+        // 봇 중지 함수
+        function stopBot(ticker, buttonElement) {
+            const originalText = buttonElement.textContent;
+            buttonElement.disabled = true;
+            buttonElement.textContent = '중지 중...';
+            buttonElement.classList.add('btn-secondary');
+            buttonElement.classList.remove('btn-outline-danger');
+
+            fetch(`/api/stop_bot/${ticker}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    showNotification('success', data.message || `${ticker} 봇이 성공적으로 중지되었습니다.`);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showNotification('error', `봇 중지 실패: ${data.message || '알 수 없는 오류가 발생했습니다.'}`);
+                    restoreButton(buttonElement, originalText);
+                }
+            })
+            .catch(error => {
+                console.error('봇 중지 오류:', error);
+                const errorMessage = error.message.includes('HTTP')
+                    ? `서버 오류: ${error.message}`
+                    : '네트워크 연결 오류가 발생했습니다.';
+                showNotification('error', errorMessage);
+                restoreButton(buttonElement, originalText);
+            });
+        }
+
+        // 버튼 상태 복원
+        function restoreButton(buttonElement, originalText) {
+            buttonElement.disabled = false;
+            buttonElement.textContent = originalText;
+            buttonElement.classList.remove('btn-secondary');
+            buttonElement.classList.add('btn-outline-danger');
+        }
+
+        // 알림 표시
+        function showNotification(type, message) {
+            const toastContainer = document.getElementById('toast-container');
+
+            const toastHtml = `
+                <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+
+            const toastElement = toastContainer.lastElementChild;
+            const toast = new bootstrap.Toast(toastElement, {
+                autohide: true,
+                delay: type === 'success' ? 3000 : 5000
+            });
+            toast.show();
+
+            toastElement.addEventListener('hidden.bs.toast', () => {
+                toastElement.remove();
+            });
+        }
+
+        // 자동 새로고침 시작
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+
+            autoRefreshInterval = setInterval(() => {
+                if (isAutoRefresh) {
+                    loadLogs();
+                    loadTradeRecords();
+                }
+            }, 10000); // 10초마다 업데이트
+        }
+
+        // 자동 새로고침 토글
+        function toggleAutoRefresh() {
+            isAutoRefresh = !isAutoRefresh;
+            const icon = autoRefreshToggle.querySelector('i');
+
+            if (isAutoRefresh) {
+                autoRefreshToggle.textContent = ' 자동 새로고침';
+                autoRefreshToggle.classList.remove('btn-outline-success');
+                autoRefreshToggle.classList.add('btn-outline-secondary');
+                icon.className = 'fas fa-pause';
+                autoRefreshToggle.setAttribute('data-auto', 'true');
+            } else {
+                autoRefreshToggle.textContent = ' 자동 새로고침';
+                autoRefreshToggle.classList.remove('btn-outline-secondary');
+                autoRefreshToggle.classList.add('btn-outline-success');
+                icon.className = 'fas fa-play';
+                autoRefreshToggle.setAttribute('data-auto', 'false');
+            }
+            autoRefreshToggle.prepend(icon);
+        }
+
+        // 로그 자동 스크롤
+        function scrollToBottom() {
+            if (logContainer) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
     });
 </script>
 {% endblock %}

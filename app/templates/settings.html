@@ -1,103 +1,202 @@
-
 {% extends "base.html" %}
 
 {% block content %}
 <h2>거래 봇 설정</h2>
 
 <div class="row mt-4">
-    <div class="col-md-8 offset-md-2">
+    <div class="col-md-10 offset-md-1">
         <div class="card">
             <div class="card-header">
-                거래 설정
+                <h5 class="mb-0">거래 설정</h5>
+                <small class="text-muted">전략별 상세 설정은 아래에서 확인하세요</small>
             </div>
             <div class="card-body">
                 <form method="POST" action="/settings">
                     {{ form.hidden_tag() }}
 
-                    <div class="mb-3">
-                        {{ form.ticker.label(class="form-label") }}
-                        {{ form.ticker(class="form-control") }}
-                    </div>
-
-                    <div class="mb-3">
-                        {{ form.strategy.label(class="form-label") }}
-                        {{ form.strategy(class="form-select") }}
-                    </div>
-
-                    <div class="mb-3">
-                        {{ form.interval.label(class="form-label") }}
-                        {{ form.interval(class="form-select") }}
+                    <!-- 기본 설정 -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            {{ form.ticker.label(class="form-label") }}
+                            {{ form.ticker(class="form-select") }}
+                        </div>
+                        <div class="col-md-4">
+                            {{ form.strategy.label(class="form-label") }}
+                            {{ form.strategy(class="form-select") }}
+                        </div>
+                        <div class="col-md-4">
+                            {{ form.interval.label(class="form-label") }}
+                            {{ form.interval(class="form-select") }}
+                        </div>
                     </div>
 
                     <!-- 공통 설정 -->
+                    <h6 class="mt-4 mb-3">공통 설정</h6>
                     <div class="row mb-3">
-                        <div class="col">
+                        <div class="col-md-4">
                             {{ form.buy_amount.label(class="form-label") }}
                             {{ form.buy_amount(class="form-control") }}
+                            <small class="text-muted">최소 5,000원 이상</small>
                         </div>
-                        <div class="col">
+                        <div class="col-md-4">
                             {{ form.min_cash.label(class="form-label") }}
                             {{ form.min_cash(class="form-control") }}
+                            <small class="text-muted">안전 자금</small>
                         </div>
-                    </div>
-
-                    <div class="mb-3">
-                        {{ form.sleep_time.label(class="form-label") }}
-                        {{ form.sleep_time(class="form-control") }}
+                        <div class="col-md-4">
+                            {{ form.sleep_time.label(class="form-label") }}
+                            {{ form.sleep_time(class="form-control") }}
+                            <small class="text-muted">신호 확인 간격</small>
+                        </div>
                     </div>
 
                     <!-- 볼린저 밴드 전략 설정 -->
-                    <div id="bollinger-settings">
-                        <h5 class="mt-4">볼린저 밴드 전략 설정</h5>
-
-                        <div class="row mb-3">
-                            <div class="col">
-                                {{ form.window.label(class="form-label") }}
-                                {{ form.window(class="form-control") }}
-                            </div>
-                            <div class="col">
-                                {{ form.multiplier.label(class="form-label") }}
-                                {{ form.multiplier(class="form-control") }}
-                            </div>
+                    <div id="bollinger-settings" class="strategy-settings">
+                        <h6 class="mt-4 mb-3">📊 볼린저 밴드 전략 설정</h6>
+                        <div class="alert alert-info">
+                            <small><strong>설명:</strong> 가격이 볼린저 밴드 상단을 돌파하면 매도, 하단을 돌파하면 매수하는 전략</small>
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col">
+                            <div class="col-md-4">
+                                {{ form.window.label(class="form-label") }}
+                                {{ form.window(class="form-control") }}
+                                <small class="text-muted">이동평균 계산 기간</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.multiplier.label(class="form-label") }}
+                                {{ form.multiplier(class="form-control") }}
+                                <small class="text-muted">밴드 폭 조절</small>
+                            </div>
+                            <div class="col-md-4">
                                 {{ form.sell_portion.label(class="form-label") }}
                                 {{ form.sell_portion(class="form-control") }}
+                                <small class="text-muted">매도 시 판매 비율</small>
                             </div>
                         </div>
                     </div>
 
                     <!-- 변동성 돌파 전략 설정 -->
-                    <div id="volatility-settings" style="display: none;">
-                        <h5 class="mt-4">변동성 돌파 전략 설정</h5>
-
-                        <div class="row mb-3">
-                            <div class="col">
-                                {{ form.k.label(class="form-label") }}
-                                {{ form.k(class="form-control") }}
-                            </div>
-                            <div class="col">
-                                {{ form.target_profit.label(class="form-label") }}
-                                {{ form.target_profit(class="form-control") }}
-                            </div>
+                    <div id="volatility-settings" class="strategy-settings" style="display: none;">
+                        <h6 class="mt-4 mb-3">🚀 변동성 돌파 전략 설정</h6>
+                        <div class="alert alert-info">
+                            <small><strong>설명:</strong> 당일 시가 + (전일 변동폭 × k) 를 돌파하면 매수하는 전략</small>
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col">
+                            <div class="col-md-3">
+                                {{ form.k.label(class="form-label") }}
+                                {{ form.k(class="form-control") }}
+                                <small class="text-muted">0.3~0.7 권장</small>
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.target_profit.label(class="form-label") }}
+                                {{ form.target_profit(class="form-control") }}
+                                <small class="text-muted">익절 기준</small>
+                            </div>
+                            <div class="col-md-3">
                                 {{ form.stop_loss.label(class="form-label") }}
                                 {{ form.stop_loss(class="form-control") }}
+                                <small class="text-muted">손절 기준</small>
                             </div>
-                            <div class="col">
+                            <div class="col-md-3">
                                 {{ form.sell_portion.label(class="form-label") }}
                                 {{ form.sell_portion(class="form-control") }}
+                                <small class="text-muted">매도 비율</small>
                             </div>
                         </div>
                     </div>
 
-                    <div class="d-grid gap-2">
-                        {{ form.submit(class="btn btn-primary") }}
+                    <!-- RSI 전략 설정 -->
+                    <div id="rsi-settings" class="strategy-settings" style="display: none;">
+                        <h6 class="mt-4 mb-3">📈 RSI 전략 설정</h6>
+                        <div class="alert alert-info">
+                            <small><strong>설명:</strong> RSI 지표를 이용하여 과매수/과매도 구간에서 매매하는 전략</small>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                {{ form.rsi_period.label(class="form-label") }}
+                                {{ form.rsi_period(class="form-control") }}
+                                <small class="text-muted">RSI 계산 기간</small>
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.rsi_oversold.label(class="form-label") }}
+                                {{ form.rsi_oversold(class="form-control") }}
+                                <small class="text-muted">과매도 기준</small>
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.rsi_overbought.label(class="form-label") }}
+                                {{ form.rsi_overbought(class="form-control") }}
+                                <small class="text-muted">과매수 기준</small>
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.rsi_timeframe.label(class="form-label") }}
+                                {{ form.rsi_timeframe(class="form-select") }}
+                                <small class="text-muted">분석 시간대</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 어댑티브 전략 설정 -->
+                    <div id="adaptive-settings" class="strategy-settings" style="display: none;">
+                        <h6 class="mt-4 mb-3">🎯 어댑티브 전략 설정</h6>
+                        <div class="alert alert-success">
+                            <small><strong>설명:</strong> 시장 상황(추세/횡보/고변동성)과 시간대를 자동 감지하여 최적의 전략을 선택</small>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>자동 적용 전략:</h6>
+                                <ul class="list-unstyled">
+                                    <li>🌅 <strong>오전 9-12시:</strong> 변동성 돌파 전략</li>
+                                    <li>🍽️ <strong>점심 12-14시:</strong> RSI 전략 (보수적)</li>
+                                    <li>🌇 <strong>오후 14-18시:</strong> 볼린저 밴드 전략</li>
+                                    <li>🌃 <strong>저녁 18-22시:</strong> 변동성 돌파 전략</li>
+                                    <li>🌙 <strong>야간 22-9시:</strong> RSI 전략</li>
+                                </ul>
+                                <small class="text-muted">* 고변동성 시장에서는 볼린저 밴드 우선 적용</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 앙상블 전략 설정 -->
+                    <div id="ensemble-settings" class="strategy-settings" style="display: none;">
+                        <h6 class="mt-4 mb-3">🔥 앙상블 전략 설정</h6>
+                        <div class="alert alert-warning">
+                            <small><strong>설명:</strong> 여러 전략의 신호를 종합하여 최종 매매 결정. 최소 2개 전략이 같은 방향일 때만 매매</small>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                {{ form.ensemble_volatility_weight.label(class="form-label") }}
+                                {{ form.ensemble_volatility_weight(class="form-control") }}
+                                <small class="text-muted">합계 1.0이 되도록</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.ensemble_bollinger_weight.label(class="form-label") }}
+                                {{ form.ensemble_bollinger_weight(class="form-control") }}
+                                <small class="text-muted">조정해주세요</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.ensemble_rsi_weight.label(class="form-label") }}
+                                {{ form.ensemble_rsi_weight(class="form-control") }}
+                                <small class="text-muted">기본값 사용 권장</small>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <small><strong>권장 가중치:</strong></small>
+                            <ul class="list-unstyled mt-2 mb-0">
+                                <li>• 안정형: 볼린저 0.5, RSI 0.4, 변동성 0.1</li>
+                                <li>• 균형형: 볼린저 0.4, RSI 0.3, 변동성 0.3 (기본값)</li>
+                                <li>• 공격형: 변동성 0.5, 볼린저 0.3, RSI 0.2</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        {{ form.submit(class="btn btn-primary btn-lg") }}
                     </div>
                 </form>
             </div>
@@ -110,24 +209,65 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const strategySelect = document.getElementById('strategy');
-        const bollingerSettings = document.getElementById('bollinger-settings');
-        const volatilitySettings = document.getElementById('volatility-settings');
+        const strategySettings = document.querySelectorAll('.strategy-settings');
 
         function toggleSettings() {
-            if (strategySelect.value === 'volatility') {
-                volatilitySettings.style.display = 'block';
-                bollingerSettings.style.display = 'none';
-            } else {
-                volatilitySettings.style.display = 'none';
-                bollingerSettings.style.display = 'block';
+            // 모든 설정 숨기기
+            strategySettings.forEach(setting => {
+                setting.style.display = 'none';
+            });
+
+            // 선택된 전략 설정 보이기
+            const selectedStrategy = strategySelect.value;
+            const targetSetting = document.getElementById(selectedStrategy + '-settings');
+
+            if (targetSetting) {
+                targetSetting.style.display = 'block';
             }
         }
 
         // 초기 상태 설정
         toggleSettings();
 
-        // 변경 시 설정 토글
+        // 전략 변경 시 설정 토글
         strategySelect.addEventListener('change', toggleSettings);
+
+        // 앙상블 가중치 실시간 검증
+        const weightInputs = [
+            document.getElementById('ensemble_volatility_weight'),
+            document.getElementById('ensemble_bollinger_weight'),
+            document.getElementById('ensemble_rsi_weight')
+        ];
+
+        function validateWeights() {
+            if (!weightInputs.every(input => input)) return;
+
+            const total = weightInputs.reduce((sum, input) => sum + parseFloat(input.value || 0), 0);
+            const isValid = Math.abs(total - 1.0) < 0.01;
+
+            weightInputs.forEach(input => {
+                input.classList.toggle('is-invalid', !isValid);
+                input.classList.toggle('is-valid', isValid);
+            });
+
+            // 경고 메시지 표시/숨기기
+            let warningDiv = document.getElementById('weight-warning');
+            if (!isValid && !warningDiv) {
+                warningDiv = document.createElement('div');
+                warningDiv.id = 'weight-warning';
+                warningDiv.className = 'alert alert-danger mt-2';
+                warningDiv.innerHTML = `<small>가중치 합계가 1.0이 아닙니다. (현재: ${total.toFixed(2)})</small>`;
+                weightInputs[0].parentNode.parentNode.appendChild(warningDiv);
+            } else if (isValid && warningDiv) {
+                warningDiv.remove();
+            }
+        }
+
+        weightInputs.forEach(input => {
+            if (input) {
+                input.addEventListener('input', validateWeights);
+            }
+        });
     });
 </script>
 {% endblock %}

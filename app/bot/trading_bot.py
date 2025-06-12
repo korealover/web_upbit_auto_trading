@@ -71,6 +71,21 @@ class UpbitTradingBot:
                 self.logger.info(f"변동성 돌파 전략으로 거래 분석 시작: {ticker}")
                 # 변동성 돌파 전략에 맞는 매개변수만 전달
                 signal = self.strategy.generate_volatility_signal(ticker, self.args.k.data, self.args.target_profit.data, self.args.stop_loss.data)
+            elif hasattr(self.args, 'strategy') and self.args.strategy.data == 'adaptive':
+                # 어댑티브 전략 사용
+                self.logger.info(f"어댑티브 전략으로 거래 분석 시작: {ticker}")
+                # 어댑티브 전략은 ticker만 필요
+                signal = self.strategy.generate_signal(ticker)
+            elif hasattr(self.args, 'strategy') and self.args.strategy.data == 'ensemble':
+                # 앙상블 전략 사용
+                self.logger.info(f"앙상블 전략으로 거래 분석 시작: {ticker}")
+                # 앙상블 전략은 ticker만 필요
+                signal = self.strategy.generate_signal(ticker)
+            elif hasattr(self.args, 'strategy') and self.args.strategy.data == 'rsi':
+                # RSI 전략 사용
+                self.logger.info(f"RSI 전략으로 거래 분석 시작: {ticker}")
+                # RSI 전략은 ticker만 필요
+                signal = self.strategy.generate_signal(ticker)
             else:
                 # 볼린저 밴드 전략 사용 (기본값)
                 interval = self.args.interval.data

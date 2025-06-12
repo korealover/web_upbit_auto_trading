@@ -145,7 +145,7 @@ def settings():
     return render_template('settings.html', form=form)
 
 
-@app.route('/start_bot/<ticker>', methods=['POST'])
+@app.route('/api/start_bot/<ticker>', methods=['POST'])
 @login_required
 def start_bot_route(ticker):
     # AJAX 요청으로 봇 시작
@@ -154,7 +154,7 @@ def start_bot_route(ticker):
     return jsonify({'status': 'success', 'message': f'{ticker} 봇이 시작되었습니다'})
 
 
-@app.route('/stop_bot/<ticker>', methods=['POST'])
+@app.route('/api/stop_bot/<ticker>', methods=['POST'])
 @login_required
 def stop_bot_route(ticker):
     user_id = current_user.id
