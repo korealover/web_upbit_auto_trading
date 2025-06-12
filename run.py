@@ -1,10 +1,12 @@
-# run.py
-from app import app, db
-from app.models import User, TradeRecord
 
-@app.shell_context_processor
-def make_shell_context():
-    return {'db': db, 'User': User, 'TradeRecord': TradeRecord}
+from app import create_app, socketio
+
+app = create_app()
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # WebSocket을 지원하는 서버 실행
+    socketio.run(app,
+                debug=True,
+                host='0.0.0.0',
+                port=5000,
+                allow_unsafe_werkzeug=True)

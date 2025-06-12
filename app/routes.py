@@ -1,6 +1,7 @@
-from flask import render_template, request, jsonify, redirect, url_for, flash
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
-from app import app, db
+from flask_socketio import emit
+from app import db, socketio
 from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm
 from app.models import User, TradeRecord, kst_now
 from app.api.upbit_api import UpbitAPI
@@ -15,56 +16,63 @@ import html
 import os
 from datetime import datetime, timedelta
 
+# Blueprint 생성
+bp = Blueprint('main', __name__)
+
 # 전역 변수
 trading_bots = {}
 async_handler = AsyncHandler(max_workers=5)
 upbit_apis = {}  # 사용자별 API 객체 저장
 logger = setup_logger('web', 'INFO', 7)
 
+# WebSocket 관련 전역 변수
+websocket_clients = {}  # 클라이언트별 구독 정보 저장
+log_subscribers = {}  # 로그 구독자 관리
 
-@app.route('/')
+
+@bp.route('/')
 def index():
     return render_template('index.html')
 
 
 # routes.py의 로그인 함수 수정
-@app.route('/login', methods=['GET', 'POST'])
+@bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('main.index'))
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
         if user is None or not user.check_password(form.password.data):
             flash('유효하지 않은 사용자명 또는 비밀번호입니다.', 'danger')
-            return redirect(url_for('login'))
+            return redirect(url_for('main.login'))
 
         # 계정 승인 확인 (관리자는 항상 로그인 가능)
         if not user.is_approved and not user.is_admin:
             flash('귀하의 계정은 아직 관리자 승인 대기 중입니다.', 'warning')
-            return redirect(url_for('login'))
+            return redirect(url_for('main.login'))
 
         login_user(user, remember=form.remember_me.data)
         next_page = request.args.get('next')
         if not next_page or not next_page.startswith('/'):
-            next_page = url_for('index')
+            next_page = url_for('main.index')
         flash('로그인되었습니다!', 'success')
         return redirect(next_page)
     return render_template('login.html', title='로그인', form=form)
 
 
-@app.route('/logout')
+@bp.route('/logout')
 def logout():
     logout_user()
     flash('로그아웃되었습니다.', 'info')
-    return redirect(url_for('index'))
+    return redirect(url_for('main.index'))
 
 
 # routes.py의 회원가입 함수 수정
-@app.route('/register', methods=['GET', 'POST'])
+@bp.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('main.index'))
     form = RegistrationForm()
     if form.validate_on_submit():
         user = User(
@@ -85,7 +93,7 @@ def register():
         # 관리자에게 새 가입자 알림 (선택 사항)
         notify_admin_new_registration(user)
 
-        return redirect(url_for('login'))
+        return redirect(url_for('main.login'))
     return render_template('register.html', title='회원가입', form=form)
 
 
@@ -97,7 +105,7 @@ def notify_admin_new_registration(user):
         logger.info(f"관리자 {admin.username}에게 새 회원 {user.username} 가입 알림")
 
 
-@app.route('/dashboard')
+@bp.route('/dashboard')
 @login_required
 def dashboard():
     # 현재 사용자의 API 객체 확인
@@ -301,7 +309,8 @@ def dashboard():
                            daily_stats=daily_stats,
                            strategy_performance=strategy_performance)
 
-@app.route('/settings', methods=['GET', 'POST'])
+
+@bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
     form = TradingSettingsForm()
@@ -314,12 +323,12 @@ def settings():
         # 봇 설정 및 시작
         start_bot(ticker, strategy_name, form)
         flash(f'{ticker} 봇이 시작되었습니다!', 'success')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('main.dashboard'))
 
     return render_template('settings.html', form=form)
 
 
-@app.route('/api/start_bot/<ticker>', methods=['POST'])
+@bp.route('/api/start_bot/<ticker>', methods=['POST'])
 @login_required
 def start_bot_route(ticker):
     # AJAX 요청으로 봇 시작
@@ -328,7 +337,7 @@ def start_bot_route(ticker):
     return jsonify({'status': 'success', 'message': f'{ticker} 봇이 시작되었습니다'})
 
 
-@app.route('/api/stop_bot/<ticker>', methods=['POST'])
+@bp.route('/api/stop_bot/<ticker>', methods=['POST'])
 @login_required
 def stop_bot_route(ticker):
     user_id = current_user.id
@@ -380,8 +389,9 @@ def start_bot(ticker, strategy_name, settings):
     else:
         logger.warning(f"알 수 없는 settings 유형: {type(settings)}")
 
-    # 봇 생성
-    bot = UpbitTradingBot(settings, upbit_api, strategy, logger)
+    # 봇 생성 - WebSocket 지원을 위한 로거 생성
+    websocket_logger = WebSocketLogger(ticker, user_id)
+    bot = UpbitTradingBot(settings, upbit_api, strategy, websocket_logger)
 
     # 봇 정보 저장
     trading_bots[user_id][ticker] = {
@@ -406,10 +416,10 @@ def run_bot_thread(user_id, ticker):
         while bot_info['running']:
             cycle_count += 1
             # 매 사이클마다 로거를 최신 날짜로 업데이트
-            logger = get_logger_with_current_date(ticker, 'INFO', 7)
-            bot.logger = logger  # 봇의 로거 업데이트
+            websocket_logger = WebSocketLogger(ticker, user_id)
+            bot.logger = websocket_logger  # 봇의 로거 업데이트
 
-            logger.info(f"{ticker} 사이클 #{cycle_count} 시작")
+            websocket_logger.info(f"{ticker} 사이클 #{cycle_count} 시작")
 
             # 거래 사이클 실행
             bot.run_cycle()
@@ -426,11 +436,12 @@ def run_bot_thread(user_id, ticker):
             time.sleep(sleep_time)
 
     except Exception as e:
-        logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
+        websocket_logger = WebSocketLogger(ticker, user_id)
+        websocket_logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
         bot_info['running'] = False
 
 
-@app.route('/profile', methods=['GET', 'POST'])
+@bp.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
     form = ProfileForm(current_user.username, current_user.email)
@@ -459,7 +470,7 @@ def profile():
                 trading_bots[user_id] = {}
 
         flash('프로필이 업데이트되었습니다.', 'success')
-        return redirect(url_for('profile'))
+        return redirect(url_for('main.profile'))
     elif request.method == 'GET':
         form.username.data = current_user.username
         form.email.data = current_user.email
@@ -468,7 +479,7 @@ def profile():
     return render_template('profile.html', title='프로필', form=form)
 
 
-@app.route('/validate_api_keys', methods=['POST'])
+@bp.route('/validate_api_keys', methods=['POST'])
 @login_required
 def validate_api_keys():
     data = request.json
@@ -489,10 +500,62 @@ def validate_api_keys():
         return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
 
 
+# ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
+# 이 부분들은 websocket_handlers.py에서 처리됩니다.
 
 
+# ===== WebSocket 로거 클래스 =====
+class WebSocketLogger:
+    """WebSocket을 통해 실시간 로그를 전송하는 로거"""
 
-@app.route('/api/logs/<ticker>')
+    def __init__(self, ticker, user_id):
+        self.ticker = ticker
+        self.user_id = str(user_id)
+        self.file_logger = get_logger_with_current_date(ticker, 'INFO', 7)
+
+    def _emit_log(self, level, message):
+        """WebSocket으로 로그 전송"""
+        log_entry = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'level': level,
+            'message': message,
+            'raw_timestamp': datetime.now().isoformat(),
+            'ticker': self.ticker
+        }
+
+        # 파일에도 로그 기록
+        getattr(self.file_logger, level.lower(), self.file_logger.info)(message)
+
+        # WebSocket 구독자들에게 전송
+        self._send_to_subscribers(log_entry)
+
+    def _send_to_subscribers(self, log_entry):
+        """구독자들에게 로그 전송"""
+        try:
+            # SocketIO를 통해 이벤트 전송
+            socketio.emit('new_log', log_entry, broadcast=False)
+        except Exception as e:
+            # WebSocket 전송 실패 시 파일 로거에만 기록
+            self.file_logger.warning(f"WebSocket 로그 전송 실패: {str(e)}")
+
+    def info(self, message):
+        self._emit_log('INFO', message)
+
+    def warning(self, message):
+        self._emit_log('WARNING', message)
+
+    def error(self, message, exc_info=False):
+        if exc_info:
+            import traceback
+            message += f"\n{traceback.format_exc()}"
+        self._emit_log('ERROR', message)
+
+    def debug(self, message):
+        self._emit_log('DEBUG', message)
+
+
+# ===== 기존 REST API 엔드포인트들 유지 =====
+@bp.route('/api/logs/<ticker>')
 @login_required
 def get_ticker_logs(ticker):
     # 로그 디렉토리
@@ -541,7 +604,7 @@ def get_ticker_logs(ticker):
     return jsonify(logs)
 
 
-@app.route('/api/logs')
+@bp.route('/api/logs')
 @login_required
 def get_all_logs():
     # 로그 디렉토리
@@ -587,7 +650,8 @@ def get_all_logs():
 
     return jsonify(logs)
 
-@app.route('/api/active_tickers')
+
+@bp.route('/api/active_tickers')
 @login_required
 def get_active_tickers():
     # 현재 사용자의 활성 티커 목록 반환
@@ -644,13 +708,13 @@ def tail_file(file_path, n=100):
 
 
 # routes.py에 관리자 페이지 추가
-@app.route('/admin')
+@bp.route('/admin')
 @login_required
 def admin_panel():
     # 관리자 권한 확인
     if not current_user.is_admin:
         flash('관리자 권한이 필요합니다.', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('main.index'))
 
     # 승인 대기 중인 사용자 목록
     pending_users = User.query.filter_by(is_approved=False).order_by(User.registered_on.desc()).all()
@@ -664,13 +728,13 @@ def admin_panel():
                            approved_users=approved_users)
 
 
-@app.route('/admin/approve/<int:user_id>', methods=['POST'])
+@bp.route('/admin/approve/<int:user_id>', methods=['POST'])
 @login_required
 def approve_user(user_id):
     # 관리자 권한 확인
     if not current_user.is_admin:
         flash('관리자 권한이 필요합니다.', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('main.index'))
 
     user = User.query.get_or_404(user_id)
     user.is_approved = True
@@ -683,16 +747,16 @@ def approve_user(user_id):
     # 사용자에게 승인 알림 (선택 사항)
     notify_user_approval(user)
 
-    return redirect(url_for('admin_panel'))
+    return redirect(url_for('main.admin_panel'))
 
 
-@app.route('/admin/reject/<int:user_id>', methods=['POST'])
+@bp.route('/admin/reject/<int:user_id>', methods=['POST'])
 @login_required
 def reject_user(user_id):
     # 관리자 권한 확인
     if not current_user.is_admin:
         flash('관리자 권한이 필요합니다.', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('main.index'))
 
     user = User.query.get_or_404(user_id)
 
@@ -704,7 +768,7 @@ def reject_user(user_id):
     db.session.commit()
 
     flash(f'사용자 {user.username}의 가입 요청이 거부되었습니다.', 'info')
-    return redirect(url_for('admin_panel'))
+    return redirect(url_for('main.admin_panel'))
 
 
 def notify_user_approval(user):
@@ -718,8 +782,9 @@ def notify_user_rejection(user):
     # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
     logger.info(f"사용자 {user.username}에게 계정 거부 알림")
 
+
 # 티커별 거래 기록 가져오는 API 엔드포인트 수정
-@app.route('/api/trade_records')
+@bp.route('/api/trade_records')
 @login_required
 def get_trade_records():
     """오늘의 모든 거래 기록을 가져옵니다."""
@@ -752,7 +817,7 @@ def get_trade_records():
     return jsonify(result)
 
 
-@app.route('/api/trade_records/<ticker>')
+@bp.route('/api/trade_records/<ticker>')
 @login_required
 def get_ticker_trade_records(ticker):
     """특정 티커의 오늘 거래 기록을 가져옵니다."""

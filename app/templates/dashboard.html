@@ -2,6 +2,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+<!-- 기존 HTML 구조는 그대로 유지 -->
 <h2>거래 대시보드</h2>
 
 <!-- 전략별 요약 정보 카드 -->
@@ -148,13 +149,16 @@
     </div>
 </div>
 
-<!-- 실시간 로그 -->
+<!-- 실시간 로그 (헤더 수정) -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>📝 실시간 로그</span>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
+                    <span id="connection-status" class="badge bg-secondary">
+                        <i class="fas fa-circle text-warning"></i> 연결 중...
+                    </span>
                     <select id="ticker-selector" class="form-select form-select-sm" style="width: 120px;">
                         <option value="">모든 티커</option>
                     </select>
@@ -217,439 +221,628 @@
 
 {% block scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // DOM 요소들
-        const logContainer = document.getElementById('log-container');
-        const tickerSelector = document.getElementById('ticker-selector');
-        const strategyFilter = document.getElementById('strategy-filter');
-        const tickerFilter = document.getElementById('ticker-filter');
-        const tradeRecordsTitle = document.getElementById('trade-records-title');
-        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
-        const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
-        const refreshTradesBtn = document.getElementById('refresh-trades-btn');
+document.addEventListener('DOMContentLoaded', function() {
+    // ===== WebSocket 관련 변수 =====
+    let socket = null;
+    let isWebSocketEnabled = false;
+    let isWebSocketConnected = false;
 
-        // 상태 변수들
-        let selectedTicker = '';
-        let selectedStrategy = '';
-        let autoRefreshInterval = null;
-        let isAutoRefresh = true;
+    // ===== 기존 변수들 유지 =====
+    const logContainer = document.getElementById('log-container');
+    const tickerSelector = document.getElementById('ticker-selector');
+    const strategyFilter = document.getElementById('strategy-filter');
+    const tickerFilter = document.getElementById('ticker-filter');
+    const tradeRecordsTitle = document.getElementById('trade-records-title');
+    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+    const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+    const refreshTradesBtn = document.getElementById('refresh-trades-btn');
+    const connectionStatus = document.getElementById('connection-status');
 
-        // 초기화
-        init();
+    // 상태 변수들
+    let selectedTicker = '';
+    let selectedStrategy = '';
+    let autoRefreshInterval = null;
+    let isAutoRefresh = true;
+    let logBuffer = [];  // WebSocket용 로그 버퍼
+    const MAX_LOGS = 100;
 
-        function init() {
-            loadActiveTickers();
-            loadLogs();
-            loadTradeRecords();
-            startAutoRefresh();
-            attachEventListeners();
-        }
+    // ===== 초기화 =====
+    init();
 
-        // 이벤트 리스너 연결
-        function attachEventListeners() {
-            // 봇 중지 버튼
-            document.addEventListener('click', function(e) {
-                if (e.target.classList.contains('stop-bot')) {
-                    const ticker = e.target.getAttribute('data-ticker');
-                    stopBot(ticker, e.target);
-                }
-            });
+    function init() {
+        // WebSocket 연결 시도
+        initWebSocket();
 
-            // 티커 선택기 변경
-            if (tickerSelector) {
-                tickerSelector.addEventListener('change', function() {
-                    selectedTicker = this.value;
-                    loadLogs();
-                });
-            }
+        // 기존 초기화
+        loadActiveTickers();
+        loadLogs();
+        loadTradeRecords();
+        startAutoRefresh();
+        attachEventListeners();
+    }
 
-            // 필터 변경
-            if (strategyFilter) {
-                strategyFilter.addEventListener('change', function() {
-                    selectedStrategy = this.value;
-                    loadTradeRecords();
-                });
-            }
-
-            if (tickerFilter) {
-                tickerFilter.addEventListener('change', function() {
-                    selectedTicker = this.value;
-                    loadTradeRecords();
-                });
-            }
-
-            // 새로고침 버튼
-            if (refreshLogsBtn) {
-                refreshLogsBtn.addEventListener('click', loadLogs);
-            }
-
-            if (refreshTradesBtn) {
-                refreshTradesBtn.addEventListener('click', loadTradeRecords);
-            }
-
-            // 자동 새로고침 토글
-            if (autoRefreshToggle) {
-                autoRefreshToggle.addEventListener('click', toggleAutoRefresh);
-            }
-        }
-
-        // 활성 티커 목록 로드
-        function loadActiveTickers() {
-            fetch('/api/active_tickers')
-                .then(response => response.json())
-                .then(tickers => {
-                    updateTickerSelectors(tickers);
-                })
-                .catch(error => {
-                    console.error('활성 티커 로드 오류:', error);
-                });
-        }
-
-        // 티커 선택기 업데이트
-        function updateTickerSelectors(tickers) {
-            const selectors = [tickerSelector, tickerFilter];
-
-            selectors.forEach(selector => {
-                if (selector) {
-                    // 기존 옵션 중 "모든 티커" 유지
-                    const defaultOption = selector.querySelector('option[value=""]');
-                    selector.innerHTML = '';
-                    if (defaultOption) {
-                        selector.appendChild(defaultOption);
-                    }
-
-                    // 새 티커 옵션 추가
-                    tickers.forEach(ticker => {
-                        const option = document.createElement('option');
-                        option.value = ticker;
-                        option.textContent = ticker;
-                        selector.appendChild(option);
-                    });
-                }
-            });
-        }
-
-        // 로그 로드
-        function loadLogs() {
-            const url = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
-
-            fetch(url)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(logs => {
-                    updateLogContainer(logs);
-                })
-                .catch(error => {
-                    console.error('로그 로드 오류:', error);
-                    if (logContainer) {
-                        logContainer.innerHTML = `
-                            <div class="text-danger">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                로그를 불러오는 중 오류가 발생했습니다: ${error.message}
-                            </div>
-                        `;
-                    }
-                });
-        }
-
-        // 로그 컨테이너 업데이트
-        function updateLogContainer(logs) {
-            if (!logContainer) return;
-
-            if (!logs || logs.length === 0) {
-                logContainer.innerHTML = `
-                    <div class="text-center text-muted">
-                        <i class="fas fa-info-circle me-2"></i>
-                        표시할 로그가 없습니다.
-                    </div>
-                `;
-                return;
-            }
-
-            const logHtml = logs.map(log => {
-                const levelClass = {
-                    'INFO': 'text-info',
-                    'WARNING': 'text-warning',
-                    'ERROR': 'text-danger',
-                    'DEBUG': 'text-muted'
-                }[log.level] || 'text-dark';
-
-                return `
-                    <div class="log-entry">
-                        <span class="text-muted">${log.timestamp}</span>
-                        <span class="badge bg-secondary ms-2">${log.level}</span>
-                        <span class="${levelClass} ms-2">${log.message}</span>
-                    </div>
-                `;
-            }).join('');
-
-            logContainer.innerHTML = logHtml;
-            scrollToBottom();
-        }
-
-        // 거래 기록 로드
-        function loadTradeRecords() {
-            let url = '/api/trade_records';
-            const params = new URLSearchParams();
-
-            if (selectedTicker) params.append('ticker', selectedTicker);
-            if (selectedStrategy) params.append('strategy', selectedStrategy);
-
-            if (params.toString()) {
-                url += '?' + params.toString();
-            }
-
-            fetch(url)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(records => {
-                    updateTradeRecordsTable(records);
-                    updateTradeRecordsTitle();
-                })
-                .catch(error => {
-                    console.error('거래 기록 로드 오류:', error);
-                    const container = document.getElementById('trade-records-container');
-                    if (container) {
-                        container.innerHTML = `
-                            <div class="text-danger">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                거래 기록을 불러오는 중 오류가 발생했습니다: ${error.message}
-                            </div>
-                        `;
-                    }
-                });
-        }
-
-        // 거래 기록 제목 업데이트
-        function updateTradeRecordsTitle() {
-            if (!tradeRecordsTitle) return;
-
-            let titleText = '(오늘의 ';
-            if (selectedTicker && selectedStrategy) {
-                titleText += `${selectedTicker} ${getStrategyDisplayName(selectedStrategy)} `;
-            } else if (selectedTicker) {
-                titleText += `${selectedTicker} `;
-            } else if (selectedStrategy) {
-                titleText += `${getStrategyDisplayName(selectedStrategy)} `;
+    // ===== WebSocket 초기화 =====
+    function initWebSocket() {
+        try {
+            if (typeof io !== 'undefined') {
+                socket = io();
+                setupWebSocketEvents();
+                isWebSocketEnabled = true;
+                console.log('WebSocket 클라이언트 초기화됨');
             } else {
-                titleText += '모든 ';
+                console.warn('Socket.IO 라이브러리를 찾을 수 없음. 기존 방식으로 동작합니다.');
+                isWebSocketEnabled = false;
+                updateConnectionStatus('disabled');
             }
-            titleText += '거래)';
-            tradeRecordsTitle.textContent = titleText;
+        } catch (error) {
+            console.error('WebSocket 초기화 오류:', error);
+            isWebSocketEnabled = false;
+            updateConnectionStatus('error');
         }
+    }
 
-        // 전략 표시명 가져오기
-        function getStrategyDisplayName(strategy) {
-            const strategyNames = {
-                'rsi': 'RSI',
-                'adaptive': '어댑티브',
-                'ensemble': '앙상블',
-                'volatility': '변동성',
-                'bollinger': '볼린저'
-            };
-            return strategyNames[strategy] || strategy;
-        }
+    // ===== WebSocket 이벤트 설정 =====
+    function setupWebSocketEvents() {
+        if (!socket) return;
 
-        // 거래 기록 테이블 업데이트
-        function updateTradeRecordsTable(records) {
-            const container = document.getElementById('trade-records-container');
-            if (!container) return;
+        socket.on('connect', function() {
+            console.log('WebSocket 연결됨');
+            isWebSocketConnected = true;
+            updateConnectionStatus('connected');
 
-            if (!records || records.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center text-muted">
-                        <i class="fas fa-info-circle me-2"></i>
-                        해당 조건의 거래 기록이 없습니다.
-                        <br><small>다른 필터 조건을 시도해보세요.</small>
-                    </div>
-                `;
-                return;
-            }
-
-            let tableHtml = `
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>날짜/시간</th>
-                                <th>티커</th>
-                                <th>전략</th>
-                                <th>유형</th>
-                                <th>가격</th>
-                                <th>수량</th>
-                                <th>금액</th>
-                                <th>수익률</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-
-            records.forEach(record => {
-                const tradeType = record.trade_type === 'BUY' ?
-                    '<span class="badge bg-primary">매수</span>' :
-                    '<span class="badge bg-danger">매도</span>';
-
-                const profitLoss = record.profit_loss !== null ?
-                    `<span class="${record.profit_loss > 0 ? 'text-success' : 'text-danger'}">
-                        ${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%
-                    </span>` : '-';
-
-                tableHtml += `
-                    <tr>
-                        <td>${record.timestamp}</td>
-                        <td>${record.ticker}</td>
-                        <td>${getStrategyBadge(record.strategy)}</td>
-                        <td>${tradeType}</td>
-                        <td>₩${Number(record.price).toLocaleString()}</td>
-                        <td>${parseFloat(record.volume).toFixed(4)}</td>
-                        <td>₩${Number(record.amount).toLocaleString()}</td>
-                        <td>${profitLoss}</td>
-                    </tr>
-                `;
+            // 최근 로그 요청
+            socket.emit('request_recent_logs', {
+                ticker: selectedTicker,
+                limit: 50
             });
 
-            tableHtml += '</tbody></table></div>';
-            container.innerHTML = tableHtml;
+            // 로그 구독 시작
+            subscribeToLogs(selectedTicker);
+        });
+
+        socket.on('disconnect', function() {
+            console.log('WebSocket 연결 끊김');
+            isWebSocketConnected = false;
+            updateConnectionStatus('disconnected');
+        });
+
+        socket.on('status', function(data) {
+            console.log('WebSocket 상태:', data.message);
+            showNotification('info', data.message);
+        });
+
+        socket.on('recent_logs', function(data) {
+            console.log('최근 로그 수신:', data.logs.length, '개');
+            if (data.logs && data.logs.length > 0) {
+                logBuffer = data.logs.slice().reverse();
+                updateLogDisplay();
+            }
+        });
+
+        socket.on('new_log', function(logEntry) {
+            console.log('새 로그 수신:', logEntry);
+            addNewLog(logEntry);
+        });
+
+        socket.on('error', function(data) {
+            console.error('WebSocket 오류:', data.message);
+            showNotification('error', data.message);
+        });
+    }
+
+    // ===== 연결 상태 업데이트 =====
+    function updateConnectionStatus(status) {
+        if (!connectionStatus) return;
+
+        switch(status) {
+            case 'connected':
+                connectionStatus.className = 'badge bg-success';
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-light"></i> 실시간 연결됨';
+                break;
+            case 'disconnected':
+                connectionStatus.className = 'badge bg-danger';
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-light"></i> 연결 끊김';
+                break;
+            case 'connecting':
+                connectionStatus.className = 'badge bg-warning';
+                connectionStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 연결 중...';
+                break;
+            case 'disabled':
+                connectionStatus.className = 'badge bg-secondary';
+                connectionStatus.innerHTML = '<i class="fas fa-wifi-slash"></i> 기본 모드';
+                break;
+            case 'error':
+                connectionStatus.className = 'badge bg-danger';
+                connectionStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 연결 오류';
+                break;
+        }
+    }
+
+    // ===== WebSocket 로그 구독 =====
+    function subscribeToLogs(ticker) {
+        if (isWebSocketConnected && socket) {
+            socket.emit('subscribe_logs', { ticker: ticker });
+        }
+    }
+
+    // ===== 새 로그 추가 (WebSocket) =====
+    function addNewLog(logEntry) {
+        logBuffer.push(logEntry);
+
+        if (logBuffer.length > MAX_LOGS) {
+            logBuffer = logBuffer.slice(-MAX_LOGS);
         }
 
-        // 전략 배지 HTML 생성
-        function getStrategyBadge(strategy) {
-            const badges = {
-                'rsi': '<span class="badge bg-info">📈 RSI</span>',
-                'adaptive': '<span class="badge bg-success">🎯 어댑티브</span>',
-                'ensemble': '<span class="badge bg-warning">🔥 앙상블</span>',
-                'volatility': '<span class="badge bg-primary">🚀 변동성</span>',
-                'bollinger': '<span class="badge bg-secondary">📊 볼린저</span>'
-            };
-            return badges[strategy] || `<span class="badge bg-light text-dark">${strategy}</span>`;
+        updateLogDisplay();
+        scrollToBottom();
+
+        // 중요한 로그 알림
+        if (logEntry.level === 'ERROR') {
+            showNotification('error', logEntry.message);
+        } else if (logEntry.level === 'WARNING') {
+            showNotification('warning', logEntry.message);
         }
+    }
 
-        // 봇 중지 함수
-        function stopBot(ticker, buttonElement) {
-            const originalText = buttonElement.textContent;
-            buttonElement.disabled = true;
-            buttonElement.textContent = '중지 중...';
-            buttonElement.classList.add('btn-secondary');
-            buttonElement.classList.remove('btn-outline-danger');
+    // ===== 이벤트 리스너 연결 =====
+    function attachEventListeners() {
+        // 봇 중지 버튼
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('stop-bot')) {
+                const ticker = e.target.getAttribute('data-ticker');
+                stopBot(ticker, e.target);
+            }
+        });
 
-            fetch(`/api/stop_bot/${ticker}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.status === 'success') {
-                    showNotification('success', data.message || `${ticker} 봇이 성공적으로 중지되었습니다.`);
-                    setTimeout(() => location.reload(), 1500);
+        // 티커 선택기 변경
+        if (tickerSelector) {
+            tickerSelector.addEventListener('change', function() {
+                selectedTicker = this.value;
+
+                if (isWebSocketConnected) {
+                    // WebSocket 모드: 구독 변경
+                    socket.emit('unsubscribe_logs');
+                    setTimeout(() => {
+                        socket.emit('request_recent_logs', {
+                            ticker: selectedTicker,
+                            limit: 50
+                        });
+                        subscribeToLogs(selectedTicker);
+                    }, 100);
                 } else {
-                    showNotification('error', `봇 중지 실패: ${data.message || '알 수 없는 오류가 발생했습니다.'}`);
-                    restoreButton(buttonElement, originalText);
-                }
-            })
-            .catch(error => {
-                console.error('봇 중지 오류:', error);
-                const errorMessage = error.message.includes('HTTP')
-                    ? `서버 오류: ${error.message}`
-                    : '네트워크 연결 오류가 발생했습니다.';
-                showNotification('error', errorMessage);
-                restoreButton(buttonElement, originalText);
-            });
-        }
-
-        // 버튼 상태 복원
-        function restoreButton(buttonElement, originalText) {
-            buttonElement.disabled = false;
-            buttonElement.textContent = originalText;
-            buttonElement.classList.remove('btn-secondary');
-            buttonElement.classList.add('btn-outline-danger');
-        }
-
-        // 알림 표시
-        function showNotification(type, message) {
-            const toastContainer = document.getElementById('toast-container');
-
-            const toastHtml = `
-                <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0" role="alert">
-                    <div class="d-flex">
-                        <div class="toast-body">
-                            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
-                            ${message}
-                        </div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                    </div>
-                </div>
-            `;
-
-            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
-
-            const toastElement = toastContainer.lastElementChild;
-            const toast = new bootstrap.Toast(toastElement, {
-                autohide: true,
-                delay: type === 'success' ? 3000 : 5000
-            });
-            toast.show();
-
-            toastElement.addEventListener('hidden.bs.toast', () => {
-                toastElement.remove();
-            });
-        }
-
-        // 자동 새로고침 시작
-        function startAutoRefresh() {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-            }
-
-            autoRefreshInterval = setInterval(() => {
-                if (isAutoRefresh) {
+                    // 기존 모드: 로그 새로고침
                     loadLogs();
-                    loadTradeRecords();
                 }
-            }, 10000); // 10초마다 업데이트
+            });
+        }
+
+        // 필터 변경
+        if (strategyFilter) {
+            strategyFilter.addEventListener('change', function() {
+                selectedStrategy = this.value;
+                loadTradeRecords();
+            });
+        }
+
+        if (tickerFilter) {
+            tickerFilter.addEventListener('change', function() {
+                selectedTicker = this.value;
+                loadTradeRecords();
+            });
+        }
+
+        // 새로고침 버튼 (수정)
+        if (refreshLogsBtn) {
+            refreshLogsBtn.addEventListener('click', function() {
+                if (isWebSocketConnected) {
+                    // WebSocket 모드: 최근 로그 재요청
+                    socket.emit('request_recent_logs', {
+                        ticker: selectedTicker,
+                        limit: 50
+                    });
+                } else {
+                    // 기존 모드: 기존 로드 함수 사용
+                    loadLogs();
+                }
+            });
+        }
+
+        if (refreshTradesBtn) {
+            refreshTradesBtn.addEventListener('click', loadTradeRecords);
         }
 
         // 자동 새로고침 토글
-        function toggleAutoRefresh() {
-            isAutoRefresh = !isAutoRefresh;
-            const icon = autoRefreshToggle.querySelector('i');
+        if (autoRefreshToggle) {
+            autoRefreshToggle.addEventListener('click', toggleAutoRefresh);
+        }
+    }
 
-            if (isAutoRefresh) {
-                autoRefreshToggle.textContent = ' 자동 새로고침';
-                autoRefreshToggle.classList.remove('btn-outline-success');
-                autoRefreshToggle.classList.add('btn-outline-secondary');
-                icon.className = 'fas fa-pause';
-                autoRefreshToggle.setAttribute('data-auto', 'true');
+    // ===== 로그 디스플레이 업데이트 (통합) =====
+    function updateLogDisplay(logs = null) {
+        if (!logContainer) return;
+
+        // WebSocket 모드와 기존 모드 통합
+        const logsToDisplay = logs || logBuffer;
+
+        if (!logsToDisplay || logsToDisplay.length === 0) {
+            logContainer.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="fas fa-info-circle me-2"></i>
+                    표시할 로그가 없습니다.
+                </div>
+            `;
+            return;
+        }
+
+        const logHtml = logsToDisplay.map(log => {
+            const levelClass = {
+                'INFO': 'text-info',
+                'WARNING': 'text-warning',
+                'ERROR': 'text-danger',
+                'DEBUG': 'text-muted'
+            }[log.level] || 'text-dark';
+
+            const levelIcon = {
+                'INFO': 'fas fa-info-circle',
+                'WARNING': 'fas fa-exclamation-triangle',
+                'ERROR': 'fas fa-times-circle',
+                'DEBUG': 'fas fa-bug'
+            }[log.level] || 'fas fa-circle';
+
+            // WebSocket 로그와 기존 로그 구조 호환
+            const timeAgo = log.raw_timestamp ? getTimeAgo(log.raw_timestamp) : '';
+
+            return `
+                <div class="log-entry mb-2 p-2 border-bottom border-light">
+                    <div class="d-flex align-items-start">
+                        <span class="text-muted me-2 small">${log.timestamp}</span>
+                        <span class="badge bg-secondary me-2">
+                            <i class="${levelIcon} me-1"></i>${log.level}
+                        </span>
+                        ${timeAgo ? `<span class="text-muted small ms-auto">${timeAgo}</span>` : ''}
+                    </div>
+                    <div class="${levelClass} mt-1" style="word-break: break-word;">
+                        ${log.message}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        logContainer.innerHTML = logHtml;
+        scrollToBottom();
+    }
+
+    // ===== 기존 함수들 유지 =====
+    function loadActiveTickers() {
+        fetch('/api/active_tickers')
+            .then(response => response.json())
+            .then(tickers => {
+                updateTickerSelectors(tickers);
+            })
+            .catch(error => {
+                console.error('활성 티커 로드 오류:', error);
+            });
+    }
+
+    function updateTickerSelectors(tickers) {
+        const selectors = [tickerSelector, tickerFilter];
+
+        selectors.forEach(selector => {
+            if (selector) {
+                const defaultOption = selector.querySelector('option[value=""]');
+                selector.innerHTML = '';
+                if (defaultOption) {
+                    selector.appendChild(defaultOption);
+                }
+
+                tickers.forEach(ticker => {
+                    const option = document.createElement('option');
+                    option.value = ticker;
+                    option.textContent = ticker;
+                    selector.appendChild(option);
+                });
+            }
+        });
+    }
+
+    function loadLogs() {
+        const url = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
+
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(logs => {
+                // WebSocket이 연결되지 않은 경우에만 기존 방식 사용
+                if (!isWebSocketConnected) {
+                    updateLogDisplay(logs);
+                }
+            })
+            .catch(error => {
+                console.error('로그 로드 오류:', error);
+                if (logContainer && !isWebSocketConnected) {
+                    logContainer.innerHTML = `
+                        <div class="text-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            로그를 불러오는 중 오류가 발생했습니다: ${error.message}
+                        </div>
+                    `;
+                }
+            });
+    }
+
+    // ===== 나머지 기존 함수들 그대로 유지 =====
+    function loadTradeRecords() {
+        let url = '/api/trade_records';
+        const params = new URLSearchParams();
+
+        if (selectedTicker) params.append('ticker', selectedTicker);
+        if (selectedStrategy) params.append('strategy', selectedStrategy);
+
+        if (params.toString()) {
+            url += '?' + params.toString();
+        }
+
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(records => {
+                updateTradeRecordsTable(records);
+                updateTradeRecordsTitle();
+            })
+            .catch(error => {
+                console.error('거래 기록 로드 오류:', error);
+                const container = document.getElementById('trade-records-container');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            거래 기록을 불러오는 중 오류가 발생했습니다: ${error.message}
+                        </div>
+                    `;
+                }
+            });
+    }
+
+    function updateTradeRecordsTitle() {
+        if (!tradeRecordsTitle) return;
+
+        let titleText = '(오늘의 ';
+        if (selectedTicker && selectedStrategy) {
+            titleText += `${selectedTicker} ${getStrategyDisplayName(selectedStrategy)} `;
+        } else if (selectedTicker) {
+            titleText += `${selectedTicker} `;
+        } else if (selectedStrategy) {
+            titleText += `${getStrategyDisplayName(selectedStrategy)} `;
+        } else {
+            titleText += '모든 ';
+        }
+        titleText += '거래)';
+        tradeRecordsTitle.textContent = titleText;
+    }
+
+    function getStrategyDisplayName(strategy) {
+        const strategyNames = {
+            'rsi': 'RSI',
+            'adaptive': '어댑티브',
+            'ensemble': '앙상블',
+            'volatility': '변동성',
+            'bollinger': '볼린저'
+        };
+        return strategyNames[strategy] || strategy;
+    }
+
+    function updateTradeRecordsTable(records) {
+        const container = document.getElementById('trade-records-container');
+        if (!container) return;
+
+        if (!records || records.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="fas fa-info-circle me-2"></i>
+                    해당 조건의 거래 기록이 없습니다.
+                    <br><small>다른 필터 조건을 시도해보세요.</small>
+                </div>
+            `;
+            return;
+        }
+
+        let tableHtml = `
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>날짜/시간</th>
+                            <th>티커</th>
+                            <th>전략</th>
+                            <th>유형</th>
+                            <th>가격</th>
+                            <th>수량</th>
+                            <th>금액</th>
+                            <th>수익률</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        records.forEach(record => {
+            const tradeType = record.trade_type === 'BUY' ?
+                '<span class="badge bg-primary">매수</span>' :
+                '<span class="badge bg-danger">매도</span>';
+
+            const profitLoss = record.profit_loss !== null ?
+                `<span class="${record.profit_loss > 0 ? 'text-success' : 'text-danger'}">
+                    ${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%
+                </span>` : '-';
+
+            tableHtml += `
+                <tr>
+                    <td>${record.timestamp}</td>
+                    <td>${record.ticker}</td>
+                    <td>${getStrategyBadge(record.strategy)}</td>
+                    <td>${tradeType}</td>
+                    <td>₩${Number(record.price).toLocaleString()}</td>
+                    <td>${parseFloat(record.volume).toFixed(4)}</td>
+                    <td>₩${Number(record.amount).toLocaleString()}</td>
+                    <td>${profitLoss}</td>
+                </tr>
+            `;
+        });
+
+        tableHtml += '</tbody></table></div>';
+        container.innerHTML = tableHtml;
+    }
+
+    function getStrategyBadge(strategy) {
+        const badges = {
+            'rsi': '<span class="badge bg-info">📈 RSI</span>',
+            'adaptive': '<span class="badge bg-success">🎯 어댑티브</span>',
+            'ensemble': '<span class="badge bg-warning">🔥 앙상블</span>',
+            'volatility': '<span class="badge bg-primary">🚀 변동성</span>',
+            'bollinger': '<span class="badge bg-secondary">📊 볼린저</span>'
+        };
+        return badges[strategy] || `<span class="badge bg-light text-dark">${strategy}</span>`;
+    }
+
+    function stopBot(ticker, buttonElement) {
+        const originalText = buttonElement.textContent;
+        buttonElement.disabled = true;
+        buttonElement.textContent = '중지 중...';
+        buttonElement.classList.add('btn-secondary');
+        buttonElement.classList.remove('btn-outline-danger');
+
+        fetch(`/api/stop_bot/${ticker}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                showNotification('success', data.message || `${ticker} 봇이 성공적으로 중지되었습니다.`);
+                setTimeout(() => location.reload(), 1500);
             } else {
-                autoRefreshToggle.textContent = ' 자동 새로고침';
-                autoRefreshToggle.classList.remove('btn-outline-secondary');
-                autoRefreshToggle.classList.add('btn-outline-success');
-                icon.className = 'fas fa-play';
-                autoRefreshToggle.setAttribute('data-auto', 'false');
+                showNotification('error', `봇 중지 실패: ${data.message || '알 수 없는 오류가 발생했습니다.'}`);
+                restoreButton(buttonElement, originalText);
             }
-            autoRefreshToggle.prepend(icon);
+        })
+        .catch(error => {
+            console.error('봇 중지 오류:', error);
+            const errorMessage = error.message.includes('HTTP')
+                ? `서버 오류: ${error.message}`
+                : '네트워크 연결 오류가 발생했습니다.';
+            showNotification('error', errorMessage);
+            restoreButton(buttonElement, originalText);
+        });
+    }
+
+    function restoreButton(buttonElement, originalText) {
+        buttonElement.disabled = false;
+        buttonElement.textContent = originalText;
+        buttonElement.classList.remove('btn-secondary');
+        buttonElement.classList.add('btn-outline-danger');
+    }
+
+    function showNotification(type, message) {
+        const toastContainer = document.getElementById('toast-container');
+
+        const toastHtml = `
+            <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'warning' ? 'warning' : type === 'info' ? 'info' : 'danger'} border-0" role="alert">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'info' ? 'info-circle' : 'exclamation-triangle'} me-2"></i>
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        `;
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+
+        const toastElement = toastContainer.lastElementChild;
+        const toast = new bootstrap.Toast(toastElement, {
+            autohide: true,
+            delay: type === 'success' ? 3000 : 5000
+        });
+        toast.show();
+
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
+        });
+    }
+
+    function startAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
         }
 
-        // 로그 자동 스크롤
-        function scrollToBottom() {
-            if (logContainer) {
-                logContainer.scrollTop = logContainer.scrollHeight;
+        autoRefreshInterval = setInterval(() => {
+            if (isAutoRefresh && !isWebSocketConnected) {
+                // WebSocket이 연결되지 않은 경우에만 자동 새로고침
+                loadLogs();
+                loadTradeRecords();
             }
+        }, 10000);
+    }
+
+    function toggleAutoRefresh() {
+        isAutoRefresh = !isAutoRefresh;
+        const icon = autoRefreshToggle.querySelector('i');
+
+        if (isAutoRefresh) {
+            autoRefreshToggle.textContent = ' 자동 새로고침';
+            autoRefreshToggle.classList.remove('btn-outline-success');
+            autoRefreshToggle.classList.add('btn-outline-secondary');
+            icon.className = 'fas fa-pause';
+            autoRefreshToggle.setAttribute('data-auto', 'true');
+        } else {
+            autoRefreshToggle.textContent = ' 자동 새로고침';
+            autoRefreshToggle.classList.remove('btn-outline-secondary');
+            autoRefreshToggle.classList.add('btn-outline-success');
+            icon.className = 'fas fa-play';
+            autoRefreshToggle.setAttribute('data-auto', 'false');
         }
-    });
+        autoRefreshToggle.prepend(icon);
+    }
+
+    function scrollToBottom() {
+        if (logContainer) {
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    }
+
+    function getTimeAgo(timestamp) {
+        try {
+            const now = new Date();
+            const logTime = new Date(timestamp);
+            const diffMs = now - logTime;
+            const diffSecs = Math.floor(diffMs / 1000);
+
+            if (diffSecs < 60) return `${diffSecs}초 전`;
+            if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}분 전`;
+            if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)}시간 전`;
+            return `${Math.floor(diffSecs / 86400)}일 전`;
+        } catch (e) {
+            return '방금 전';
+        }
+    }
+
+    // 초기 연결 상태 표시
+    updateConnectionStatus('connecting');
+});
 </script>
 {% endblock %}

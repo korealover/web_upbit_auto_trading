@@ -33,4 +33,10 @@ class Config:
     # 시간대 설정
     TIMEZONE = 'Asia/Seoul'
 
+    # SocketIO 설정
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'your-secret-key-here'
+    SOCKETIO_ASYNC_MODE = 'threading'
+    SOCKETIO_PING_TIMEOUT = 60
+    SOCKETIO_PING_INTERVAL = 25
+
 
