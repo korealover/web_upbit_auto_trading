@@ -135,7 +135,6 @@ def settings():
         # 폼에서 설정값 추출
         ticker = form.ticker.data
         strategy_name = form.strategy.data
-        # 기타 설정값들...
 
         # 봇 설정 및 시작
         start_bot(ticker, strategy_name, form)

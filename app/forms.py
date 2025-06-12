@@ -2,6 +2,7 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SelectField, FloatField, IntegerField, SubmitField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError, NumberRange
 from app.models import User
+from app.utils.tickers import get_ticker_choices
 
 class LoginForm(FlaskForm):
     username = StringField('사용자명', validators=[DataRequired()])
@@ -57,7 +58,7 @@ class ProfileForm(FlaskForm):
 
 
 class TradingSettingsForm(FlaskForm):
-    ticker = StringField('코인 티커', validators=[DataRequired()], default='KRW-KAITO')
+    ticker = SelectField('코인 티커', validators=[DataRequired()], default='KRW-KAITO')
     interval = SelectField('차트 간격', choices=[
         ('day', '일봉'), ('minute1', '1분'), ('minute3', '3분'),
         ('minute5', '5분'), ('minute10', '10분'), ('minute30', '30분'),
@@ -77,3 +78,8 @@ class TradingSettingsForm(FlaskForm):
     stop_loss = FloatField('손절 손실률 (%)', validators=[NumberRange(max=0)], default=-2.0)
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
     submit = SubmitField('설정 저장 및 봇 시작')
+
+    def __init__(self, *args, **kwargs):
+        super(TradingSettingsForm, self).__init__(*args, **kwargs)
+        # 폼 초기화 시 티커 목록을 동적으로 설정
+        self.ticker.choices = get_ticker_choices()
