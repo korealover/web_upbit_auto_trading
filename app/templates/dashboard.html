@@ -1,7 +1,7 @@
-
 {% extends "base.html" %}
 
 {% block content %}
+<!-- 기존 내용 동일 유지 -->
 <h2>거래 대시보드</h2>
 
 <div class="row mt-4">
@@ -155,107 +155,101 @@
         const logContainer = document.getElementById('log-container');
         const tickerSelector = document.getElementById('ticker-selector');
         const tradeRecordsTitle = document.getElementById('trade-records-title');
-        const tradeRecordRows = document.querySelectorAll('.trade-record-row');
         let selectedTicker = '';
 
         // 거래 기록 필터링 함수
         function filterTradeRecords(ticker) {
+            console.log("거래 기록 필터링: " + (ticker ? ticker : "모든 티커"));
+
             // 타이틀 업데이트
             if (ticker) {
                 tradeRecordsTitle.textContent = `(오늘의 ${ticker} 거래)`;
-                // API로 특정 티커의 거래 기록 가져오기
-                fetchTradeRecords(ticker);
             } else {
                 tradeRecordsTitle.textContent = '(오늘의 모든 거래)';
-                // API로 모든 거래 기록 가져오기
-                fetchTradeRecords();
             }
-        }
 
-        // 거래 기록 가져오기 함수
-        function fetchTradeRecords(ticker = '') {
-            fetch(`/api/trade_records${ticker ? '/' + ticker : ''}`)
-                .then(response => response.json())
+            // API 호출하여 거래 기록 가져오기
+            const url = ticker ? `/api/trade_records/${ticker}` : '/api/trade_records';
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('API 응답 오류: ' + response.status);
+                    }
+                    return response.json();
+                })
                 .then(records => {
+                    console.log(`${ticker ? ticker : '모든'} 티커 거래 기록 ${records.length}개 로드됨`);
                     updateTradeRecordsTable(records);
                 })
                 .catch(error => {
-                    console.error('거래 기록 가져오기 오류:', error);
+                    console.error('거래 기록 로드 오류:', error);
+
+                    // 오류 메시지 표시
+                    const container = document.getElementById('trade-records-container');
+                    container.innerHTML = `<p class="text-danger">거래 기록을 불러오는 중 오류가 발생했습니다: ${error.message}</p>`;
                 });
         }
 
         // 거래 기록 테이블 업데이트 함수
         function updateTradeRecordsTable(records) {
-            const tableBody = document.querySelector('#trade-records-table tbody');
-            if (!tableBody) return;
+            const container = document.getElementById('trade-records-container');
 
-            // 테이블 비우기
-            tableBody.innerHTML = '';
-
-            if (records.length === 0) {
-                const container = document.getElementById('trade-records-container');
+            if (!records || records.length === 0) {
                 container.innerHTML = '<p>해당 조건의 거래 기록이 없습니다.</p>';
                 return;
             }
 
-            // 새 레코드로 테이블 채우기
+            // 테이블 생성
+            let tableHtml = `
+                <div class="table-responsive">
+                    <table class="table table-striped" id="trade-records-table">
+                        <thead>
+                            <tr>
+                                <th>날짜/시간</th>
+                                <th>티커</th>
+                                <th>유형</th>
+                                <th>가격</th>
+                                <th>수량</th>
+                                <th>금액</th>
+                                <th>수익률</th>
+                                <th>전략</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            // 레코드 추가
             records.forEach(record => {
-                const row = document.createElement('tr');
-                row.className = 'trade-record-row';
-                row.setAttribute('data-ticker', record.ticker);
+                const tradeType = record.trade_type === 'BUY' ?
+                    '<span class="badge bg-primary">매수</span>' :
+                    '<span class="badge bg-danger">매도</span>';
 
-                // 날짜/시간
-                let cell = document.createElement('td');
-                cell.textContent = record.timestamp;
-                row.appendChild(cell);
+                const profitLoss = record.profit_loss !== null ?
+                    `<span class="${record.profit_loss > 0 ? 'text-success' : 'text-danger'}">${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%</span>` :
+                    '-';
 
-                // 티커
-                cell = document.createElement('td');
-                cell.textContent = record.ticker;
-                row.appendChild(cell);
-
-                // 유형
-                cell = document.createElement('td');
-                const badge = document.createElement('span');
-                badge.className = record.trade_type === 'BUY' ? 'badge bg-primary' : 'badge bg-danger';
-                badge.textContent = record.trade_type === 'BUY' ? '매수' : '매도';
-                cell.appendChild(badge);
-                row.appendChild(cell);
-
-                // 가격
-                cell = document.createElement('td');
-                cell.textContent = `₩${Number(record.price).toLocaleString()}`;
-                row.appendChild(cell);
-
-                // 수량
-                cell = document.createElement('td');
-                cell.textContent = parseFloat(record.volume).toFixed(4);
-                row.appendChild(cell);
-
-                // 금액
-                cell = document.createElement('td');
-                cell.textContent = `₩${Number(record.amount).toLocaleString()}`;
-                row.appendChild(cell);
-
-                // 수익률
-                cell = document.createElement('td');
-                if (record.profit_loss) {
-                    const profitSpan = document.createElement('span');
-                    profitSpan.className = parseFloat(record.profit_loss) > 0 ? 'text-success' : 'text-danger';
-                    profitSpan.textContent = `${record.profit_loss > 0 ? '+' : ''}${parseFloat(record.profit_loss).toFixed(2)}%`;
-                    cell.appendChild(profitSpan);
-                } else {
-                    cell.textContent = '-';
-                }
-                row.appendChild(cell);
-
-                // 전략
-                cell = document.createElement('td');
-                cell.textContent = record.strategy;
-                row.appendChild(cell);
-
-                tableBody.appendChild(row);
+                tableHtml += `
+                    <tr class="trade-record-row" data-ticker="${record.ticker}">
+                        <td>${record.timestamp}</td>
+                        <td>${record.ticker}</td>
+                        <td>${tradeType}</td>
+                        <td>₩${Number(record.price).toLocaleString()}</td>
+                        <td>${parseFloat(record.volume).toFixed(4)}</td>
+                        <td>₩${Number(record.amount).toLocaleString()}</td>
+                        <td>${profitLoss}</td>
+                        <td>${record.strategy}</td>
+                    </tr>
+                `;
             });
+
+            tableHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            container.innerHTML = tableHtml;
         }
 
         // 활성 티커 로드
@@ -296,6 +290,8 @@
         // 티커 변경 이벤트
         tickerSelector.addEventListener('change', function() {
             selectedTicker = this.value;
+            console.log("티커 변경됨: " + (selectedTicker ? selectedTicker : "모든 티커"));
+
             logContainer.innerHTML = ''; // 로그 컨테이너 초기화
             fetchLogs(); // 새 티커의 로그 로드
             filterTradeRecords(selectedTicker); // 새 티커의 거래 기록 필터링

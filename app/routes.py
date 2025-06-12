@@ -544,7 +544,7 @@ def notify_user_rejection(user):
     # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
     logger.info(f"사용자 {user.username}에게 계정 거부 알림")
 
-
+# 티커별 거래 기록 가져오는 API 엔드포인트 수정
 @app.route('/api/trade_records')
 @login_required
 def get_trade_records():
@@ -568,10 +568,10 @@ def get_trade_records():
             'timestamp': record.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'ticker': record.ticker,
             'trade_type': record.trade_type,
-            'price': record.price,
-            'volume': record.volume,
-            'amount': record.amount,
-            'profit_loss': record.profit_loss,
+            'price': float(record.price),
+            'volume': float(record.volume),
+            'amount': float(record.amount),
+            'profit_loss': float(record.profit_loss) if record.profit_loss else None,
             'strategy': record.strategy
         })
 
@@ -585,6 +585,9 @@ def get_ticker_trade_records(ticker):
     # 오늘 날짜의 시작 시간 계산 (00:00:00)
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # 로그 기록 (디버깅 용도)
+    logger.info(f"티커 {ticker}의 오늘 거래 기록 요청됨 (사용자 ID: {current_user.id})")
+
     # 특정 티커의 오늘 거래 기록만 필터링
     records = TradeRecord.query.filter_by(
         user_id=current_user.id,
@@ -595,6 +598,9 @@ def get_ticker_trade_records(ticker):
         TradeRecord.timestamp.desc()
     ).all()
 
+    # 조회된 레코드 수 로깅
+    logger.info(f"티커 {ticker}의 거래 기록 {len(records)}개 조회됨")
+
     # JSON 응답용 데이터 변환
     result = []
     for record in records:
@@ -602,10 +608,10 @@ def get_ticker_trade_records(ticker):
             'timestamp': record.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'ticker': record.ticker,
             'trade_type': record.trade_type,
-            'price': record.price,
-            'volume': record.volume,
-            'amount': record.amount,
-            'profit_loss': record.profit_loss,
+            'price': float(record.price),
+            'volume': float(record.volume),
+            'amount': float(record.amount),
+            'profit_loss': float(record.profit_loss) if record.profit_loss else None,
             'strategy': record.strategy
         })
 
