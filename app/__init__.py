@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from flask_socketio import SocketIO
 import os
 from config import Config
+from app.utils.tickers import update_tickers_from_upbit
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -40,6 +41,8 @@ def create_app(config_class=Config):
     # SocketIO 이벤트 핸들러 등록
     from app.websocket_handlers import register_socketio_handlers
     register_socketio_handlers(socketio)
+
+    update_tickers_from_upbit()
 
     return app
 

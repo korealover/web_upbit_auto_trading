@@ -1,6 +1,31 @@
 
 {% extends "base.html" %}
+{% block head %}
+<style>
+.log-date-separator {
+    margin: 10px 0;
+    text-align: center;
+}
 
+.log-date-header {
+    text-align: center;
+    margin: 8px 0 5px 0;
+    padding: 5px;
+    background-color: #f8f9fa;
+    border-radius: 3px;
+}
+
+.log-entry {
+    margin-bottom: 2px;
+    padding: 2px 5px;
+    border-radius: 2px;
+}
+
+.log-entry:hover {
+    background-color: #f8f9fa;
+}
+</style>
+{% endblock %}
 {% block content %}
 <!-- 기존 HTML 구조는 그대로 유지 -->
 <h2>거래 대시보드</h2>
@@ -633,6 +658,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 로그 표시 함수 개선
     function updateLogDisplay() {
         if (!logContainer) return;
 
@@ -643,9 +669,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             let logHtml = '';
+            let currentDate = '';
+
             logBuffer.forEach(log => {
                 const levelClass = getLevelClass(log.level);
                 const timestamp = formatTimestamp(log.timestamp);
+
+                // 날짜가 변경되면 구분선 추가
+                const logDate = log.date || log.timestamp.split(' ')[0];
+                if (currentDate !== logDate) {
+                    if (currentDate !== '') {
+                        logHtml += '<div class="log-date-separator"><hr><small class="text-muted">─────────────────</small></div>';
+                    }
+                    logHtml += `<div class="log-date-header"><small class="text-info"><strong>${formatDate(logDate)}</strong></small></div>`;
+                    currentDate = logDate;
+                }
+
                 logHtml += `<div class="log-entry ${levelClass}">${timestamp} - ${log.level} - ${log.message}</div>`;
             });
 
@@ -654,6 +693,22 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('로그 표시 오류:', error);
             logContainer.innerHTML = '<div class="text-center text-danger">로그 표시 중 오류가 발생했습니다.</div>';
+        }
+    }
+
+    // 날짜 포맷팅 함수 추가
+    function formatDate(dateStr) {
+        try {
+            if (dateStr.length === 8) {
+                // YYYYMMDD 형식
+                const year = dateStr.substr(0, 4);
+                const month = dateStr.substr(4, 2);
+                const day = dateStr.substr(6, 2);
+                return `${year}-${month}-${day}`;
+            }
+            return dateStr;
+        } catch (error) {
+            return dateStr;
         }
     }
 

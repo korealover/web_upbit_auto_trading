@@ -576,47 +576,37 @@ def get_ticker_logs(ticker):
     # 로그 디렉토리
     log_dir = 'logs'
 
-    # 오늘 날짜의 로그 파일 찾기
-    today = datetime.now().strftime('%Y%m%d')
-    ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
-    log_filename = f"{today}_{ticker_symbol}.log"
-    log_path = os.path.join(log_dir, log_filename)
-
-    # 로그 파일이 없으면 빈 배열 반환
-    if not os.path.exists(log_path):
-        # 가장 최근 날짜의 로그 파일 찾기
-        for days_back in range(1, 4):  # 1~3일 전까지 확인
-            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
-            old_log_filename = f"{check_date}_{ticker_symbol}.log"
-            old_log_path = os.path.join(log_dir, old_log_filename)
-
-            if os.path.exists(old_log_path):
-                # 이전 날짜의 로그 파일 찾았을 때
-                log_path = old_log_path
-                break
-        else:
-            # 3일 이내에 로그 파일을 찾지 못한 경우
-            return jsonify([])
-
-    # 로그 파일의 마지막 100줄 효율적으로 읽기
-    last_lines = tail_file(log_path, 100)
-
-    # 로그 라인 파싱
+    # 최근 7일간의 로그 파일들을 확인
     logs = []
-    for line in last_lines:
-        # 간단한 로그 파싱 (예: "2023-01-01 12:34:56 - INFO - 메시지")
-        parts = line.strip().split(' - ', 2)
-        if len(parts) >= 3:
-            timestamp, level, message = parts
-            # HTML 특수 문자 이스케이프 처리
-            message = html.escape(message)
-            logs.append({
-                'timestamp': timestamp,
-                'level': level,
-                'message': message
-            })
+    ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
 
-    return jsonify(logs)
+    for days_back in range(7):  # 7일 전까지 확인
+        check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+        log_filename = f"{check_date}_{ticker_symbol}.log"
+        log_path = os.path.join(log_dir, log_filename)
+
+        if os.path.exists(log_path):
+            # 각 파일에서 최대 20줄씩 가져오기
+            file_logs = tail_file(log_path, 20)
+
+            for line in file_logs:
+                parts = line.strip().split(' - ', 2)
+                if len(parts) >= 3:
+                    timestamp, level, message = parts
+                    # HTML 특수 문자 이스케이프 처리
+                    message = html.escape(message)
+                    logs.append({
+                        'timestamp': timestamp,
+                        'level': level,
+                        'message': message,
+                        'date': check_date  # 날짜 정보 추가
+                    })
+
+    # 시간순으로 정렬 (최신 순)
+    logs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    # 최대 100개까지만 반환
+    return jsonify(logs[:100])
 
 
 @bp.route('/api/logs')
@@ -625,102 +615,86 @@ def get_all_logs():
     # 로그 디렉토리
     log_dir = 'logs'
 
-    # 오늘 날짜의 기본 로그 파일 찾기
-    today = datetime.now().strftime('%Y%m%d')
-    log_filename = f"{today}_web.log"
-    log_path = os.path.join(log_dir, log_filename)
-
-    # 로그 파일이 없으면 빈 배열 반환
-    if not os.path.exists(log_path):
-        # 가장 최근 날짜의 로그 파일 찾기
-        for days_back in range(1, 4):  # 1~3일 전까지 확인
-            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
-            old_log_filename = f"{check_date}_web.log"
-            old_log_path = os.path.join(log_dir, old_log_filename)
-
-            if os.path.exists(old_log_path):
-                # 이전 날짜의 로그 파일 찾았을 때
-                log_path = old_log_path
-                break
-        else:
-            # 3일 이내에 로그 파일을 찾지 못한 경우
-            return jsonify([])
-
-    # 로그 파일의 마지막 100줄 효율적으로 읽기
-    last_lines = tail_file(log_path, 100)
-
-    # 로그 라인 파싱
+    # 최근 7일간의 로그 파일들을 확인
     logs = []
-    for line in last_lines:
-        parts = line.strip().split(' - ', 2)
-        if len(parts) >= 3:
-            timestamp, level, message = parts
-            # HTML 특수 문자 이스케이프 처리
-            message = html.escape(message)
-            logs.append({
-                'timestamp': timestamp,
-                'level': level,
-                'message': message
-            })
 
-    return jsonify(logs)
+    for days_back in range(7):  # 7일 전까지 확인
+        check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+        log_filename = f"{check_date}_web.log"
+        log_path = os.path.join(log_dir, log_filename)
 
+        if os.path.exists(log_path):
+            # 각 파일에서 최대 20줄씩 가져오기
+            file_logs = tail_file(log_path, 20)
 
-@bp.route('/api/active_tickers')
-@login_required
-def get_active_tickers():
-    # 현재 사용자의 활성 티커 목록 반환
-    user_id = current_user.id
-    if user_id in trading_bots:
-        tickers = list(trading_bots[user_id].keys())
-        return jsonify(tickers)
-    return jsonify([])
+            for line in file_logs:
+                parts = line.strip().split(' - ', 2)
+                if len(parts) >= 3:
+                    timestamp, level, message = parts
+                    # HTML 특수 문자 이스케이프 처리
+                    message = html.escape(message)
+                    logs.append({
+                        'timestamp': timestamp,
+                        'level': level,
+                        'message': message,
+                        'date': check_date  # 날짜 정보 추가
+                    })
+
+    # 시간순으로 정렬 (최신 순)
+    logs.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    # 최대 100개까지만 반환
+    return jsonify(logs[:100])
 
 
 def tail_file(file_path, n=100):
-    """파일의 마지막 n줄 읽기"""
+    """파일의 마지막 n줄 읽기 (개선된 버전)"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             # 파일 끝으로 이동
             f.seek(0, 2)
-            # 파일 크기
             file_size = f.tell()
 
             # 빈 파일 체크
             if file_size == 0:
                 return []
 
-            # 파일 끝에서부터 읽기 시작
+            # 작은 파일의 경우 전체 읽기
+            if file_size < 8192:  # 8KB 미만
+                f.seek(0)
+                lines = f.readlines()
+                return [line for line in lines if line.strip()][-n:]
+
+            # 큰 파일의 경우 역방향 읽기
             lines = []
             chars_read = 0
-            lines_found = 0
+            buffer_size = 8192  # 8KB씩 읽기
 
-            # 파일 끝에서부터 역방향으로 읽기
-            while lines_found < n and chars_read < file_size:
-                # 한 번에 4KB씩 읽음
-                chars_to_read = min(4096, file_size - chars_read)
-                f.seek(file_size - chars_read - chars_to_read)
-                data = f.read(chars_to_read)
-                chars_read += chars_to_read
+            while len(lines) < n and chars_read < file_size:
+                # 읽을 크기 결정
+                chunk_size = min(buffer_size, file_size - chars_read)
+
+                # 파일 포인터 이동
+                f.seek(file_size - chars_read - chunk_size)
+                chunk = f.read(chunk_size)
+                chars_read += chunk_size
 
                 # 줄 단위로 분리
-                new_lines = data.split('\n')
+                chunk_lines = chunk.split('\n')
 
-                # 이전에 읽은 데이터와 합치기
-                if lines and new_lines[-1]:
-                    lines[0] = new_lines[-1] + lines[0]
-                    new_lines = new_lines[:-1]
+                # 이전에 읽은 데이터와 병합
+                if lines and chunk_lines[-1]:
+                    lines[0] = chunk_lines[-1] + lines[0]
+                    chunk_lines = chunk_lines[:-1]
 
-                # 새로운 줄 추가
-                lines = new_lines + lines
-                lines_found = len(lines)
+                # 새로운 줄들을 앞에 추가
+                lines = [line for line in chunk_lines if line.strip()] + lines
 
-            # 빈 줄 제거 및 최대 n줄 반환
-            return [line for line in lines if line.strip()][-n:]
+            return lines[-n:] if len(lines) > n else lines
+
     except Exception as e:
-        print(f"파일 읽기 오류: {str(e)}")
+        logger.error(f"파일 읽기 오류 ({file_path}): {str(e)}")
         return []
-
 
 # routes.py에 관리자 페이지 추가
 @bp.route('/admin')
