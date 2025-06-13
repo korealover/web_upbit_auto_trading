@@ -503,7 +503,6 @@ def validate_api_keys():
 # ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
 # 이 부분들은 websocket_handlers.py에서 처리됩니다.
 
-
 # ===== WebSocket 로거 클래스 =====
 class WebSocketLogger:
     """WebSocket을 통해 실시간 로그를 전송하는 로거"""
@@ -532,8 +531,15 @@ class WebSocketLogger:
     def _send_to_subscribers(self, log_entry):
         """구독자들에게 로그 전송"""
         try:
-            # SocketIO를 통해 이벤트 전송
-            socketio.emit('new_log', log_entry, broadcast=False)
+            # 방법 1: 모든 클라이언트에게 전송
+            socketio.emit('new_log', log_entry)
+
+            # 방법 2: 특정 사용자에게만 전송 (권장)
+            # from app.websocket_handlers import active_connections
+            # for session_id, conn_info in active_connections.items():
+            #     if str(conn_info['user_id']) == self.user_id:
+            #         socketio.emit('new_log', log_entry, room=session_id)
+
         except Exception as e:
             # WebSocket 전송 실패 시 파일 로거에만 기록
             self.file_logger.warning(f"WebSocket 로그 전송 실패: {str(e)}")
