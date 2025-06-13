@@ -29,10 +29,10 @@
                             <td>{{ user.registered_on.strftime('%Y-%m-%d %H:%M') }}</td>
                             <td>
                                 <div class="btn-group" role="group">
-                                    <form action="{{ url_for('approve_user', user_id=user.id) }}" method="post" class="d-inline">
+                                    <form action="{{ url_for('main.approve_user', user_id=user.id) }}" method="post" class="d-inline">
                                         <button type="submit" class="btn btn-success btn-sm">승인</button>
                                     </form>
-                                    <form action="{{ url_for('reject_user', user_id=user.id) }}" method="post" class="d-inline ms-2">
+                                    <form action="{{ url_for('main.reject_user', user_id=user.id) }}" method="post" class="d-inline ms-2">
                                         <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('정말로 이 사용자의 가입을 거부하시겠습니까?');">거부</button>
                                     </form>
                                 </div>
