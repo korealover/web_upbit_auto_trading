@@ -218,7 +218,7 @@ class UpbitAPI:
                 res = {"error": {"name": "logic_error", "message": f"최종 예상 주문 금액({final_estimated_value:,.2f}원)이 최소 주문 금액({min_order_value}원)보다 작습니다."}}
 
             if res and 'error' in res:
-                self.logger.error(f"분할 매도 주문 오류: {res}")
+                self.logger.error(f"분할 매도 주문 오류: {res} {estimated_value} {min_order_value}")
             elif res:
                 self.logger.info(f"분할 매도 주문 성공: {res}")
                 # 실제 매도된 비율 정보 추가
