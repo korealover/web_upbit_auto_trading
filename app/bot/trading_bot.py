@@ -286,7 +286,7 @@ class UpbitTradingBot:
     def record_trade(self, trade_type, ticker, price, volume, amount, profit_loss=None):
         """거래 기록 저장"""
         try:
-            from app import app
+            from flask import current_app as app  # 이 부분을 변경
             from app.models import kst_now  # 한국 시간 함수 import
 
             # 클래스 변수에서 사용자 ID 확인
