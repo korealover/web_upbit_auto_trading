@@ -208,8 +208,14 @@ class UpbitAPI:
             # 매도 전 캐시 무효화
             invalidate_cache()
 
-            # 업비트 API 호출 및 결과 반환
-            res = self.fetch_data(lambda: self.upbit.sell_market_order(ticker, sell_volume))
+            # 예상 주문 금액이 5000원 이상일 경우
+            if estimated_value >= min_order_value:
+                # 업비트 API 호출 및 결과 반환
+                res = self.fetch_data(lambda: self.upbit.sell_market_order(ticker, sell_volume))
+            else:
+                # 이 경우는 논리적으로 발생하지 않아야 하므로 로그 추가
+                self.logger.error(f"논리 오류: 최종 예상 금액({final_estimated_value:,.2f}원)이 최소 주문 금액({min_order_value}원)보다 작습니다.")
+                res = {"error": {"name": "logic_error", "message": f"최종 예상 주문 금액({final_estimated_value:,.2f}원)이 최소 주문 금액({min_order_value}원)보다 작습니다."}}
 
             if res and 'error' in res:
                 self.logger.error(f"분할 매도 주문 오류: {res}")
