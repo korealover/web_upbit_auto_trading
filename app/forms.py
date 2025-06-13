@@ -77,7 +77,7 @@ class TradingSettingsForm(FlaskForm):
     # 공통 설정
     buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
     min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=200000)
-    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=30)
+    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
 
     # 볼린저 밴드 전략 설정
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
