@@ -15,8 +15,6 @@ import time
 import html
 import os
 from datetime import datetime, timedelta
-from app.utils.caching import cache_with_timeout
-
 
 # Blueprint 생성
 bp = Blueprint('main', __name__)
@@ -572,238 +570,157 @@ class WebSocketLogger:
 
 
 # ===== 기존 REST API 엔드포인트들 유지 =====
-
-from app.utils.caching import cache_with_timeout
-
-
 @bp.route('/api/logs/<ticker>')
 @login_required
-@cache_with_timeout(seconds=30, max_size=50)  # 30초 캐싱
 def get_ticker_logs(ticker):
-    """특정 티커의 로그 조회 (캐싱 적용)"""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    days_back = request.args.get('days', 2, type=int)  # 기본 2일만 조회
+    # 로그 디렉토리
+    log_dir = 'logs'
 
-    # 최대 제한
-    per_page = min(per_page, 100)
-    days_back = min(days_back, 7)
+    # 오늘 날짜의 로그 파일 찾기
+    today = datetime.now().strftime('%Y%m%d')
+    ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
+    log_filename = f"{today}_{ticker_symbol}.log"
+    log_path = os.path.join(log_dir, log_filename)
 
-    return _get_logs_cached(ticker, page, per_page, days_back)
+    # 로그 파일이 없으면 빈 배열 반환
+    if not os.path.exists(log_path):
+        # 가장 최근 날짜의 로그 파일 찾기
+        for days_back in range(1, 4):  # 1~3일 전까지 확인
+            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+            old_log_filename = f"{check_date}_{ticker_symbol}.log"
+            old_log_path = os.path.join(log_dir, old_log_filename)
+
+            if os.path.exists(old_log_path):
+                # 이전 날짜의 로그 파일 찾았을 때
+                log_path = old_log_path
+                break
+        else:
+            # 3일 이내에 로그 파일을 찾지 못한 경우
+            return jsonify([])
+
+    # 로그 파일의 마지막 100줄 효율적으로 읽기
+    last_lines = tail_file(log_path, 100)
+
+    # 로그 라인 파싱
+    logs = []
+    for line in last_lines:
+        # 간단한 로그 파싱 (예: "2023-01-01 12:34:56 - INFO - 메시지")
+        parts = line.strip().split(' - ', 2)
+        if len(parts) >= 3:
+            timestamp, level, message = parts
+            # HTML 특수 문자 이스케이프 처리
+            message = html.escape(message)
+            logs.append({
+                'timestamp': timestamp,
+                'level': level,
+                'message': message
+            })
+
+    return jsonify(logs)
 
 
 @bp.route('/api/logs')
 @login_required
-@cache_with_timeout(seconds=30, max_size=50)  # 30초 캐싱
 def get_all_logs():
-    """전체 로그 조회 (캐싱 적용)"""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    days_back = request.args.get('days', 2, type=int)  # 기본 2일만 조회
-
-    # 최대 제한
-    per_page = min(per_page, 100)
-    days_back = min(days_back, 7)
-
-    return _get_logs_cached('', page, per_page, days_back)
-
-
-def _get_logs_cached(ticker, page=1, per_page=50, days_back=2):
-    """캐싱된 로그 조회 (내부 함수)"""
+    # 로그 디렉토리
     log_dir = 'logs'
-    all_logs = []
 
-    try:
-        # 지정된 일수만큼 로그 파일 확인
-        for days_back_idx in range(days_back):
-            check_date = (datetime.now() - timedelta(days=days_back_idx)).strftime('%Y%m%d')
+    # 오늘 날짜의 기본 로그 파일 찾기
+    today = datetime.now().strftime('%Y%m%d')
+    log_filename = f"{today}_web.log"
+    log_path = os.path.join(log_dir, log_filename)
 
-            if ticker:
-                ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
-                log_filename = f"{check_date}_{ticker_symbol}.log"
-            else:
-                log_filename = f"{check_date}_web.log"
+    # 로그 파일이 없으면 빈 배열 반환
+    if not os.path.exists(log_path):
+        # 가장 최근 날짜의 로그 파일 찾기
+        for days_back in range(1, 4):  # 1~3일 전까지 확인
+            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+            old_log_filename = f"{check_date}_web.log"
+            old_log_path = os.path.join(log_dir, old_log_filename)
 
-            log_path = os.path.join(log_dir, log_filename)
+            if os.path.exists(old_log_path):
+                # 이전 날짜의 로그 파일 찾았을 때
+                log_path = old_log_path
+                break
+        else:
+            # 3일 이내에 로그 파일을 찾지 못한 경우
+            return jsonify([])
 
-            if os.path.exists(log_path):
-                # 각 파일에서 제한된 수만 읽기 (성능 최적화)
-                lines_limit = 200 if days_back_idx == 0 else 100  # 오늘은 더 많이, 이전은 적게
-                file_logs = tail_file_optimized(log_path, lines_limit)
+    # 로그 파일의 마지막 100줄 효율적으로 읽기
+    last_lines = tail_file(log_path, 100)
 
-                for line in file_logs:
-                    parts = line.strip().split(' - ', 2)
-                    if len(parts) >= 3:
-                        timestamp, level, message = parts
-                        message = html.escape(message)
-                        all_logs.append({
-                            'timestamp': timestamp,
-                            'level': level,
-                            'message': message,
-                            'date': check_date
-                        })
+    # 로그 라인 파싱
+    logs = []
+    for line in last_lines:
+        parts = line.strip().split(' - ', 2)
+        if len(parts) >= 3:
+            timestamp, level, message = parts
+            # HTML 특수 문자 이스케이프 처리
+            message = html.escape(message)
+            logs.append({
+                'timestamp': timestamp,
+                'level': level,
+                'message': message
+            })
 
-        # 시간순 정렬 (최신 순)
-        all_logs.sort(key=lambda x: x['timestamp'], reverse=True)
-
-        # 페이지네이션 적용
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        logs_page = all_logs[start_idx:end_idx]
-
-        return jsonify({
-            'logs': logs_page,
-            'total': len(all_logs),
-            'page': page,
-            'per_page': per_page,
-            'has_next': end_idx < len(all_logs),
-            'has_prev': page > 1
-        })
-
-    except Exception as e:
-        logger.error(f"로그 조회 오류: {str(e)}")
-        return jsonify({'error': '로그를 불러오는 중 오류가 발생했습니다.'}), 500
+    return jsonify(logs)
 
 
-def tail_file_optimized(file_path, n=100):
-    """최적화된 파일 tail 읽기"""
-    try:
-        # 파일 크기 먼저 확인
-        file_size = os.path.getsize(file_path)
-
-        # 빈 파일이거나 매우 작은 파일
-        if file_size == 0:
-            return []
-
-        # 작은 파일 (50KB 미만)은 전체 읽기
-        if file_size < 51200:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                return [line.rstrip() for line in lines if line.strip()][-n:]
-
-        # 큰 파일은 끝부분만 읽기
-        with open(file_path, 'r', encoding='utf-8') as f:
-            # 파일 끝에서 적당한 크기만큼 읽기 (보통 마지막 몇 KB면 충분)
-            read_size = min(file_size, n * 200)  # 라인당 평균 200바이트 가정
-            f.seek(max(0, file_size - read_size))
-
-            # 첫 번째 불완전한 라인 건너뛰기
-            if f.tell() > 0:
-                f.readline()
-
-            lines = f.readlines()
-            return [line.rstrip() for line in lines if line.strip()][-n:]
-
-    except Exception as e:
-        logger.error(f"파일 읽기 오류 ({file_path}): {str(e)}")
-        return []
+@bp.route('/api/active_tickers')
+@login_required
+def get_active_tickers():
+    # 현재 사용자의 활성 티커 목록 반환
+    user_id = current_user.id
+    if user_id in trading_bots:
+        tickers = list(trading_bots[user_id].keys())
+        return jsonify(tickers)
+    return jsonify([])
 
 
 def tail_file(file_path, n=100):
-    """파일의 마지막 n줄 읽기 (개선된 버전)"""
+    """파일의 마지막 n줄 읽기"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             # 파일 끝으로 이동
             f.seek(0, 2)
+            # 파일 크기
             file_size = f.tell()
 
             # 빈 파일 체크
             if file_size == 0:
                 return []
 
-            # 작은 파일의 경우 전체 읽기
-            if file_size < 8192:  # 8KB 미만
-                f.seek(0)
-                lines = f.readlines()
-                return [line for line in lines if line.strip()][-n:]
-
-            # 큰 파일의 경우 역방향 읽기
+            # 파일 끝에서부터 읽기 시작
             lines = []
             chars_read = 0
-            buffer_size = 8192  # 8KB씩 읽기
+            lines_found = 0
 
-            while len(lines) < n and chars_read < file_size:
-                # 읽을 크기 결정
-                chunk_size = min(buffer_size, file_size - chars_read)
-
-                # 파일 포인터 이동
-                f.seek(file_size - chars_read - chunk_size)
-                chunk = f.read(chunk_size)
-                chars_read += chunk_size
+            # 파일 끝에서부터 역방향으로 읽기
+            while lines_found < n and chars_read < file_size:
+                # 한 번에 4KB씩 읽음
+                chars_to_read = min(4096, file_size - chars_read)
+                f.seek(file_size - chars_read - chars_to_read)
+                data = f.read(chars_to_read)
+                chars_read += chars_to_read
 
                 # 줄 단위로 분리
-                chunk_lines = chunk.split('\n')
+                new_lines = data.split('\n')
 
-                # 이전에 읽은 데이터와 병합
-                if lines and chunk_lines[-1]:
-                    lines[0] = chunk_lines[-1] + lines[0]
-                    chunk_lines = chunk_lines[:-1]
+                # 이전에 읽은 데이터와 합치기
+                if lines and new_lines[-1]:
+                    lines[0] = new_lines[-1] + lines[0]
+                    new_lines = new_lines[:-1]
 
-                # 새로운 줄들을 앞에 추가
-                lines = [line for line in chunk_lines if line.strip()] + lines
+                # 새로운 줄 추가
+                lines = new_lines + lines
+                lines_found = len(lines)
 
-            return lines[-n:] if len(lines) > n else lines
-
+            # 빈 줄 제거 및 최대 n줄 반환
+            return [line for line in lines if line.strip()][-n:]
     except Exception as e:
-        logger.error(f"파일 읽기 오류 ({file_path}): {str(e)}")
+        print(f"파일 읽기 오류: {str(e)}")
         return []
 
-
-@bp.route('/api/active-tickers')
-@login_required
-def get_active_tickers():
-    """활성 티커 목록 반환"""
-    try:
-        # 현재 실행 중인 봇들의 티커 목록
-        active_tickers = []
-
-        # trading_bots 딕셔너리에서 실행 중인 봇들 확인
-        for ticker, bot_info in trading_bots.items():
-            if bot_info and bot_info.get('status') == 'running':
-                active_tickers.append({
-                    'ticker': ticker,
-                    'status': 'running',
-                    'start_time': bot_info.get('start_time', ''),
-                    'last_update': bot_info.get('last_update', '')
-                })
-
-        return jsonify({
-            'active_tickers': active_tickers,
-            'total_count': len(active_tickers)
-        })
-
-    except Exception as e:
-        logger.error(f"활성 티커 조회 오류: {str(e)}")
-        return jsonify({'error': '활성 티커를 불러오는 중 오류가 발생했습니다.'}), 500
-
-
-@bp.route('/api/all-tickers')
-@login_required
-def get_all_tickers():
-    """전체 사용 가능한 티커 목록 반환"""
-    try:
-        from app.utils.tickers import get_ticker_choices
-
-        # 사용 가능한 모든 티커 목록
-        all_tickers = get_ticker_choices()
-
-        # 형태를 API 응답에 맞게 변환
-        ticker_list = []
-        for ticker_code, display_name in all_tickers:
-            ticker_list.append({
-                'ticker': ticker_code,
-                'name': display_name,
-                'symbol': ticker_code.split('-')[1] if '-' in ticker_code else ticker_code
-            })
-
-        return jsonify({
-            'tickers': ticker_list,
-            'total_count': len(ticker_list)
-        })
-
-    except Exception as e:
-        logger.error(f"티커 목록 조회 오류: {str(e)}")
-        return jsonify({'error': '티커 목록을 불러오는 중 오류가 발생했습니다.'}), 500
 
 # routes.py에 관리자 페이지 추가
 @bp.route('/admin')

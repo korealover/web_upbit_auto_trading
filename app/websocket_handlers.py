@@ -8,7 +8,6 @@ import time
 from datetime import datetime, timedelta
 from threading import Thread
 import html
-from app.utils.caching import cache_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -200,15 +199,14 @@ def parse_log_line(line):
     return None
 
 
-@cache_with_timeout(seconds=60, max_size=20)  # 1분 캐싱
 def get_recent_logs(ticker='', limit=50):
-    """최근 로그 가져오기 (캐싱 최적화)"""
+    """최근 로그 가져오기 (기존 API 로직 재사용)"""
     log_dir = 'logs'
     logs = []
 
     try:
-        # 최근 2일만 조회 (성능 최적화)
-        for days_back in range(2):
+        # 로그 파일들 확인
+        for days_back in range(4):
             check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
 
             if ticker:
@@ -220,19 +218,16 @@ def get_recent_logs(ticker='', limit=50):
             log_path = os.path.join(log_dir, log_filename)
 
             if os.path.exists(log_path):
-                # 각 날짜별로 제한된 수만 읽기
-                lines_per_day = 100 if days_back == 0 else 50
-                lines = tail_file(log_path, lines_per_day)
+                # 파일의 마지막 N줄 읽기
+                lines = tail_file(log_path, limit // 4)  # 각 파일에서 일정량씩
 
                 for line in lines:
-                    if line.strip():
-                        log_entry = parse_log_line(line.strip())
-                        if log_entry:
-                            log_entry['date'] = check_date
-                            logs.append(log_entry)
+                    log_entry = parse_log_line(line.strip())
+                    if log_entry:
+                        logs.append(log_entry)
 
-        # 시간순 정렬 및 제한
-        logs.sort(key=lambda x: x.get('raw_timestamp', x['timestamp']), reverse=True)
+        # 시간순 정렬
+        logs.sort(key=lambda x: x['timestamp'], reverse=True)
         return logs[:limit]
 
     except Exception as e:
@@ -240,75 +235,12 @@ def get_recent_logs(ticker='', limit=50):
         return []
 
 
-def get_log_files_to_watch(ticker=''):
-    """감시할 로그 파일 목록 반환 (개선된 버전)"""
-    today = datetime.now().strftime('%Y%m%d')
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-
-    if ticker:
-        # 특정 티커의 로그 파일 (오늘과 어제)
-        ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
-        return [
-            f"{today}_{ticker_symbol}.log",
-            f"{yesterday}_{ticker_symbol}.log"
-        ]
-    else:
-        # 전체 로그 파일 (오늘과 어제)
-        return [
-            f"{today}_web.log",
-            f"{yesterday}_web.log"
-        ]
-
-
 def tail_file(file_path, num_lines):
-    """파일의 마지막 N줄 읽기 (개선된 버전)"""
+    """파일의 마지막 N줄 읽기"""
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
-            # 파일 크기 확인
-            file.seek(0, 2)
-            file_size = file.tell()
-
-            if file_size == 0:
-                return []
-
-            # 작은 파일은 전체 읽기
-            if file_size < 8192:  # 8KB 미만
-                file.seek(0)
-                lines = file.readlines()
-                return [line.rstrip('\n\r') for line in lines if line.strip()][-num_lines:]
-
-            # 큰 파일은 역방향 읽기
-            lines = []
-            buffer_size = 8192
-            pos = file_size
-
-            while len(lines) < num_lines and pos > 0:
-                # 읽을 크기 결정
-                chunk_size = min(buffer_size, pos)
-                pos -= chunk_size
-
-                # 청크 읽기
-                file.seek(pos)
-                chunk = file.read(chunk_size)
-
-                # 줄 단위로 분리
-                chunk_lines = chunk.split('\n')
-
-                # 첫 번째 청크가 아니면 첫 번째 라인은 불완전할 수 있음
-                if pos > 0 and chunk_lines:
-                    chunk_lines = chunk_lines[1:]  # 첫 번째 불완전한 라인 제거
-
-                # 마지막 청크가 아니면 마지막 라인과 병합
-                if lines and chunk_lines:
-                    lines[0] = chunk_lines[-1] + lines[0]
-                    chunk_lines = chunk_lines[:-1]
-
-                # 빈 라인 제거하고 앞에 추가
-                valid_lines = [line for line in chunk_lines if line.strip()]
-                lines = valid_lines + lines
-
+            lines = file.readlines()
             return lines[-num_lines:] if len(lines) > num_lines else lines
-
     except Exception as e:
         logger.error(f"파일 tail 읽기 오류 ({file_path}): {e}")
         return []
