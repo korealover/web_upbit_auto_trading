@@ -255,6 +255,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let isAutoRefresh = true;
     let logBuffer = [];
     let reconnectAttempts = 0;
+    // 로그 관리 변수들
+    let currentPage = 1;
+    let isLoading = false;
+    let hasMoreLogs = true;
+    let lastLoadTime = 0;
+
+
     const MAX_LOGS = 50; // 로그 수 제한
     const MAX_RECONNECT_ATTEMPTS = 5; // 재연결 시도 제한
 
@@ -551,31 +558,118 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ===== 로그 관련 함수들 =====
-    function loadLogs() {
-        try {
-            const endpoint = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
+    // 초기 로그 로드
+    function loadLogs(ticker = '', reset = false) {
+        // 너무 자주 호출되는 것을 방지 (1초 제한)
+        const now = Date.now();
+        if (now - lastLoadTime < 1000 && !reset) {
+            return;
+        }
+        lastLoadTime = now;
 
-            fetch(endpoint)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(logs => {
-                    logBuffer = logs.slice(0, MAX_LOGS);
-                    updateLogDisplay();
-                })
-                .catch(error => {
-                    console.error('로그 로드 오류:', error);
-                    if (logContainer) {
-                        logContainer.innerHTML = '<div class="text-center text-danger">로그를 불러올 수 없습니다.</div>';
-                    }
-                });
-        } catch (error) {
-            console.error('로그 로드 오류:', error);
+        if (isLoading) return;
+
+        if (reset) {
+            currentPage = 1;
+            logBuffer = [];
+            hasMoreLogs = true;
+        }
+
+        if (!hasMoreLogs) return;
+
+        isLoading = true;
+        showLogLoading();
+
+        const url = ticker ?
+            `/api/logs/${ticker}?page=${currentPage}&per_page=50&days=2` :
+            `/api/logs?page=${currentPage}&per_page=50&days=2`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (reset) {
+                    logBuffer = data.logs || [];
+                } else {
+                    logBuffer = logBuffer.concat(data.logs || []);
+                }
+
+                hasMoreLogs = data.has_next || false;
+                currentPage++;
+
+                updateLogDisplay();
+            })
+            .catch(error => {
+                console.error('로그 로드 오류:', error);
+                showLogError('로그를 불러오는 중 오류가 발생했습니다.');
+            })
+            .finally(() => {
+                isLoading = false;
+                hideLogLoading();
+            });
+    }
+
+    // 더 많은 로그 로드 (스크롤 이벤트)
+    function loadMoreLogs() {
+        if (!isLoading && hasMoreLogs) {
+            const ticker = document.getElementById('tickerFilter').value;
+            loadLogs(ticker, false);
         }
     }
+
+    // 스크롤 이벤트 리스너
+    function setupLogScrollListener() {
+        const logContainer = document.getElementById('logContainer');
+        if (!logContainer) return;
+
+        logContainer.addEventListener('scroll', function() {
+            // 스크롤이 거의 끝에 도달했을 때 더 로드
+            if (logContainer.scrollTop + logContainer.clientHeight >= logContainer.scrollHeight - 100) {
+                loadMoreLogs();
+            }
+        });
+    }
+
+    // 로딩 표시
+    function showLogLoading() {
+        const logContainer = document.getElementById('logContainer');
+        if (!logContainer) return;
+
+        const loadingDiv = document.getElementById('logLoading');
+        if (!loadingDiv) {
+            const loading = document.createElement('div');
+            loading.id = 'logLoading';
+            loading.className = 'text-center text-muted p-3';
+            loading.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로그 로딩 중...';
+            logContainer.appendChild(loading);
+        }
+    }
+
+    function hideLogLoading() {
+        const loadingDiv = document.getElementById('logLoading');
+        if (loadingDiv) {
+            loadingDiv.remove();
+        }
+    }
+
+    // 오류 표시
+    function showLogError(message) {
+        const logContainer = document.getElementById('logContainer');
+        if (!logContainer) return;
+
+        logContainer.innerHTML = `<div class="text-center text-danger p-3">${message}</div>`;
+    }
+
+    // 페이지 로드 시 초기화
+    document.addEventListener('DOMContentLoaded', function() {
+        setupLogScrollListener();
+        loadLogs('', true); // 초기 로드
+    });
+
+
 
     function loadTradeRecords() {
         try {
@@ -617,25 +711,57 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // 활성 티커 로드 함수 수정
     function loadActiveTickers() {
-        try {
-            fetch('/api/active_tickers')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(tickers => {
-                    updateTickerSelectors(tickers);
-                })
-                .catch(error => {
-                    console.error('활성 티커 로드 오류:', error);
-                });
-        } catch (error) {
-            console.error('활성 티커 로드 오류:', error);
-        }
+        fetch('/api/active-tickers')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                updateActiveTickersDisplay(data.active_tickers || []);
+            })
+            .catch(error => {
+                console.error('활성 티커 로드 오류:', error);
+                // 오류 시 기본값으로 설정
+                updateActiveTickersDisplay([]);
+            });
     }
+
+    // 활성 티커 표시 업데이트
+    function updateActiveTickersDisplay(activeTickers) {
+        const container = document.getElementById('activeTickersContainer');
+        if (!container) return;
+
+        if (activeTickers.length === 0) {
+            container.innerHTML = '<div class="text-muted">실행 중인 봇이 없습니다.</div>';
+            return;
+        }
+
+        let html = '<div class="row">';
+        activeTickers.forEach(ticker => {
+            html += `
+                <div class="col-md-4 mb-2">
+                    <div class="card card-sm">
+                        <div class="card-body p-2">
+                            <h6 class="card-title mb-1">${ticker.ticker}</h6>
+                            <small class="text-success">실행 중</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+    }
+
 
     function updateTickerSelectors(tickers) {
         const selectors = [tickerSelector, tickerFilter];
@@ -969,6 +1095,17 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('페이지 가시성 변경 처리 오류:', error);
         }
     });
+
+    // 활성 티커 로드 (오류 시에도 계속 진행)
+    try {
+        loadActiveTickers();
+    } catch (error) {
+        console.warn('활성 티커 로드 실패, 계속 진행:', error);
+    }
+
+    // 주기적으로 활성 티커 업데이트 (30초마다)
+    setInterval(loadActiveTickers, 30000);
+
 });
 </script>
 {% endblock %}

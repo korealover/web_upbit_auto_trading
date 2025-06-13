@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timedelta
 from threading import Thread
 import html
+from app.utils.caching import cache_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -199,14 +200,15 @@ def parse_log_line(line):
     return None
 
 
+@cache_with_timeout(seconds=60, max_size=20)  # 1분 캐싱
 def get_recent_logs(ticker='', limit=50):
-    """최근 로그 가져오기 (개선된 버전 - 7일간 조회)"""
+    """최근 로그 가져오기 (캐싱 최적화)"""
     log_dir = 'logs'
     logs = []
 
     try:
-        # 최근 7일간의 로그 파일들을 확인
-        for days_back in range(7):
+        # 최근 2일만 조회 (성능 최적화)
+        for days_back in range(2):
             check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
 
             if ticker:
@@ -218,18 +220,18 @@ def get_recent_logs(ticker='', limit=50):
             log_path = os.path.join(log_dir, log_filename)
 
             if os.path.exists(log_path):
-                # 각 파일에서 일정량씩 읽기
-                lines_per_file = max(10, limit // 7)  # 최소 10줄, 전체를 7일로 나눔
-                lines = tail_file(log_path, lines_per_file)
+                # 각 날짜별로 제한된 수만 읽기
+                lines_per_day = 100 if days_back == 0 else 50
+                lines = tail_file(log_path, lines_per_day)
 
                 for line in lines:
                     if line.strip():
                         log_entry = parse_log_line(line.strip())
                         if log_entry:
-                            log_entry['date'] = check_date  # 날짜 정보 추가
+                            log_entry['date'] = check_date
                             logs.append(log_entry)
 
-        # 시간순 정렬 (최신 순)
+        # 시간순 정렬 및 제한
         logs.sort(key=lambda x: x.get('raw_timestamp', x['timestamp']), reverse=True)
         return logs[:limit]
 
