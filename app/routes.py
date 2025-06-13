@@ -502,7 +502,6 @@ def validate_api_keys():
 
 # ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
 # 이 부분들은 websocket_handlers.py에서 처리됩니다.
-
 # ===== WebSocket 로거 클래스 =====
 class WebSocketLogger:
     """WebSocket을 통해 실시간 로그를 전송하는 로거"""
@@ -519,7 +518,8 @@ class WebSocketLogger:
             'level': level,
             'message': message,
             'raw_timestamp': datetime.now().isoformat(),
-            'ticker': self.ticker
+            'ticker': self.ticker,
+            'user_id': self.user_id
         }
 
         # 파일에도 로그 기록
@@ -531,18 +531,27 @@ class WebSocketLogger:
     def _send_to_subscribers(self, log_entry):
         """구독자들에게 로그 전송"""
         try:
-            # 방법 1: 모든 클라이언트에게 전송
-            socketio.emit('new_log', log_entry)
+            # websocket_handlers의 active_connections를 사용하여 특정 사용자에게만 전송
+            from app.websocket_handlers import active_connections
 
-            # 방법 2: 특정 사용자에게만 전송 (권장)
-            # from app.websocket_handlers import active_connections
-            # for session_id, conn_info in active_connections.items():
-            #     if str(conn_info['user_id']) == self.user_id:
-            #         socketio.emit('new_log', log_entry, room=session_id)
+            # 해당 사용자의 활성 세션들을 찾아서 전송
+            for session_id, conn_info in active_connections.items():
+                if str(conn_info['user_id']) == self.user_id:
+                    # 해당 사용자가 구독 중인 티커와 일치하거나 전체 로그를 구독 중인 경우
+                    subscribed_ticker = conn_info.get('subscribed_ticker', '')
+                    if not subscribed_ticker or subscribed_ticker == self.ticker:
+                        # socketio 대신 websocket_handlers에서 직접 emit
+                        try:
+                            socketio.emit('new_log', log_entry, room=session_id)
+                        except Exception as emit_error:
+                            self.file_logger.debug(f"세션 {session_id}로 로그 전송 실패: {str(emit_error)}")
 
+        except ImportError:
+            # active_connections 가져오기 실패 시 기본 파일 로깅만 수행
+            self.file_logger.debug("active_connections를 가져올 수 없음. 파일 로깅만 수행.")
         except Exception as e:
             # WebSocket 전송 실패 시 파일 로거에만 기록
-            self.file_logger.warning(f"WebSocket 로그 전송 실패: {str(e)}")
+            self.file_logger.debug(f"WebSocket 로그 전송 실패: {str(e)}")
 
     def info(self, message):
         self._emit_log('INFO', message)
