@@ -208,8 +208,8 @@ class UpbitAPI:
             # 매도 전 캐시 무효화
             invalidate_cache()
 
-            # 예상 주문 금액이 5000원 이상일 경우
-            if estimated_value >= min_order_value:
+            # 예상 주문 금액이 5003원 이상일 경우 수수료 포함
+            if estimated_value >= (min_order_value + 3):
                 # 업비트 API 호출 및 결과 반환
                 res = self.fetch_data(lambda: self.upbit.sell_market_order(ticker, sell_volume))
             else:
