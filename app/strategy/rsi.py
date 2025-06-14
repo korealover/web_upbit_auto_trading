@@ -9,8 +9,8 @@ class RSIStrategy:
         self.api = upbit_api
         self.logger = logger
 
-    def calculate_rsi(self, prices, period=14):
-        """RSI 계산 - 안전한 버전"""
+    def calculate_rsi(self, prices, period=14, use_ema=True):
+        """RSI 계산 - 개선된 버전 (SMA/EMA 선택 가능)"""
         try:
             if len(prices) < period + 1:
                 self.logger.warning(f"RSI 계산을 위한 데이터 부족: {len(prices)}개 (최소 {period + 1}개 필요)")
@@ -20,18 +20,62 @@ class RSIStrategy:
             gain = delta.where(delta > 0, 0)
             loss = -delta.where(delta < 0, 0)
 
-            # 첫 번째 평균은 단순 평균 사용
-            avg_gain = gain.rolling(window=period).mean()
-            avg_loss = loss.rolling(window=period).mean()
+            if use_ema:
+                try:
+                    # 지수 이동평균 방식 (표준 RSI)
+                    alpha = 1.0 / period
 
-            # RSI 계산
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
+                    # 첫 번째 기간은 단순 평균 (인덱스 안전 처리)
+                    if len(gain) > period:
+                        first_avg_gain = gain.iloc[1:period + 1].mean()
+                        first_avg_loss = loss.iloc[1:period + 1].mean()
+                    else:
+                        # 데이터 부족 시 사용 가능한 데이터로 계산
+                        first_avg_gain = gain.iloc[1:].mean()
+                        first_avg_loss = loss.iloc[1:].mean()
 
-            # NaN 값을 50으로 대체 (중립값)
-            rsi = rsi.fillna(50)
+                    avg_gains = [first_avg_gain]
+                    avg_losses = [first_avg_loss]
+
+                    for i in range(period + 1, len(prices)):
+                        if i < len(gain):  # 인덱스 범위 확인
+                            avg_gain = alpha * gain.iloc[i] + (1 - alpha) * avg_gains[-1]
+                            avg_loss = alpha * loss.iloc[i] + (1 - alpha) * avg_losses[-1]
+                            avg_gains.append(avg_gain)
+                            avg_losses.append(avg_loss)
+
+                    # RSI 계산
+                    rsi_values = []
+                    for i in range(len(avg_gains)):
+                        if avg_losses[i] == 0:
+                            rsi_values.append(100.0)
+                        else:
+                            rs = avg_gains[i] / avg_losses[i]
+                            rsi_values.append(100 - (100 / (1 + rs)))
+
+                    # 전체 길이에 맞춰 RSI 시리즈 생성
+                    full_rsi = pd.Series([50] * len(prices), index=prices.index)
+                    if len(rsi_values) > 0:
+                        start_idx = min(period, len(prices) - len(rsi_values))
+                        end_idx = start_idx + len(rsi_values)
+                        full_rsi.iloc[start_idx:end_idx] = rsi_values
+                    rsi = full_rsi.fillna(50)
+
+                except Exception as ema_error:
+                    self.logger.warning(f"EMA RSI 계산 실패, SMA로 대체: {str(ema_error)}")
+                    # EMA 계산 실패 시 SMA로 대체
+                    use_ema = False
+
+            if not use_ema:
+                # 기존 단순 이동평균 방식
+                avg_gain = gain.rolling(window=period).mean()
+                avg_loss = loss.rolling(window=period).mean()
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+                rsi = rsi.fillna(50)
 
             return rsi
+
         except Exception as e:
             self.logger.error(f"RSI 계산 중 오류: {str(e)}")
             return pd.Series([50] * len(prices), index=prices.index)
@@ -61,7 +105,7 @@ class RSIStrategy:
         self.logger.error(f"모든 데이터 조회 시도 실패")
         return None
 
-    def generate_signal(self, ticker, period=14, oversold=30, overbought=70, timeframe='minute15'):
+    def generate_signal(self, ticker, period=14, oversold=30, overbought=70, timeframe='minute15', use_multi_timeframe=False, use_divergence=True):
         """RSI 기반 매매 신호 생성 - 개선된 버전
 
         Args:
@@ -101,112 +145,102 @@ class RSIStrategy:
 
             self.logger.info(f"RSI 전략 시작 - {ticker}, 기간: {period}, 과매도: {oversold}, 과매수: {overbought}")
 
-            # 안전한 데이터 조회 (충분한 여유를 두고 요청)
-            required_count = max(period * 3, 60)  # 최소 60개 또는 period의 3배
+            # 기본 RSI 계산
+            required_count = max(period * 3, 60)
             df = self.get_market_data_safely(ticker, timeframe, required_count)
 
             if df is None or len(df) < period + 5:
-                self.logger.error(f"데이터 부족으로 RSI 계산 불가: {len(df) if df is not None else 'None'}개")
+                self.logger.error(f"데이터 부족으로 RSI 계산 불가")
                 return 'HOLD'
 
-            # RSI 계산
-            df['rsi'] = self.calculate_rsi(df['close'], period)
-
-            # 최근 RSI 값들 확인
-            if len(df) < 2:
-                self.logger.error("RSI 신호 생성을 위한 데이터 부족")
-                return 'HOLD'
+            # RSI 계산 (지수 이동평균 사용)
+            df['rsi'] = self.calculate_rsi(df['close'], period, use_ema=True)
 
             current_rsi = df['rsi'].iloc[-1]
             previous_rsi = df['rsi'].iloc[-2] if len(df) >= 2 else current_rsi
 
-            # RSI 값 유효성 검사
-            if pd.isna(current_rsi) or pd.isna(previous_rsi):
-                self.logger.warning(f"RSI 값이 NaN: 현재={current_rsi}, 이전={previous_rsi}")
-                return 'HOLD'
+            # 다중 시간대 분석 (선택적)
+            timeframe_alignment = 'NEUTRAL'
+            if use_multi_timeframe:
+                multi_rsi = self.get_multi_timeframe_rsi(ticker)
+                timeframe_alignment = self.check_timeframe_alignment(multi_rsi)
 
-            self.logger.info(f"RSI 분석 - 현재: {current_rsi:.2f}, 이전: {previous_rsi:.2f}")
+            # 다이버전스 확인 (선택적)
+            divergence = None
+            if use_divergence:
+                divergence = self.check_divergence(df['close'], df['rsi'])
+
+            # RSI 트렌드 확인
+            rsi_trend = self.check_rsi_trend(df['rsi'])
 
             # 현재가와 잔고 확인
-            try:
-                current_price = self.api.get_current_price(ticker)
-                balance_coin = self.api.get_balance_coin(ticker)
+            current_price = self.api.get_current_price(ticker)
+            balance_coin = self.api.get_balance_coin(ticker)
 
-                if current_price is None:
-                    self.logger.error("현재가 조회 실패")
-                    return 'HOLD'
-
-            except Exception as e:
-                self.logger.error(f"가격/잔고 조회 중 오류: {str(e)}")
+            if current_price is None:
+                self.logger.error(f"현재가 조회 실패: {ticker}")
                 return 'HOLD'
 
-            # 매도 조건 확인 (코인 보유 중)
+            self.logger.info(f"RSI 분석 - 현재: {current_rsi:.2f}, 트렌드: {rsi_trend}, 다이버전스: {divergence}")
+
+            # 매도 조건 (코인 보유 중)
             if balance_coin and balance_coin > 0:
                 try:
                     avg_price = self.api.get_buy_avg(ticker)
                     if avg_price and avg_price > 0:
                         profit_loss = (current_price - avg_price) / avg_price * 100
 
-                        self.logger.info(f"보유 상태 - 평균매수가: {avg_price:,.0f}, 현재가: {current_price:,.0f}, 수익률: {profit_loss:.2f}%")
-
-                        # 과매수 구간에서 RSI 하락 시 매도
-                        if current_rsi >= overbought and current_rsi < previous_rsi:
-                            self.logger.info(f"과매수 하락 매도 신호 (RSI: {current_rsi:.2f}→{previous_rsi:.2f})")
+                        # 1. 기존 매도 조건들
+                        if (current_rsi >= overbought and current_rsi < previous_rsi) or \
+                                profit_loss >= 3.0 or profit_loss <= -2.0 or current_rsi >= 80:
                             return 'SELL'
 
-                        # 수익 실현 (3% 이상)
-                        if profit_loss >= 3.0:
-                            self.logger.info(f"목표 수익률 달성 매도 (수익률: {profit_loss:.2f}%)")
+                        # 2. 다이버전스 기반 매도
+                        if divergence == 'BEARISH' and current_rsi > 50:
+                            self.logger.info("Bearish Divergence 매도 신호")
                             return 'SELL'
 
-                        # 손절 (-2% 이하)
-                        if profit_loss <= -2.0:
-                            self.logger.info(f"손절 매도 (손실률: {profit_loss:.2f}%)")
+                        # 3. 다중 시간대 과매수 정렬
+                        if timeframe_alignment == 'OVERBOUGHT_ALIGNED':
+                            self.logger.info("다중 시간대 과매수 매도 신호")
                             return 'SELL'
-
-                        # RSI 80 이상에서 매도 (강한 과매수)
-                        if current_rsi >= 80:
-                            self.logger.info(f"강한 과매수 매도 (RSI: {current_rsi:.2f})")
-                            return 'SELL'
-                    else:
-                        self.logger.warning("평균 매수가 조회 실패")
 
                 except Exception as e:
                     self.logger.error(f"매도 조건 확인 중 오류: {str(e)}")
 
-            # 매수 조건 확인 (코인 미보유)
+            # 매수 조건 (코인 미보유)
             else:
-                # 과매도에서 회복 신호
+                # 거래량 확인
+                volume_confirmed = self.check_volume_confirmation(df)
+
+                # 1. 기존 과매도 회복 조건
                 if previous_rsi <= oversold and current_rsi > oversold:
-                    # 추가 안전장치: 거래량 확인
-                    try:
-                        if len(df) >= 5:
-                            recent_volumes = df['volume'].iloc[-5:]
-                            avg_volume = recent_volumes.mean()
-                            current_volume = df['volume'].iloc[-1]
-
-                            if current_volume > avg_volume * 1.2:  # 20% 이상 거래량 증가
-                                self.logger.info(f"과매도 회복 매수 신호 (RSI: {previous_rsi:.2f}→{current_rsi:.2f}, 거래량 증가)")
-                                return 'BUY'
-                            else:
-                                self.logger.info(f"과매도 회복이나 거래량 부족 (현재량: {current_volume:.0f}, 평균: {avg_volume:.0f})")
-                        else:
-                            # 거래량 정보가 부족할 때는 RSI만으로 판단
-                            self.logger.info(f"과매도 회복 매수 신호 (RSI: {previous_rsi:.2f}→{current_rsi:.2f})")
-                            return 'BUY'
-                    except Exception as e:
-                        self.logger.error(f"거래량 분석 중 오류: {str(e)}")
-                        # 거래량 분석 실패 시 RSI만으로 판단
-                        self.logger.info(f"과매도 회복 매수 신호 (RSI: {previous_rsi:.2f}→{current_rsi:.2f})")
+                    if volume_confirmed:
+                        self.logger.info(f"과매도 회복 매수 신호 (거래량 확인됨)")
                         return 'BUY'
+                    else:
+                        self.logger.info(f"과매도 회복이나 거래량 부족")
+                        return 'HOLD'
 
-                # 강한 과매도에서 직접 매수 (RSI 20 이하)
-                elif current_rsi <= 20:
-                    self.logger.info(f"강한 과매도 매수 신호 (RSI: {current_rsi:.2f})")
+                # 2. 강한 과매도에서 상승 전환
+                elif current_rsi <= 20 and rsi_trend == 'RISING':
+                    self.logger.info("강한 과매도 상승 전환 매수 신호")
                     return 'BUY'
 
-            # 기본값: HOLD
-            self.logger.info(f"RSI 홀드 신호 (RSI: {current_rsi:.2f})")
+                # 3. 다이버전스 기반 매수
+                elif divergence == 'BULLISH' and current_rsi < 50:
+                    if volume_confirmed:
+                        self.logger.info("Bullish Divergence 매수 신호 (거래량 확인됨)")
+                        return 'BUY'
+                    else:
+                        self.logger.info("Bullish Divergence 감지되나 거래량 부족")
+                        return 'HOLD'
+
+                # 4. 다중 시간대 과매도 정렬
+                elif timeframe_alignment == 'OVERSOLD_ALIGNED':
+                    self.logger.info("다중 시간대 과매도 매수 신호")
+                    return 'BUY'
+
             return 'HOLD'
 
         except Exception as e:
@@ -214,3 +248,134 @@ class RSIStrategy:
             import traceback
             self.logger.error(f"오류 상세: {traceback.format_exc()}")
             return 'HOLD'
+
+    def check_rsi_trend(self, rsi_values, period=3):
+        """RSI 트렌드 확인 (상승/하락/횡보)"""
+        try:
+            if len(rsi_values) < period:
+                return 'NEUTRAL'
+
+            recent_rsi = rsi_values.iloc[-period:]
+
+            # 연속 상승
+            if all(recent_rsi.iloc[i] > recent_rsi.iloc[i - 1] for i in range(1, len(recent_rsi))):
+                return 'RISING'
+
+            # 연속 하락
+            if all(recent_rsi.iloc[i] < recent_rsi.iloc[i - 1] for i in range(1, len(recent_rsi))):
+                return 'FALLING'
+
+            return 'NEUTRAL'
+
+        except Exception as e:
+            self.logger.error(f"RSI 트렌드 확인 중 오류: {str(e)}")
+            return 'NEUTRAL'
+
+    def get_multi_timeframe_rsi(self, ticker, timeframes=['minute15', 'minute60', 'day'], period=14):
+        """다중 시간대 RSI 확인"""
+        multi_rsi = {}
+
+        for tf in timeframes:
+            try:
+                df = self.get_market_data_safely(ticker, tf, max(period * 3, 60))
+                if df is not None and len(df) >= period + 5:
+                    rsi = self.calculate_rsi(df['close'], period)
+                    current_rsi = rsi.iloc[-1]
+                    multi_rsi[tf] = {
+                        'rsi': current_rsi,
+                        'trend': self.check_rsi_trend(rsi)
+                    }
+                    self.logger.info(f"{tf} RSI: {current_rsi:.2f} ({multi_rsi[tf]['trend']})")
+                else:
+                    self.logger.warning(f"{tf} 데이터 부족")
+
+            except Exception as e:
+                self.logger.error(f"{tf} RSI 계산 중 오류: {str(e)}")
+
+        return multi_rsi
+
+    def check_timeframe_alignment(self, multi_rsi):
+        """시간대별 RSI 정렬 확인"""
+        try:
+            if len(multi_rsi) < 2:
+                return 'NEUTRAL'
+
+            # 모든 시간대가 과매도 상태
+            oversold_count = sum(1 for data in multi_rsi.values() if data['rsi'] <= 30)
+            overbought_count = sum(1 for data in multi_rsi.values() if data['rsi'] >= 70)
+
+            total_timeframes = len(multi_rsi)
+
+            if oversold_count >= total_timeframes * 0.7:  # 70% 이상
+                return 'OVERSOLD_ALIGNED'
+            elif overbought_count >= total_timeframes * 0.7:
+                return 'OVERBOUGHT_ALIGNED'
+
+            return 'NEUTRAL'
+
+        except Exception as e:
+            self.logger.error(f"시간대 정렬 확인 중 오류: {str(e)}")
+            return 'NEUTRAL'
+
+    def check_divergence(self, prices, rsi_values, lookback=10):
+        """RSI 다이버전스 확인 - 개선된 버전"""
+        try:
+            if len(prices) < lookback or len(rsi_values) < lookback:
+                return None
+
+            recent_prices = prices.iloc[-lookback:]
+            recent_rsi = rsi_values.iloc[-lookback:]
+
+            # 중간 지점과 현재 지점 비교로 다이버전스 확인
+            mid_point = lookback // 2
+
+            # 가격과 RSI의 변화 방향 계산
+            price_change = recent_prices.iloc[-1] - recent_prices.iloc[mid_point]
+            rsi_change = recent_rsi.iloc[-1] - recent_rsi.iloc[mid_point]
+
+            # 가격 변화율과 RSI 변화율 계산
+            price_change_pct = price_change / recent_prices.iloc[mid_point] * 100
+            rsi_change_pct = rsi_change / recent_rsi.iloc[mid_point] * 100
+
+            # 임계값 설정 (변화가 미미하면 다이버전스로 판단하지 않음)
+            min_change_threshold = 2.0  # 2% 이상 변화 시에만 고려
+
+            if abs(price_change_pct) < min_change_threshold:
+                return None
+
+            # Bearish Divergence: 가격은 상승, RSI는 하락
+            if price_change > 0 and rsi_change < 0 and abs(rsi_change_pct) > min_change_threshold:
+                self.logger.info(f"Bearish Divergence 감지 - 가격변화: {price_change_pct:.2f}%, RSI변화: {rsi_change_pct:.2f}%")
+                return 'BEARISH'
+
+            # Bullish Divergence: 가격은 하락, RSI는 상승
+            if price_change < 0 and rsi_change > 0 and abs(rsi_change_pct) > min_change_threshold:
+                self.logger.info(f"Bullish Divergence 감지 - 가격변화: {price_change_pct:.2f}%, RSI변화: {rsi_change_pct:.2f}%")
+                return 'BULLISH'
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"다이버전스 확인 중 오류: {str(e)}")
+            return None
+
+    def check_volume_confirmation(self, df, lookback=5):
+        """거래량 확인을 통한 신호 검증"""
+        try:
+            if len(df) < lookback:
+                return True  # 데이터 부족 시 기본 승인
+
+            recent_volumes = df['volume'].iloc[-lookback:]
+            avg_volume = recent_volumes.mean()
+            current_volume = df['volume'].iloc[-1]
+
+            # 현재 거래량이 평균의 120% 이상이면 승인
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+
+            self.logger.info(f"거래량 분석 - 현재: {current_volume:.0f}, 평균: {avg_volume:.0f}, 비율: {volume_ratio:.2f}")
+
+            return volume_ratio >= 1.2
+
+        except Exception as e:
+            self.logger.error(f"거래량 확인 중 오류: {str(e)}")
+            return True
