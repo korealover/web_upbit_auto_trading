@@ -5,9 +5,8 @@
 
 # 설정 변수
 SCRIPT_PATH="/home/korealover/web_upbit_auto_trading" # 스크립트 경로
-PID_PATH="/tmp/upbit_bots"
 PYTHON_SCRIPT="$SCRIPT_PATH/coin_monitor.py"  # 실행할 파이썬 스크립트 경로
-PID_FILE="$PID_PATH/coin_monitor.pid"      # PID 파일 경로
+PID_FILE="$SCRIPT_PATH/coin_monitor.pid"      # PID 파일 경로
 LOG_FILE="$SCRIPT_PATH/logs/coin_monitor_daemon.log"  # 로그 파일 경로
 PYTHON_CMD="/home/korealover/web_upbit_auto_trading/.venv/bin/python3"                         # 파이썬 명령어 (환경에 따라 python 또는 python3)
 
