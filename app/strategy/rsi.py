@@ -11,6 +11,7 @@ class RSIStrategy:
 
     def calculate_rsi(self, prices, period=14, use_ema=True):
         """RSI 계산 - 개선된 버전 (SMA/EMA 선택 가능)"""
+        global rsi
         try:
             if len(prices) < period + 1:
                 self.logger.warning(f"RSI 계산을 위한 데이터 부족: {len(prices)}개 (최소 {period + 1}개 필요)")
@@ -191,7 +192,7 @@ class RSIStrategy:
                         profit_loss = (current_price - avg_price) / avg_price * 100
 
                         # 1. 기존 매도 조건들
-                        if (current_rsi >= overbought and current_rsi < previous_rsi) or \
+                        if (overbought <= current_rsi < previous_rsi) or \
                                 profit_loss >= 3.0 or profit_loss <= -2.0 or current_rsi >= 80:
                             return 'SELL'
 
@@ -214,7 +215,7 @@ class RSIStrategy:
                 volume_confirmed = self.check_volume_confirmation(df)
 
                 # 1. 기존 과매도 회복 조건
-                if previous_rsi <= oversold and current_rsi > oversold:
+                if previous_rsi <= oversold < current_rsi:
                     if volume_confirmed:
                         self.logger.info(f"과매도 회복 매수 신호 (거래량 확인됨)")
                         return 'BUY'
@@ -271,8 +272,10 @@ class RSIStrategy:
             self.logger.error(f"RSI 트렌드 확인 중 오류: {str(e)}")
             return 'NEUTRAL'
 
-    def get_multi_timeframe_rsi(self, ticker, timeframes=['minute15', 'minute60', 'day'], period=14):
+    def get_multi_timeframe_rsi(self, ticker, timeframes=None, period=14):
         """다중 시간대 RSI 확인"""
+        if timeframes is None:
+            timeframes = ['minute15', 'minute60', 'day']
         multi_rsi = {}
 
         for tf in timeframes:

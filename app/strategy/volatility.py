@@ -1,6 +1,25 @@
 import datetime
 
 
+def is_trading_time():
+    """거래 시간 확인 (9시부터 다음날 8시 50분까지)"""
+    now = datetime.datetime.now()
+    market_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    market_end = now.replace(hour=8, minute=50, second=0, microsecond=0)
+
+    # 당일 9시부터 다음날 8시 50분까지 거래 가능
+    if now.hour < 9:
+        # 당일 0시 ~ 9시 전
+        yesterday = now - datetime.timedelta(days=1)
+        market_start = yesterday.replace(hour=9, minute=0, second=0, microsecond=0)
+    else:
+        # 당일 9시 이후
+        tomorrow = now + datetime.timedelta(days=1)
+        market_end = tomorrow.replace(hour=8, minute=50, second=0, microsecond=0)
+
+    return market_start <= now <= market_end
+
+
 class VolatilityBreakoutStrategy:
     """변동성 돌파 전략 클래스"""
 
@@ -34,24 +53,6 @@ class VolatilityBreakoutStrategy:
         except Exception as e:
             self.logger.error(f"목표가 계산 중 오류: {str(e)}")
             return None
-
-    def is_trading_time(self):
-        """거래 시간 확인 (9시부터 다음날 8시 50분까지)"""
-        now = datetime.datetime.now()
-        market_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
-        market_end = now.replace(hour=8, minute=50, second=0, microsecond=0)
-
-        # 당일 9시부터 다음날 8시 50분까지 거래 가능
-        if now.hour < 9:
-            # 당일 0시 ~ 9시 전
-            yesterday = now - datetime.timedelta(days=1)
-            market_start = yesterday.replace(hour=9, minute=0, second=0, microsecond=0)
-        else:
-            # 당일 9시 이후
-            tomorrow = now + datetime.timedelta(days=1)
-            market_end = tomorrow.replace(hour=8, minute=50, second=0, microsecond=0)
-
-        return market_start <= now <= market_end
 
     def generate_volatility_signal(self, ticker, k=0.5, target_profit=3.0, stop_loss=-2.0):
         """변동성 돌파 전략 매매 신호 생성
@@ -110,7 +111,7 @@ class VolatilityBreakoutStrategy:
             return 'HOLD'
 
         # 거래 시간 확인
-        if not self.is_trading_time():
+        if not is_trading_time():
             self.logger.info("현재는 거래 시간이 아닙니다.")
             return 'HOLD'
 
