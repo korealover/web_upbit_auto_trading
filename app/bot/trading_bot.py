@@ -283,71 +283,56 @@ class UpbitTradingBot:
         except Exception as e:
             self.logger.error(f"실행 중 오류 발생: {str(e)}", exc_info=True)
 
-    def record_trade(self, trade_type, ticker, price, volume, amount, profit_loss=None):
+    def record_trade(self, trade_type, ticker, price, volume, amount):
         """거래 기록 저장"""
         try:
-            from flask import current_app as app  # 이 부분을 변경
-            from app.models import kst_now  # 한국 시간 함수 import
+            # Flask 애플리케이션 컨텍스트를 정확하게 가져오기
+            from app import create_app
+            from config import Config
 
-            # 클래스 변수에서 사용자 ID 확인
-            user_id = self.user_id
+            # 현재 앱 인스턴스 가져오기 또는 새로 생성
+            try:
+                from flask import current_app
+                app = current_app._get_current_object()
+            except RuntimeError:
+                # 현재 앱 컨텍스트가 없는 경우 새로 생성
+                app = create_app(Config)
 
-            # 없다면 다시 args에서 확인 (초기화 이후 설정되었을 수 있음)
-            if not user_id:
-                if hasattr(self.args, 'user_id'):
-                    user_id = self.args.user_id
-                elif isinstance(self.args, dict) and 'user_id' in self.args:
-                    user_id = self.args['user_id']
-
-            if not user_id:
-                self.logger.error("거래 기록을 저장할 사용자 ID를 찾을 수 없습니다.")
-
-                # 사용자 ID가 없는 경우, 디버깅 정보 출력
-                if hasattr(self.args, '__dict__'):
-                    self.logger.error(f"args 내용: {self.args.__dict__}")
-                elif isinstance(self.args, dict):
-                    self.logger.error(f"args 내용: {self.args}")
-                else:
-                    self.logger.error(f"args 타입: {type(self.args)}")
-                return
-
-            # 전략 정보
-            strategy = None
-            if hasattr(self.args, 'strategy') and hasattr(self.args.strategy, 'data'):
-                strategy = self.args.strategy.data
-            elif isinstance(self.args, dict) and 'strategy' in self.args:
-                strategy = self.args['strategy']
-            else:
-                strategy = 'bollinger'
-
-            # 매수 수량이 0인 경우 경고 로그 추가
-            if volume <= 0:
-                self.logger.warning(f"기록하려는 거래 수량이 0 이하입니다: {volume}. 거래 유형: {trade_type}")
-
-            self.logger.info(f"거래 기록 저장 시작: {trade_type} {ticker} 수량: {volume:.8f} @ {price:,.2f}원 (사용자 ID: {user_id})")
-
-            # 애플리케이션 컨텍스트 설정
             with app.app_context():
-                # 새 거래 기록 생성 - 한국 시간으로 저장
+                from app.models import TradeRecord, db
+                from app.models import kst_now  # 한국 시간 함수 import
+
+                # 매도인 경우 수익/손실률 계산
+                profit_loss = None
+                if trade_type == 'SELL':
+                    try:
+                        # 평균 매수가 가져오기
+                        avg_buy_price = self.api.get_buy_avg(ticker)
+                        if avg_buy_price and avg_buy_price > 0:
+                            profit_loss = ((price - avg_buy_price) / avg_buy_price) * 100
+                            self.logger.info(f"수익률 계산: 매도가({price}) - 평균매수가({avg_buy_price}) = {profit_loss:.2f}%")
+                    except Exception as e:
+                        self.logger.warning(f"수익률 계산 실패: {str(e)}")
+
+                # TradeRecord 생성 및 저장
                 trade_record = TradeRecord(
-                    user_id=user_id,
+                    user_id=self.user_id,
                     ticker=ticker,
                     trade_type=trade_type,
-                    price=float(price) if price else 0,
-                    volume=float(volume) if volume else 0,
-                    amount=float(amount) if amount else 0,
-                    profit_loss=float(profit_loss) if profit_loss else None,
-                    strategy=strategy,
+                    price=price,
+                    volume=volume,
+                    amount=amount,
+                    profit_loss=profit_loss,
+                    strategy=self.args.get('strategy', 'unknown'),
                     timestamp=kst_now()  # UTC 대신 한국 시간 사용
                 )
 
-                self.logger.info(f"거래 기록 객체 생성됨: {trade_record}")
-
-                # 데이터베이스에 저장
                 db.session.add(trade_record)
                 db.session.commit()
 
-                self.logger.info(f"거래 기록 저장 완료: ID={trade_record.id}, 시간={trade_record.timestamp}")
+                self.logger.info(f"거래 기록 저장 완료: {trade_type} {ticker} {volume} @ {price}")
 
         except Exception as e:
-            self.logger.error(f"거래 기록 저장 중 오류: {str(e)}", exc_info=True)
+            self.logger.error(f"거래 기록 저장 중 오류: {str(e)}")
+            import traceback
+            self.logger.error(f"상세 오류: {traceback.format_exc()}")
