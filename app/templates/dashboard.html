@@ -149,7 +149,7 @@
     </div>
 </div>
 
-<!-- 실시간 로그 (헤더 수정) -->
+<!-- 실시간 로그 (숨김/표시 토글 기능 추가) -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
@@ -168,9 +168,14 @@
                     <button id="auto-refresh-toggle" class="btn btn-sm btn-outline-secondary" data-auto="true">
                         <i class="fas fa-pause"></i> 자동 새로고침
                     </button>
+                    <!-- 로그 표시/숨김 토글 버튼 추가 -->
+                    <button id="toggle-logs-btn" class="btn btn-sm btn-outline-info" data-visible="false">
+                        <i class="fas fa-eye"></i> 로그 보기
+                    </button>
                 </div>
             </div>
-            <div class="card-body">
+            <!-- 로그 컨테이너를 기본적으로 숨김 처리 -->
+            <div class="card-body" id="log-section" style="display: none;">
                 <div id="log-container" style="height: 350px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; font-family: 'Courier New', monospace; font-size: 0.9em; border-radius: 5px;">
                     <div class="text-center text-muted">
                         <i class="fas fa-spinner fa-spin me-2"></i>로그를 불러오는 중...
@@ -179,7 +184,6 @@
             </div>
         </div>
     </div>
-</div>
 
 <!-- 거래 기록 -->
 <div class="row mt-4">
@@ -254,11 +258,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function init() {
         try {
             loadActiveTickers();
-            loadLogs();
+            // 초기에는 로그를 로드하지 않음 (숨김 상태이므로)
+            // loadLogs(); // 이 줄을 주석처리 또는 제거
             loadTradeRecords();
             attachEventListeners();
             initWebSocket();
-            startAutoRefresh();
+            // 초기에는 자동 새로고침을 시작하지 않음
+            // startAutoRefresh(); // 이 줄을 주석처리 또는 제거
             console.log('대시보드 초기화 완료');
         } catch (error) {
             console.error('초기화 오류:', error);
@@ -315,16 +321,21 @@ document.addEventListener('DOMContentLoaded', function() {
             reconnectAttempts = 0; // 성공 시 재설정
             updateConnectionStatus('connected');
 
-            // 안전한 데이터 요청
-            setTimeout(() => {
-                if (socket && socket.connected) {
-                    socket.emit('request_recent_logs', {
-                        ticker: selectedTicker,
-                        limit: MAX_LOGS
-                    });
-                    subscribeToLogs(selectedTicker);
-                }
-            }, 100);
+            // 로그가 표시 상태일 때만 데이터 요청
+            const toggleBtn = document.getElementById('toggle-logs-btn');
+            const isLogsVisible = toggleBtn && toggleBtn.getAttribute('data-visible') === 'true';
+
+            if (isLogsVisible) {
+                setTimeout(() => {
+                    if (socket && socket.connected) {
+                        socket.emit('request_recent_logs', {
+                            ticker: selectedTicker,
+                            limit: MAX_LOGS
+                        });
+                        subscribeToLogs(selectedTicker);
+                    }
+                }, 100);
+            }
         });
 
         socket.on('disconnect', function() {
@@ -410,6 +421,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const refreshLogsBtn = document.getElementById('refresh-logs-btn');
         const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
         const refreshTradesBtn = document.getElementById('refresh-trades-btn');
+        const toggleLogsBtn = document.getElementById('toggle-logs-btn'); // 새로 추가
 
         if (refreshLogsBtn) {
             refreshLogsBtn.addEventListener('click', handleRefreshLogs);
@@ -421,6 +433,69 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (refreshTradesBtn) {
             refreshTradesBtn.addEventListener('click', loadTradeRecords);
+        }
+
+        // 로그 토글 버튼 이벤트 추가
+        if (toggleLogsBtn) {
+            toggleLogsBtn.addEventListener('click', toggleLogsVisibility);
+        }
+    }
+
+    // ===== 로그 표시/숨김 토글 함수 추가 =====
+    function toggleLogsVisibility() {
+        const logSection = document.getElementById('log-section');
+        const toggleBtn = document.getElementById('toggle-logs-btn');
+
+        if (!logSection || !toggleBtn) return;
+
+        const isVisible = toggleBtn.getAttribute('data-visible') === 'true';
+
+        if (isVisible) {
+            // 로그 숨기기
+            logSection.style.display = 'none';
+            toggleBtn.setAttribute('data-visible', 'false');
+            toggleBtn.innerHTML = '<i class="fas fa-eye"></i> 로그 보기';
+            toggleBtn.classList.remove('btn-outline-warning');
+            toggleBtn.classList.add('btn-outline-info');
+
+            // WebSocket 구독 해제 및 자동 새로고침 일시 정지
+            if (isWebSocketConnected && socket) {
+                socket.emit('unsubscribe_logs');
+            }
+
+            // 자동 새로고침 일시 정지
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+
+            console.log('실시간 로그 숨김');
+
+        } else {
+            // 로그 표시하기
+            logSection.style.display = 'block';
+            toggleBtn.setAttribute('data-visible', 'true');
+            toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 로그 숨기기';
+            toggleBtn.classList.remove('btn-outline-info');
+            toggleBtn.classList.add('btn-outline-warning');
+
+            // 로그 로드 및 WebSocket 구독 시작
+            if (isWebSocketConnected && socket) {
+                socket.emit('request_recent_logs', {
+                    ticker: selectedTicker,
+                    limit: MAX_LOGS
+                });
+                subscribeToLogs(selectedTicker);
+            } else {
+                loadLogs();
+            }
+
+            // 자동 새로고침 재시작 (활성화된 경우)
+            if (isAutoRefresh) {
+                startAutoRefresh();
+            }
+
+            console.log('실시간 로그 표시');
         }
     }
 
@@ -452,6 +527,12 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleTickerChange() {
         selectedTicker = this.value;
 
+        // 로그가 표시 상태일 때만 새로고침
+        const toggleBtn = document.getElementById('toggle-logs-btn');
+        const isLogsVisible = toggleBtn && toggleBtn.getAttribute('data-visible') === 'true';
+
+        if (!isLogsVisible) return; // 로그가 숨김 상태면 아무것도 하지 않음
+
         if (isWebSocketConnected && socket) {
             socket.emit('unsubscribe_logs');
             setTimeout(() => {
@@ -479,6 +560,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function handleRefreshLogs() {
+        // 로그가 표시 상태일 때만 새로고침
+        const toggleBtn = document.getElementById('toggle-logs-btn');
+        const isLogsVisible = toggleBtn && toggleBtn.getAttribute('data-visible') === 'true';
+
+        if (!isLogsVisible) {
+            showNotification('warning', '로그를 먼저 표시해주세요.');
+            return;
+        }
+
         if (isWebSocketConnected && socket) {
             socket.emit('request_recent_logs', {
                 ticker: selectedTicker,
