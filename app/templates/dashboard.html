@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -148,32 +149,28 @@
     </div>
 </div>
 
-<!-- 실시간 로그 (수정된 부분) -->
+<!-- 실시간 로그 (헤더 수정) -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>📝 실시간 로그</span>
                 <div class="d-flex gap-2 align-items-center">
-                    <!-- 로그 표시/숨김 토글 버튼 추가 -->
-                    <button id="toggle-logs-btn" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-eye"></i> 로그 보기
-                    </button>
-                    <span id="connection-status" class="badge bg-secondary" style="display: none;">
+                    <span id="connection-status" class="badge bg-secondary">
                         <i class="fas fa-circle text-warning"></i> 연결 중...
                     </span>
-                    <select id="ticker-selector" class="form-select form-select-sm" style="width: 120px; display: none;">
+                    <select id="ticker-selector" class="form-select form-select-sm" style="width: 120px;">
                         <option value="">모든 티커</option>
                     </select>
-                    <button id="refresh-logs-btn" class="btn btn-sm btn-outline-primary" style="display: none;">
+                    <button id="refresh-logs-btn" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-sync-alt"></i> 새로고침
                     </button>
-                    <button id="auto-refresh-toggle" class="btn btn-sm btn-outline-secondary" data-auto="true" style="display: none;">
+                    <button id="auto-refresh-toggle" class="btn btn-sm btn-outline-secondary" data-auto="true">
                         <i class="fas fa-pause"></i> 자동 새로고침
                     </button>
                 </div>
             </div>
-            <div class="card-body" id="log-card-body" style="display: none;">
+            <div class="card-body">
                 <div id="log-container" style="height: 350px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; font-family: 'Courier New', monospace; font-size: 0.9em; border-radius: 5px;">
                     <div class="text-center text-muted">
                         <i class="fas fa-spinner fa-spin me-2"></i>로그를 불러오는 중...
@@ -236,19 +233,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const MAX_LOGS = 50; // 로그 수 제한
     const MAX_RECONNECT_ATTEMPTS = 5; // 재연결 시도 제한
 
-    // 로그 표시 상태 변수 추가
-    let isLogsVisible = false;
-
     // DOM 요소들 (안전하게 가져오기)
     const logContainer = document.getElementById('log-container');
-    const logCardBody = document.getElementById('log-card-body');
-    const toggleLogsBtn = document.getElementById('toggle-logs-btn');
     const tickerSelector = document.getElementById('ticker-selector');
     const strategyFilter = document.getElementById('strategy-filter');
     const tickerFilter = document.getElementById('ticker-filter');
     const connectionStatus = document.getElementById('connection-status');
-    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
-    const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
 
     // 상태 변수들
     let selectedTicker = '';
@@ -264,55 +254,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function init() {
         try {
             loadActiveTickers();
+            loadLogs();
             loadTradeRecords();
             attachEventListeners();
-            console.log('대시보드 초기화 완료 (로그는 숨김 상태)');
+            initWebSocket();
+            startAutoRefresh();
+            console.log('대시보드 초기화 완료');
         } catch (error) {
             console.error('초기화 오류:', error);
             showNotification('error', '페이지 초기화 중 오류가 발생했습니다.');
-        }
-    }
-
-    // ===== 로그 토글 기능 =====
-    function toggleLogs() {
-        isLogsVisible = !isLogsVisible;
-
-        if (isLogsVisible) {
-            // 로그 보이기
-            logCardBody.style.display = 'block';
-            connectionStatus.style.display = 'inline-block';
-            tickerSelector.style.display = 'inline-block';
-            refreshLogsBtn.style.display = 'inline-block';
-            autoRefreshToggle.style.display = 'inline-block';
-
-            toggleLogsBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 로그 숨기기';
-            toggleLogsBtn.classList.remove('btn-outline-primary');
-            toggleLogsBtn.classList.add('btn-outline-secondary');
-
-            // WebSocket 초기화 및 로그 로드
-            if (!isWebSocketEnabled) {
-                initWebSocket();
-            }
-            loadLogs();
-            startAutoRefresh();
-
-        } else {
-            // 로그 숨기기
-            logCardBody.style.display = 'none';
-            connectionStatus.style.display = 'none';
-            tickerSelector.style.display = 'none';
-            refreshLogsBtn.style.display = 'none';
-            autoRefreshToggle.style.display = 'none';
-
-            toggleLogsBtn.innerHTML = '<i class="fas fa-eye"></i> 로그 보기';
-            toggleLogsBtn.classList.remove('btn-outline-secondary');
-            toggleLogsBtn.classList.add('btn-outline-primary');
-
-            // WebSocket 연결 종료 및 자동 새로고침 중지
-            if (socket && socket.connected) {
-                socket.disconnect();
-            }
-            stopAutoRefresh();
         }
     }
 
@@ -437,150 +387,254 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ===== 이벤트 리스너 (중복 방지) =====
     function attachEventListeners() {
-        // 로그 토글 버튼 이벤트
-        if (toggleLogsBtn) {
-            toggleLogsBtn.addEventListener('click', toggleLogs);
-        }
+        // 기존 이벤트 리스너 제거
+        removeEventListeners();
 
-        // 기존 이벤트 리스너들은 로그가 보일 때만 작동하도록 조건부 처리
+        // 봇 중지 버튼 (이벤트 위임 사용)
+        document.addEventListener('click', handleDocumentClick);
+
+        // 선택기 이벤트
         if (tickerSelector) {
-            tickerSelector.addEventListener('change', function() {
-                if (isLogsVisible) {
-                    selectedTicker = this.value;
-                    loadLogs();
-                    subscribeToLogs(selectedTicker);
-                }
-            });
-        }
-
-        if (refreshLogsBtn) {
-            refreshLogsBtn.addEventListener('click', function() {
-                if (isLogsVisible) {
-                    loadLogs();
-                }
-            });
-        }
-
-        if (autoRefreshToggle) {
-            autoRefreshToggle.addEventListener('click', function() {
-                if (isLogsVisible) {
-                    toggleAutoRefresh();
-                }
-            });
-        }
-
-        // 거래 기록 관련 이벤트 리스너들 (항상 활성)
-        if (tickerFilter) {
-            tickerFilter.addEventListener('change', function() {
-                selectedTicker = this.value;
-                loadTradeRecords();
-            });
+            tickerSelector.addEventListener('change', handleTickerChange);
         }
 
         if (strategyFilter) {
-            strategyFilter.addEventListener('change', function() {
-                selectedStrategy = this.value;
-                loadTradeRecords();
-            });
+            strategyFilter.addEventListener('change', handleStrategyChange);
         }
 
+        if (tickerFilter) {
+            tickerFilter.addEventListener('change', handleTickerFilterChange);
+        }
+
+        // 버튼 이벤트
+        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+        const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
         const refreshTradesBtn = document.getElementById('refresh-trades-btn');
+
+        if (refreshLogsBtn) {
+            refreshLogsBtn.addEventListener('click', handleRefreshLogs);
+        }
+
+        if (autoRefreshToggle) {
+            autoRefreshToggle.addEventListener('click', toggleAutoRefresh);
+        }
+
         if (refreshTradesBtn) {
             refreshTradesBtn.addEventListener('click', loadTradeRecords);
         }
+    }
 
-        // 봇 중지 버튼들
-        document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('stop-bot')) {
-                const ticker = e.target.getAttribute('data-ticker');
-                if (ticker && confirm(`${ticker} 봇을 정말 중지하시겠습니까?`)) {
-                    stopBot(ticker);
-                }
+    // ===== 이벤트 리스너 제거 =====
+    function removeEventListeners() {
+        document.removeEventListener('click', handleDocumentClick);
+
+        if (tickerSelector) {
+            tickerSelector.removeEventListener('change', handleTickerChange);
+        }
+        if (strategyFilter) {
+            strategyFilter.removeEventListener('change', handleStrategyChange);
+        }
+        if (tickerFilter) {
+            tickerFilter.removeEventListener('change', handleTickerFilterChange);
+        }
+    }
+
+    // ===== 이벤트 핸들러들 =====
+    function handleDocumentClick(e) {
+        if (e.target.classList.contains('stop-bot')) {
+            const ticker = e.target.getAttribute('data-ticker');
+            if (ticker) {
+                stopBot(ticker, e.target);
             }
-        });
+        }
+    }
+
+    function handleTickerChange() {
+        selectedTicker = this.value;
+
+        if (isWebSocketConnected && socket) {
+            socket.emit('unsubscribe_logs');
+            setTimeout(() => {
+                if (socket && socket.connected) {
+                    socket.emit('request_recent_logs', {
+                        ticker: selectedTicker,
+                        limit: MAX_LOGS
+                    });
+                    subscribeToLogs(selectedTicker);
+                }
+            }, 100);
+        } else {
+            loadLogs();
+        }
+    }
+
+    function handleStrategyChange() {
+        selectedStrategy = this.value;
+        loadTradeRecords();
+    }
+
+    function handleTickerFilterChange() {
+        selectedTicker = this.value;
+        loadTradeRecords();
+    }
+
+    function handleRefreshLogs() {
+        if (isWebSocketConnected && socket) {
+            socket.emit('request_recent_logs', {
+                ticker: selectedTicker,
+                limit: MAX_LOGS
+            });
+        } else {
+            loadLogs();
+        }
     }
 
     // ===== 자동 새로고침 관리 =====
     function startAutoRefresh() {
-        if (!isLogsVisible) return;
-
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
         }
 
-        if (isAutoRefresh) {
+        if (isAutoRefresh && !isWebSocketConnected) {
             autoRefreshInterval = setInterval(() => {
-                if (isLogsVisible && !isWebSocketConnected) {
+                try {
                     loadLogs();
+                    loadTradeRecords();
+                } catch (error) {
+                    console.error('자동 새로고침 오류:', error);
                 }
-            }, 5000);
-        }
-    }
-
-    function stopAutoRefresh() {
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-            autoRefreshInterval = null;
+            }, 10000); // 10초마다
         }
     }
 
     function toggleAutoRefresh() {
         isAutoRefresh = !isAutoRefresh;
-        const btn = autoRefreshToggle;
 
-        if (isAutoRefresh) {
-            btn.innerHTML = '<i class="fas fa-pause"></i> 자동 새로고침';
-            btn.classList.remove('btn-outline-danger');
-            btn.classList.add('btn-outline-secondary');
-            startAutoRefresh();
-        } else {
-            btn.innerHTML = '<i class="fas fa-play"></i> 수동 모드';
-            btn.classList.remove('btn-outline-secondary');
-            btn.classList.add('btn-outline-danger');
-            stopAutoRefresh();
+        const button = document.getElementById('auto-refresh-toggle');
+        if (button) {
+            if (isAutoRefresh) {
+                button.innerHTML = '<i class="fas fa-pause"></i> 자동 새로고침';
+                startAutoRefresh();
+            } else {
+                button.innerHTML = '<i class="fas fa-play"></i> 자동 새로고침';
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
         }
     }
 
-    // ===== 나머지 기능들은 기존과 동일하게 유지 =====
+    // ===== 로그 관련 함수들 =====
     function loadLogs() {
-        if (!isLogsVisible) return;
-
         try {
-            const url = selectedTicker ? `/logs/${selectedTicker}` : '/logs/all';
+            const endpoint = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
 
-            fetch(url)
+            fetch(endpoint)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        throw new Error(`HTTP ${response.status}`);
                     }
                     return response.json();
                 })
-                .then(data => {
-                    if (data && data.logs && Array.isArray(data.logs)) {
-                        logBuffer = data.logs.slice(0, MAX_LOGS).reverse();
-                        updateLogDisplay();
-                    } else {
-                        throw new Error('잘못된 로그 데이터 형식');
-                    }
+                .then(logs => {
+                    logBuffer = logs.slice(0, MAX_LOGS);
+                    updateLogDisplay();
                 })
                 .catch(error => {
-                    console.error('로그 로딩 오류:', error);
+                    console.error('로그 로드 오류:', error);
                     if (logContainer) {
-                        logContainer.innerHTML = `
-                            <div class="text-center text-danger">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                로그를 불러올 수 없습니다: ${error.message}
-                            </div>
-                        `;
+                        logContainer.innerHTML = '<div class="text-center text-danger">로그를 불러올 수 없습니다.</div>';
                     }
                 });
         } catch (error) {
-            console.error('로그 로딩 요청 오류:', error);
+            console.error('로그 로드 오류:', error);
         }
     }
 
+    function loadTradeRecords() {
+        try {
+            const tradeRecordsContainer = document.getElementById('trade-records-container');
+            const tradeRecordsTitle = document.getElementById('trade-records-title');
+
+            if (!tradeRecordsContainer) return;
+
+            tradeRecordsContainer.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin me-2"></i>거래 기록을 불러오는 중...</div>';
+
+            let endpoint = '/api/trade_records';
+            let titleText = '(오늘의 모든 거래)';
+
+            if (selectedTicker) {
+                endpoint = `/api/trade_records/${selectedTicker}`;
+                titleText = `(${selectedTicker} 거래)`;
+            }
+
+            if (tradeRecordsTitle) {
+                tradeRecordsTitle.textContent = titleText;
+            }
+
+            fetch(endpoint)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(records => {
+                    displayTradeRecords(records);
+                })
+                .catch(error => {
+                    console.error('거래 기록 로드 오류:', error);
+                    tradeRecordsContainer.innerHTML = '<div class="text-center text-danger">거래 기록을 불러올 수 없습니다.</div>';
+                });
+        } catch (error) {
+            console.error('거래 기록 로드 오류:', error);
+        }
+    }
+
+    function loadActiveTickers() {
+        try {
+            fetch('/api/active_tickers')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(tickers => {
+                    updateTickerSelectors(tickers);
+                })
+                .catch(error => {
+                    console.error('활성 티커 로드 오류:', error);
+                });
+        } catch (error) {
+            console.error('활성 티커 로드 오류:', error);
+        }
+    }
+
+    function updateTickerSelectors(tickers) {
+        const selectors = [tickerSelector, tickerFilter];
+
+        selectors.forEach(selector => {
+            if (!selector) return;
+
+            // 기존 옵션 제거 (첫 번째 기본 옵션 제외)
+            while (selector.children.length > 1) {
+                selector.removeChild(selector.lastChild);
+            }
+
+            // 새 티커 옵션 추가
+            tickers.forEach(ticker => {
+                const option = document.createElement('option');
+                option.value = ticker;
+                option.textContent = ticker;
+                selector.appendChild(option);
+            });
+        });
+    }
+
     function updateLogDisplay() {
-        if (!logContainer || !isLogsVisible) return;
+        if (!logContainer) return;
 
         try {
             if (logBuffer.length === 0) {
@@ -588,303 +642,276 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            const logHtml = logBuffer.map(log => {
-                const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleString('ko-KR') : '';
-                const level = log.level || 'INFO';
-                const ticker = log.ticker || '';
-                const message = log.message || '';
-
-                const levelClass = {
-                    'ERROR': 'text-danger',
-                    'WARNING': 'text-warning',
-                    'INFO': 'text-info',
-                    'DEBUG': 'text-secondary'
-                }[level] || 'text-dark';
-
-                return `
-                    <div class="log-entry mb-1" style="border-left: 3px solid ${level === 'ERROR' ? '#dc3545' : level === 'WARNING' ? '#ffc107' : '#0dcaf0'}; padding-left: 8px;">
-                        <small class="text-muted">[${timestamp}]</small>
-                        ${ticker ? `<span class="badge bg-secondary me-1">${ticker}</span>` : ''}
-                        <span class="badge bg-light text-dark me-1">${level}</span>
-                        <span class="${levelClass}">${message}</span>
-                    </div>
-                `;
-            }).join('');
+            let logHtml = '';
+            logBuffer.forEach(log => {
+                const levelClass = getLevelClass(log.level);
+                const timestamp = formatTimestamp(log.timestamp);
+                logHtml += `<div class="log-entry ${levelClass}">${timestamp} - ${log.level} - ${log.message}</div>`;
+            });
 
             logContainer.innerHTML = logHtml;
             scrollToBottom();
-
         } catch (error) {
             console.error('로그 표시 오류:', error);
             logContainer.innerHTML = '<div class="text-center text-danger">로그 표시 중 오류가 발생했습니다.</div>';
         }
     }
 
-    function scrollToBottom() {
-        if (logContainer && isLogsVisible) {
-            try {
-                logContainer.scrollTop = logContainer.scrollHeight;
-            } catch (error) {
-                console.error('스크롤 오류:', error);
+    function displayTradeRecords(records) {
+        const tradeRecordsContainer = document.getElementById('trade-records-container');
+        if (!tradeRecordsContainer) return;
+
+        try {
+            if (records.length === 0) {
+                tradeRecordsContainer.innerHTML = '<div class="text-center text-muted">거래 기록이 없습니다.</div>';
+                return;
             }
+
+            // 전략별로 필터링
+            let filteredRecords = records;
+            if (selectedStrategy) {
+                filteredRecords = records.filter(record => record.strategy === selectedStrategy);
+            }
+
+            let tableHtml = `
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm">
+                        <thead>
+                            <tr>
+                                <th>시간</th>
+                                <th>티커</th>
+                                <th>거래유형</th>
+                                <th>가격</th>
+                                <th>수량</th>
+                                <th>거래금액</th>
+                                <th>전략</th>
+                                <th>손익</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            filteredRecords.forEach(record => {
+                const tradeTypeClass = record.trade_type === 'BUY' ? 'text-primary' : 'text-danger';
+                const profitLossClass = record.profit_loss > 0 ? 'text-success' : 'text-danger';
+                const strategyIcon = getStrategyIcon(record.strategy);
+
+                tableHtml += `
+                    <tr>
+                        <td><small>${record.timestamp}</small></td>
+                        <td><strong>${record.ticker}</strong></td>
+                        <td><span class="${tradeTypeClass}">${record.trade_type}</span></td>
+                        <td>₩${record.price.toLocaleString()}</td>
+                        <td>${record.volume.toFixed(4)}</td>
+                        <td>₩${record.amount.toLocaleString()}</td>
+                        <td>${strategyIcon} ${record.strategy}</td>
+                        <td>
+                            ${record.profit_loss !== null ?
+                                `<span class="${profitLossClass}">₩${record.profit_loss.toLocaleString()}</span>` :
+                                '<span class="text-muted">-</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            tradeRecordsContainer.innerHTML = tableHtml;
+        } catch (error) {
+            console.error('거래 기록 표시 오류:', error);
+            tradeRecordsContainer.innerHTML = '<div class="text-center text-danger">거래 기록 표시 중 오류가 발생했습니다.</div>';
         }
     }
 
-    function subscribeToLogs(ticker) {
-        if (!socket || !socket.connected || !isLogsVisible) return;
+    // ===== 유틸리티 함수들 =====
+    function getLevelClass(level) {
+        switch (level) {
+            case 'ERROR': return 'text-danger';
+            case 'WARNING': return 'text-warning';
+            case 'INFO': return 'text-info';
+            case 'DEBUG': return 'text-muted';
+            default: return '';
+        }
+    }
 
+    function formatTimestamp(timestamp) {
         try {
-            socket.emit('subscribe_logs', { ticker: ticker || '' });
+            if (timestamp.includes('T')) {
+                return new Date(timestamp).toLocaleString('ko-KR');
+            }
+            return timestamp;
         } catch (error) {
-            console.error('로그 구독 오류:', error);
+            return timestamp;
+        }
+    }
+
+    function getStrategyIcon(strategy) {
+        switch (strategy) {
+            case 'rsi': return '📈';
+            case 'adaptive': return '🎯';
+            case 'ensemble': return '🔥';
+            case 'volatility': return '🚀';
+            case 'bollinger': return '📊';
+            default: return '📊';
+        }
+    }
+
+    function scrollToBottom() {
+        if (logContainer) {
+            logContainer.scrollTop = logContainer.scrollHeight;
         }
     }
 
     function updateConnectionStatus(status) {
         if (!connectionStatus) return;
 
-        const statusConfig = {
-            'connected': { class: 'bg-success', icon: 'text-white', text: '연결됨' },
-            'disconnected': { class: 'bg-danger', icon: 'text-white', text: '연결 끊김' },
-            'connecting': { class: 'bg-warning', icon: 'text-dark', text: '연결 중...' },
-            'disabled': { class: 'bg-secondary', icon: 'text-white', text: '비활성화' },
-            'error': { class: 'bg-danger', icon: 'text-white', text: '오류' }
-        };
-
-        const config = statusConfig[status] || statusConfig['error'];
-
-        connectionStatus.className = `badge ${config.class}`;
-        connectionStatus.innerHTML = `<i class="fas fa-circle ${config.icon}"></i> ${config.text}`;
+        switch (status) {
+            case 'connected':
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-success"></i> 연결됨';
+                connectionStatus.className = 'badge bg-success';
+                break;
+            case 'disconnected':
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-warning"></i> 연결 끊김';
+                connectionStatus.className = 'badge bg-warning';
+                break;
+            case 'error':
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-danger"></i> 오류';
+                connectionStatus.className = 'badge bg-danger';
+                break;
+            case 'disabled':
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-secondary"></i> 비활성화';
+                connectionStatus.className = 'badge bg-secondary';
+                break;
+            default:
+                connectionStatus.innerHTML = '<i class="fas fa-circle text-warning"></i> 연결 중...';
+                connectionStatus.className = 'badge bg-secondary';
+        }
     }
 
-    // ===== 기존 함수들 (loadActiveTickers, loadTradeRecords, stopBot, showNotification 등) =====
-    function loadActiveTickers() {
-        fetch('/api/active-tickers')
+    function subscribeToLogs(ticker) {
+        if (socket && socket.connected) {
+            socket.emit('subscribe_logs', { ticker: ticker || '' });
+        }
+    }
+
+    function stopBot(ticker, buttonElement) {
+        try {
+            if (buttonElement) {
+                buttonElement.disabled = true;
+                buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 중지 중...';
+            }
+
+            fetch(`/api/stop_bot/${ticker}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
             .then(response => response.json())
             .then(data => {
-                if (data && data.tickers && Array.isArray(data.tickers)) {
-                    updateTickerSelectors(data.tickers);
+                if (data.status === 'success') {
+                    showNotification('success', data.message);
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    showNotification('error', data.message);
+                    if (buttonElement) {
+                        buttonElement.disabled = false;
+                        buttonElement.innerHTML = '중지';
+                    }
                 }
             })
             .catch(error => {
-                console.error('활성 티커 로딩 오류:', error);
-            });
-    }
-
-    function updateTickerSelectors(tickers) {
-        const selectors = [tickerSelector, tickerFilter];
-
-        selectors.forEach(selector => {
-            if (selector) {
-                const currentValue = selector.value;
-                selector.innerHTML = '<option value="">모든 티커</option>';
-
-                tickers.forEach(ticker => {
-                    const option = document.createElement('option');
-                    option.value = ticker;
-                    option.textContent = ticker;
-                    selector.appendChild(option);
-                });
-
-                if (tickers.includes(currentValue)) {
-                    selector.value = currentValue;
+                console.error('봇 중지 오류:', error);
+                showNotification('error', '봇 중지 중 오류가 발생했습니다.');
+                if (buttonElement) {
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = '중지';
                 }
-            }
-        });
-    }
-
-    function loadTradeRecords() {
-        try {
-            let url = '/api/trade-records';
-            const params = new URLSearchParams();
-
-            if (selectedTicker) params.append('ticker', selectedTicker);
-            if (selectedStrategy) params.append('strategy', selectedStrategy);
-
-            if (params.toString()) {
-                url += '?' + params.toString();
-            }
-
-            fetch(url)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    updateTradeRecordsDisplay(data);
-                })
-                .catch(error => {
-                    console.error('거래 기록 로딩 오류:', error);
-                    const container = document.getElementById('trade-records-container');
-                    if (container) {
-                        container.innerHTML = `
-                            <div class="text-center text-danger">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                거래 기록을 불러올 수 없습니다.
-                            </div>
-                        `;
-                    }
-                });
+            });
         } catch (error) {
-            console.error('거래 기록 요청 오류:', error);
-        }
-    }
-
-    function updateTradeRecordsDisplay(data) {
-        const container = document.getElementById('trade-records-container');
-        if (!container) return;
-
-        try {
-            if (!data || !data.trades || data.trades.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">거래 기록이 없습니다.</div>';
-                return;
-            }
-
-            let filterText = '오늘의 모든 거래';
-            if (selectedTicker && selectedStrategy) {
-                filterText = `${selectedTicker} (${getStrategyName(selectedStrategy)}) 거래`;
-            } else if (selectedTicker) {
-                filterText = `${selectedTicker} 거래`;
-            } else if (selectedStrategy) {
-                filterText = `${getStrategyName(selectedStrategy)} 거래`;
-            }
-
-            const titleElement = document.getElementById('trade-records-title');
-            if (titleElement) {
-                titleElement.textContent = `(${filterText})`;
-            }
-
-            const tradesHtml = data.trades.map(trade => {
-                const profitClass = trade.profit > 0 ? 'text-success' : trade.profit < 0 ? 'text-danger' : 'text-muted';
-                const profitIcon = trade.profit > 0 ? '📈' : trade.profit < 0 ? '📉' : '➖';
-
-                return `
-                    <div class="row border-bottom py-2 align-items-center">
-                        <div class="col-md-2">
-                            <strong>${trade.ticker}</strong>
-                            <br><small class="text-muted">${trade.timestamp}</small>
-                        </div>
-                        <div class="col-md-2">
-                            <span class="badge ${trade.action === 'BUY' ? 'bg-success' : 'bg-danger'}">
-                                ${trade.action === 'BUY' ? '매수' : '매도'}
-                            </span>
-                            <br><small class="text-muted">${getStrategyName(trade.strategy)}</small>
-                        </div>
-                        <div class="col-md-2">
-                            <strong>₩${trade.price.toLocaleString()}</strong>
-                            <br><small class="text-muted">${trade.quantity} 개</small>
-                        </div>
-                        <div class="col-md-2">
-                            <strong>₩${trade.amount.toLocaleString()}</strong>
-                        </div>
-                        <div class="col-md-2">
-                            <span class="${profitClass}">
-                                ${profitIcon} ${trade.profit > 0 ? '+' : ''}${trade.profit.toFixed(2)}%
-                            </span>
-                        </div>
-                        <div class="col-md-2">
-                            <small class="text-muted">${trade.reason}</small>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            container.innerHTML = `
-                <div class="row border-bottom bg-light py-2 fw-bold">
-                    <div class="col-md-2">코인/시간</div>
-                    <div class="col-md-2">거래/전략</div>
-                    <div class="col-md-2">가격/수량</div>
-                    <div class="col-md-2">거래금액</div>
-                    <div class="col-md-2">수익률</div>
-                    <div class="col-md-2">사유</div>
-                </div>
-                ${tradesHtml}
-            `;
-
-        } catch (error) {
-            console.error('거래 기록 표시 오류:', error);
-            container.innerHTML = '<div class="text-center text-danger">거래 기록 표시 중 오류가 발생했습니다.</div>';
-        }
-    }
-
-    function getStrategyName(strategy) {
-        const names = {
-            'rsi': '📈 RSI',
-            'adaptive': '🎯 어댑티브',
-            'ensemble': '🔥 앙상블',
-            'volatility': '🚀 변동성',
-            'bollinger': '📊 볼린저'
-        };
-        return names[strategy] || strategy;
-    }
-
-    function stopBot(ticker) {
-        fetch('/stop-bot', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ ticker: ticker })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showNotification('success', `${ticker} 봇이 성공적으로 중지되었습니다.`);
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
-            } else {
-                showNotification('error', data.error || '봇 중지에 실패했습니다.');
-            }
-        })
-        .catch(error => {
             console.error('봇 중지 오류:', error);
-            showNotification('error', '봇 중지 중 오류가 발생했습니다.');
-        });
+        }
     }
 
     function showNotification(type, message) {
-        const toastContainer = document.getElementById('toast-container');
-        if (!toastContainer) return;
+        try {
+            const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) return;
 
-        const toastId = 'toast-' + Date.now();
-        const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
-        const icon = type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle';
-
-        const toastHtml = `
-            <div id="${toastId}" class="toast ${bgClass} text-white" role="alert">
-                <div class="d-flex align-items-center p-3">
-                    <i class="fas fa-${icon} me-2"></i>
-                    <div class="toast-body flex-grow-1">${message}</div>
-                    <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="toast"></button>
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
                 </div>
-            </div>
-        `;
+            `;
 
-        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+            toastContainer.appendChild(toast);
 
-        const toastElement = document.getElementById(toastId);
-        if (toastElement) {
-            const toast = new bootstrap.Toast(toastElement, { delay: 4000 });
-            toast.show();
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
 
-            toastElement.addEventListener('hidden.bs.toast', function() {
-                toastElement.remove();
-            });
+            // 5초 후 자동 제거
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 5000);
+        } catch (error) {
+            console.error('알림 표시 오류:', error);
         }
     }
 
     // ===== 페이지 언로드 시 정리 =====
     window.addEventListener('beforeunload', function() {
         try {
-            if (socket && socket.connected) {
-                socket.disconnect();
+            // 타이머 정리
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
             }
-            stopAutoRefresh();
+
+            // WebSocket 정리
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+
+            // 이벤트 리스너 정리
+            removeEventListeners();
+
+            console.log('페이지 정리 완료');
         } catch (error) {
-            console.error('정리 중 오류:', error);
+            console.error('페이지 정리 오류:', error);
+        }
+    });
+
+    // ===== 페이지 가시성 변경 처리 =====
+    document.addEventListener('visibilitychange', function() {
+        try {
+            if (document.hidden) {
+                // 페이지가 숨겨졌을 때 - 자동 새로고침 중지
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            } else {
+                // 페이지가 다시 보일 때 - 자동 새로고침 재시작
+                if (isAutoRefresh && !isWebSocketConnected) {
+                    startAutoRefresh();
+                }
+            }
+        } catch (error) {
+            console.error('페이지 가시성 변경 처리 오류:', error);
         }
     });
 });
