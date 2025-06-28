@@ -126,6 +126,8 @@ def dashboard():
     balance_info = {}
     try:
         balance_info['cash'] = api.get_balance_cash()
+        if balance_info['cash'] is None:
+            balance_info['cash'] = 0
 
         # 보유 코인 정보 조회 - pyupbit를 직접 사용
         try:
