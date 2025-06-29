@@ -391,7 +391,7 @@ async def setup():
 def is_report_time():
     """현재 시간이 보고서를 보낼 시간인지 확인"""
     now = datetime.now()
-    report_times = [(10, 0), (12, 0), (14, 0), (16, 0), (18, 0), (20, 0), (22, 0)]
+    report_times = [(8, 0), (10, 0), (12, 0), (14, 0), (16, 0), (18, 0), (20, 0), (22, 0)]
 
     for hour, minute in report_times:
         if now.hour == hour and now.minute == minute:

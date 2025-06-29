@@ -45,18 +45,16 @@
 
 ### 프론트엔드
 - Bootstrap 5
-- Chart.js
 - Socket.IO-client
 - jQuery
 
-### 데이터베이스 & 캐싱
+### 데이터베이스
 - SQLite
-- Redis (캐싱)
+
 
 ### 인프라
 - UV 패키지 관리자
-- Docker 지원
-- GitHub Actions CI/CD
+
 
 ## ⚙️ 설치 가이드
 
@@ -71,7 +69,8 @@
 
 1. **저장소 클론**
 ```bash 
-git clone (https://github.com/yourusername/web_upbit_auto_trading.git) cd web_upbit_auto_trading
+git clone (https://github.com/yourusername/web_upbit_auto_trading.git) 
+cd web_upbit_auto_trading
 ``` 
 
 2. **가상환경 설정**
