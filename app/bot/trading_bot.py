@@ -323,7 +323,7 @@ class UpbitTradingBot:
                     volume=volume,
                     amount=amount,
                     profit_loss=profit_loss,
-                    strategy=self.args.get('strategy', 'unknown'),
+                    strategy=self.args.strategy.data if hasattr(self.args, 'strategy') else 'unknown',
                     timestamp=kst_now()  # UTC 대신 한국 시간 사용
                 )
 
