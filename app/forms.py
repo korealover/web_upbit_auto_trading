@@ -78,6 +78,7 @@ class TradingSettingsForm(FlaskForm):
     buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
     min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=200000)
     sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
+    sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
     # 볼린저 밴드 전략 설정
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
@@ -104,9 +105,6 @@ class TradingSettingsForm(FlaskForm):
     ensemble_volatility_weight = FloatField('변동성 돌파 가중치', validators=[NumberRange(min=0, max=1)], default=0.3)
     ensemble_bollinger_weight = FloatField('볼린저 밴드 가중치', validators=[NumberRange(min=0, max=1)], default=0.4)
     ensemble_rsi_weight = FloatField('RSI 전략 가중치', validators=[NumberRange(min=0, max=1)], default=0.3)
-
-    # 공통 매도 설정
-    sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
     submit = SubmitField('설정 저장 및 봇 시작')
 

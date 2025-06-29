@@ -85,7 +85,7 @@ class UpbitTradingBot:
                 # RSI 전략 사용
                 self.logger.info(f"RSI 전략으로 거래 분석 시작: {ticker}")
                 # RSI 전략은 ticker만 필요
-                signal = self.strategy.generate_signal(ticker)
+                signal = self.strategy.generate_signal(ticker, self.args.rsi_period.data, self.args.rsi_oversold.data, self.args.rsi_overbought.data, self.args.rsi_timeframe.data)
             else:
                 # 볼린저 밴드 전략 사용 (기본값)
                 interval = self.args.interval.data

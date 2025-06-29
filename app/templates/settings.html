@@ -33,20 +33,25 @@
                     <!-- 공통 설정 -->
                     <h6 class="mt-4 mb-3">공통 설정</h6>
                     <div class="row mb-3">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             {{ form.buy_amount.label(class="form-label") }}
                             {{ form.buy_amount(class="form-control") }}
                             <small class="text-muted">최소 5,000원 이상</small>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             {{ form.min_cash.label(class="form-label") }}
                             {{ form.min_cash(class="form-control") }}
                             <small class="text-muted">안전 자금</small>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             {{ form.sleep_time.label(class="form-label") }}
                             {{ form.sleep_time(class="form-control") }}
                             <small class="text-muted">신호 확인 간격</small>
+                        </div>
+                        <div class="col-md-3">
+                            {{ form.sell_portion.label(class="form-label") }}
+                            {{ form.sell_portion(class="form-control") }}
+                            <small class="text-muted">매도 비율</small>
                         </div>
                     </div>
 
@@ -58,20 +63,15 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 {{ form.window.label(class="form-label") }}
                                 {{ form.window(class="form-control") }}
                                 <small class="text-muted">이동평균 계산 기간</small>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 {{ form.multiplier.label(class="form-label") }}
                                 {{ form.multiplier(class="form-control") }}
                                 <small class="text-muted">밴드 폭 조절</small>
-                            </div>
-                            <div class="col-md-4">
-                                {{ form.sell_portion.label(class="form-label") }}
-                                {{ form.sell_portion(class="form-control") }}
-                                <small class="text-muted">매도 시 판매 비율</small>
                             </div>
                         </div>
                     </div>
@@ -84,25 +84,20 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 {{ form.k.label(class="form-label") }}
                                 {{ form.k(class="form-control") }}
                                 <small class="text-muted">0.3~0.7 권장</small>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 {{ form.target_profit.label(class="form-label") }}
                                 {{ form.target_profit(class="form-control") }}
                                 <small class="text-muted">익절 기준</small>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 {{ form.stop_loss.label(class="form-label") }}
                                 {{ form.stop_loss(class="form-control") }}
                                 <small class="text-muted">손절 기준</small>
-                            </div>
-                            <div class="col-md-3">
-                                {{ form.sell_portion.label(class="form-label") }}
-                                {{ form.sell_portion(class="form-control") }}
-                                <small class="text-muted">매도 비율</small>
                             </div>
                         </div>
                     </div>
