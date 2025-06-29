@@ -283,7 +283,7 @@ class UpbitTradingBot:
         except Exception as e:
             self.logger.error(f"실행 중 오류 발생: {str(e)}", exc_info=True)
 
-    def record_trade(self, trade_type, ticker, price, volume, amount):
+    def record_trade(self, trade_type, ticker, price, volume, amount, profit_loss=None):
         """거래 기록 저장"""
         try:
             # Flask 애플리케이션 컨텍스트를 정확하게 가져오기
@@ -303,7 +303,7 @@ class UpbitTradingBot:
                 from app.models import kst_now  # 한국 시간 함수 import
 
                 # 매도인 경우 수익/손실률 계산
-                profit_loss = None
+                # profit_loss = None
                 if trade_type == 'SELL':
                     try:
                         # 평균 매수가 가져오기
