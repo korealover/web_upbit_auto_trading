@@ -58,12 +58,12 @@ class ProfileForm(FlaskForm):
 
 
 class TradingSettingsForm(FlaskForm):
-    ticker = SelectField('코인 티커', validators=[DataRequired()], default='KRW-KAITO')
+    ticker = SelectField('코인 티커', validators=[DataRequired()], default='KRW-XRP')
     interval = SelectField('차트 간격', choices=[
         ('day', '일봉'), ('minute1', '1분'), ('minute3', '3분'),
-        ('minute5', '5분'), ('minute10', '10분'), ('minute30', '30분'),
-        ('minute60', '60분'), ('minute240', '4시간')
-    ], default='day')
+        ('minute5', '5분'), ('minute10', '10분'), ('minute15', '15분'), ('minute30', '30분'),
+        ('minute60', '60분'), ('minute240', '240분')
+    ], default='minute5')
 
     # 전략 선택 - 새로운 전략들 추가
     strategy = SelectField('거래 전략', choices=[
@@ -72,11 +72,11 @@ class TradingSettingsForm(FlaskForm):
         ('rsi', 'RSI 전략'),
         ('adaptive', '어댑티브 전략 (시장 상황 자동 감지)'),
         ('ensemble', '앙상블 전략 (다중 전략 결합)')
-    ], default='rsi')
+    ], default='bollinger')
 
     # 공통 설정
     buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
-    min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=200000)
+    min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=50000)
     sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
@@ -97,8 +97,11 @@ class TradingSettingsForm(FlaskForm):
         ('minute1', '1분봉'),
         ('minute3', '3분봉'),
         ('minute5', '5분봉'),
+        ('minute10', '10분봉'),
         ('minute15', '15분봉'),
-        ('minute30', '30분봉')
+        ('minute30', '30분봉'),
+        ('minute60', '60분봉'),
+        ('minute240', '240분봉')
     ], default='minute15')
 
     # 앙상블 전략 가중치 설정
