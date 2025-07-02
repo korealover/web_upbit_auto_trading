@@ -149,41 +149,6 @@
     </div>
 </div>
 
-<!-- 실시간 로그 (숨김/표시 토글 기능 추가) -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>📝 실시간 로그</span>
-                <div class="d-flex gap-2 align-items-center">
-                    <span id="connection-status" class="badge bg-secondary">
-                        <i class="fas fa-circle text-warning"></i> 연결 중...
-                    </span>
-                    <select id="ticker-selector" class="form-select form-select-sm" style="width: 120px;">
-                        <option value="">모든 티커</option>
-                    </select>
-                    <button id="refresh-logs-btn" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-sync-alt"></i> 새로고침
-                    </button>
-                    <button id="auto-refresh-toggle" class="btn btn-sm btn-outline-secondary" data-auto="true">
-                        <i class="fas fa-pause"></i> 자동 새로고침
-                    </button>
-                    <!-- 로그 표시/숨김 토글 버튼 추가 -->
-                    <button id="toggle-logs-btn" class="btn btn-sm btn-outline-info" data-visible="false">
-                        <i class="fas fa-eye"></i> 로그 보기
-                    </button>
-                </div>
-            </div>
-            <!-- 로그 컨테이너를 기본적으로 숨김 처리 -->
-            <div class="card-body" id="log-section" style="display: none;">
-                <div id="log-container" style="height: 350px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; font-family: 'Courier New', monospace; font-size: 0.9em; border-radius: 5px;">
-                    <div class="text-center text-muted">
-                        <i class="fas fa-spinner fa-spin me-2"></i>로그를 불러오는 중...
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
 <!-- 거래 기록 -->
 <div class="row mt-4">
@@ -262,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // loadLogs(); // 이 줄을 주석처리 또는 제거
             loadTradeRecords();
             attachEventListeners();
-            initWebSocket();
+            // initWebSocket();
             // 초기에는 자동 새로고침을 시작하지 않음
             // startAutoRefresh(); // 이 줄을 주석처리 또는 제거
             console.log('대시보드 초기화 완료');
@@ -418,27 +383,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // 버튼 이벤트
-        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
-        const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
         const refreshTradesBtn = document.getElementById('refresh-trades-btn');
-        const toggleLogsBtn = document.getElementById('toggle-logs-btn'); // 새로 추가
-
-        if (refreshLogsBtn) {
-            refreshLogsBtn.addEventListener('click', handleRefreshLogs);
-        }
-
-        if (autoRefreshToggle) {
-            autoRefreshToggle.addEventListener('click', toggleAutoRefresh);
-        }
 
         if (refreshTradesBtn) {
             refreshTradesBtn.addEventListener('click', loadTradeRecords);
         }
 
-        // 로그 토글 버튼 이벤트 추가
-        if (toggleLogsBtn) {
-            toggleLogsBtn.addEventListener('click', toggleLogsVisibility);
-        }
+
     }
 
     // ===== 로그 표시/숨김 토글 함수 추가 =====
