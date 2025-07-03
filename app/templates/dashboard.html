@@ -193,21 +193,15 @@
 document.addEventListener('DOMContentLoaded', function() {
     // ===== 전역 변수 정리 =====
     let socket = null;
-    let isWebSocketEnabled = false;
     let isWebSocketConnected = false;
     let autoRefreshInterval = null;
     let isAutoRefresh = true;
-    let logBuffer = [];
-    let reconnectAttempts = 0;
     const MAX_LOGS = 50; // 로그 수 제한
-    const MAX_RECONNECT_ATTEMPTS = 5; // 재연결 시도 제한
 
     // DOM 요소들 (안전하게 가져오기)
-    const logContainer = document.getElementById('log-container');
     const tickerSelector = document.getElementById('ticker-selector');
     const strategyFilter = document.getElementById('strategy-filter');
     const tickerFilter = document.getElementById('ticker-filter');
-    const connectionStatus = document.getElementById('connection-status');
 
     // 상태 변수들
     let selectedTicker = '';
@@ -227,137 +221,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // loadLogs(); // 이 줄을 주석처리 또는 제거
             loadTradeRecords();
             attachEventListeners();
-            // initWebSocket();
             // 초기에는 자동 새로고침을 시작하지 않음
             // startAutoRefresh(); // 이 줄을 주석처리 또는 제거
             console.log('대시보드 초기화 완료');
         } catch (error) {
             console.error('초기화 오류:', error);
             showNotification('error', '페이지 초기화 중 오류가 발생했습니다.');
-        }
-    }
-
-    // ===== WebSocket 초기화 (재연결 제한) =====
-    function initWebSocket() {
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            console.warn('최대 재연결 시도 횟수 초과. WebSocket 비활성화');
-            isWebSocketEnabled = false;
-            updateConnectionStatus('disabled');
-            return;
-        }
-
-        try {
-            if (typeof io !== 'undefined') {
-                // 기존 소켓 정리
-                if (socket) {
-                    socket.disconnect();
-                    socket = null;
-                }
-
-                socket = io({
-                    timeout: 10000,
-                    forceNew: true,
-                    reconnection: false // 자동 재연결 비활성화
-                });
-
-                setupWebSocketEvents();
-                isWebSocketEnabled = true;
-                reconnectAttempts++;
-                console.log('WebSocket 초기화 완료');
-            } else {
-                console.warn('Socket.IO 라이브러리를 찾을 수 없음');
-                isWebSocketEnabled = false;
-                updateConnectionStatus('disabled');
-            }
-        } catch (error) {
-            console.error('WebSocket 초기화 오류:', error);
-            isWebSocketEnabled = false;
-            updateConnectionStatus('error');
-        }
-    }
-
-    // ===== WebSocket 이벤트 설정 =====
-    function setupWebSocketEvents() {
-        if (!socket) return;
-
-        socket.on('connect', function() {
-            console.log('WebSocket 연결됨');
-            isWebSocketConnected = true;
-            reconnectAttempts = 0; // 성공 시 재설정
-            updateConnectionStatus('connected');
-
-            // 로그가 표시 상태일 때만 데이터 요청
-            const toggleBtn = document.getElementById('toggle-logs-btn');
-            const isLogsVisible = toggleBtn && toggleBtn.getAttribute('data-visible') === 'true';
-
-            if (isLogsVisible) {
-                setTimeout(() => {
-                    if (socket && socket.connected) {
-                        socket.emit('request_recent_logs', {
-                            ticker: selectedTicker,
-                            limit: MAX_LOGS
-                        });
-                        subscribeToLogs(selectedTicker);
-                    }
-                }, 100);
-            }
-        });
-
-        socket.on('disconnect', function() {
-            console.log('WebSocket 연결 끊김');
-            isWebSocketConnected = false;
-            updateConnectionStatus('disconnected');
-        });
-
-        socket.on('recent_logs', function(data) {
-            try {
-                if (data && data.logs && Array.isArray(data.logs)) {
-                    logBuffer = data.logs.slice(0, MAX_LOGS).reverse();
-                    updateLogDisplay();
-                }
-            } catch (error) {
-                console.error('로그 데이터 처리 오류:', error);
-            }
-        });
-
-        socket.on('new_log', function(logEntry) {
-            try {
-                if (logEntry && logEntry.message) {
-                    addNewLog(logEntry);
-                }
-            } catch (error) {
-                console.error('새 로그 처리 오류:', error);
-            }
-        });
-
-        socket.on('error', function(data) {
-            console.error('WebSocket 오류:', data);
-            showNotification('error', data.message || 'WebSocket 오류가 발생했습니다.');
-        });
-
-        // 연결 타임아웃 처리
-        setTimeout(() => {
-            if (!isWebSocketConnected) {
-                console.warn('WebSocket 연결 타임아웃');
-                updateConnectionStatus('error');
-            }
-        }, 15000);
-    }
-
-    // ===== 메모리 안전한 로그 추가 =====
-    function addNewLog(logEntry) {
-        try {
-            logBuffer.push(logEntry);
-
-            // 메모리 보호: 최대 로그 수 제한
-            if (logBuffer.length > MAX_LOGS) {
-                logBuffer = logBuffer.slice(-MAX_LOGS);
-            }
-
-            updateLogDisplay();
-            scrollToBottom();
-        } catch (error) {
-            console.error('로그 추가 오류:', error);
         }
     }
 
@@ -392,63 +261,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     }
 
-    // ===== 로그 표시/숨김 토글 함수 추가 =====
-    function toggleLogsVisibility() {
-        const logSection = document.getElementById('log-section');
-        const toggleBtn = document.getElementById('toggle-logs-btn');
-
-        if (!logSection || !toggleBtn) return;
-
-        const isVisible = toggleBtn.getAttribute('data-visible') === 'true';
-
-        if (isVisible) {
-            // 로그 숨기기
-            logSection.style.display = 'none';
-            toggleBtn.setAttribute('data-visible', 'false');
-            toggleBtn.innerHTML = '<i class="fas fa-eye"></i> 로그 보기';
-            toggleBtn.classList.remove('btn-outline-warning');
-            toggleBtn.classList.add('btn-outline-info');
-
-            // WebSocket 구독 해제 및 자동 새로고침 일시 정지
-            if (isWebSocketConnected && socket) {
-                socket.emit('unsubscribe_logs');
-            }
-
-            // 자동 새로고침 일시 정지
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
-            }
-
-            console.log('실시간 로그 숨김');
-
-        } else {
-            // 로그 표시하기
-            logSection.style.display = 'block';
-            toggleBtn.setAttribute('data-visible', 'true');
-            toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 로그 숨기기';
-            toggleBtn.classList.remove('btn-outline-info');
-            toggleBtn.classList.add('btn-outline-warning');
-
-            // 로그 로드 및 WebSocket 구독 시작
-            if (isWebSocketConnected && socket) {
-                socket.emit('request_recent_logs', {
-                    ticker: selectedTicker,
-                    limit: MAX_LOGS
-                });
-                subscribeToLogs(selectedTicker);
-            } else {
-                loadLogs();
-            }
-
-            // 자동 새로고침 재시작 (활성화된 경우)
-            if (isAutoRefresh) {
-                startAutoRefresh();
-            }
-
-            console.log('실시간 로그 표시');
-        }
-    }
 
     // ===== 이벤트 리스너 제거 =====
     function removeEventListeners() {
@@ -496,7 +308,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }, 100);
         } else {
-            loadLogs();
+            // loadLogs();
         }
     }
 
@@ -510,26 +322,6 @@ document.addEventListener('DOMContentLoaded', function() {
         loadTradeRecords();
     }
 
-    function handleRefreshLogs() {
-        // 로그가 표시 상태일 때만 새로고침
-        const toggleBtn = document.getElementById('toggle-logs-btn');
-        const isLogsVisible = toggleBtn && toggleBtn.getAttribute('data-visible') === 'true';
-
-        if (!isLogsVisible) {
-            showNotification('warning', '로그를 먼저 표시해주세요.');
-            return;
-        }
-
-        if (isWebSocketConnected && socket) {
-            socket.emit('request_recent_logs', {
-                ticker: selectedTicker,
-                limit: MAX_LOGS
-            });
-        } else {
-            loadLogs();
-        }
-    }
-
     // ===== 자동 새로고침 관리 =====
     function startAutoRefresh() {
         if (autoRefreshInterval) {
@@ -539,57 +331,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isAutoRefresh && !isWebSocketConnected) {
             autoRefreshInterval = setInterval(() => {
                 try {
-                    loadLogs();
+                    // loadLogs();
                     loadTradeRecords();
                 } catch (error) {
                     console.error('자동 새로고침 오류:', error);
                 }
             }, 10000); // 10초마다
-        }
-    }
-
-    function toggleAutoRefresh() {
-        isAutoRefresh = !isAutoRefresh;
-
-        const button = document.getElementById('auto-refresh-toggle');
-        if (button) {
-            if (isAutoRefresh) {
-                button.innerHTML = '<i class="fas fa-pause"></i> 자동 새로고침';
-                startAutoRefresh();
-            } else {
-                button.innerHTML = '<i class="fas fa-play"></i> 자동 새로고침';
-                if (autoRefreshInterval) {
-                    clearInterval(autoRefreshInterval);
-                    autoRefreshInterval = null;
-                }
-            }
-        }
-    }
-
-    // ===== 로그 관련 함수들 =====
-    function loadLogs() {
-        try {
-            const endpoint = selectedTicker ? `/api/logs/${selectedTicker}` : '/api/logs';
-
-            fetch(endpoint)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(logs => {
-                    logBuffer = logs.slice(0, MAX_LOGS);
-                    updateLogDisplay();
-                })
-                .catch(error => {
-                    console.error('로그 로드 오류:', error);
-                    if (logContainer) {
-                        logContainer.innerHTML = '<div class="text-center text-danger">로그를 불러올 수 없습니다.</div>';
-                    }
-                });
-        } catch (error) {
-            console.error('로그 로드 오류:', error);
         }
     }
 
@@ -674,30 +421,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function updateLogDisplay() {
-        if (!logContainer) return;
-
-        try {
-            if (logBuffer.length === 0) {
-                logContainer.innerHTML = '<div class="text-center text-muted">로그가 없습니다.</div>';
-                return;
-            }
-
-            let logHtml = '';
-            logBuffer.forEach(log => {
-                const levelClass = getLevelClass(log.level);
-                const timestamp = formatTimestamp(log.timestamp);
-                logHtml += `<div class="log-entry ${levelClass}">${timestamp} - ${log.level} - ${log.message}</div>`;
-            });
-
-            logContainer.innerHTML = logHtml;
-            scrollToBottom();
-        } catch (error) {
-            console.error('로그 표시 오류:', error);
-            logContainer.innerHTML = '<div class="text-center text-danger">로그 표시 중 오류가 발생했습니다.</div>';
-        }
-    }
-
     function displayTradeRecords(records) {
         const tradeRecordsContainer = document.getElementById('trade-records-container');
         if (!tradeRecordsContainer) return;
@@ -769,28 +492,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // ===== 유틸리티 함수들 =====
-    function getLevelClass(level) {
-        switch (level) {
-            case 'ERROR': return 'text-danger';
-            case 'WARNING': return 'text-warning';
-            case 'INFO': return 'text-info';
-            case 'DEBUG': return 'text-muted';
-            default: return '';
-        }
-    }
-
-    function formatTimestamp(timestamp) {
-        try {
-            if (timestamp.includes('T')) {
-                return new Date(timestamp).toLocaleString('ko-KR');
-            }
-            return timestamp;
-        } catch (error) {
-            return timestamp;
-        }
-    }
-
     function getStrategyIcon(strategy) {
         switch (strategy) {
             case 'rsi': return '📈';
@@ -799,38 +500,6 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'volatility': return '🚀';
             case 'bollinger': return '📊';
             default: return '📊';
-        }
-    }
-
-    function scrollToBottom() {
-        if (logContainer) {
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
-    }
-
-    function updateConnectionStatus(status) {
-        if (!connectionStatus) return;
-
-        switch (status) {
-            case 'connected':
-                connectionStatus.innerHTML = '<i class="fas fa-circle text-success"></i> 연결됨';
-                connectionStatus.className = 'badge bg-success';
-                break;
-            case 'disconnected':
-                connectionStatus.innerHTML = '<i class="fas fa-circle text-warning"></i> 연결 끊김';
-                connectionStatus.className = 'badge bg-warning';
-                break;
-            case 'error':
-                connectionStatus.innerHTML = '<i class="fas fa-circle text-danger"></i> 오류';
-                connectionStatus.className = 'badge bg-danger';
-                break;
-            case 'disabled':
-                connectionStatus.innerHTML = '<i class="fas fa-circle text-secondary"></i> 비활성화';
-                connectionStatus.className = 'badge bg-secondary';
-                break;
-            default:
-                connectionStatus.innerHTML = '<i class="fas fa-circle text-warning"></i> 연결 중...';
-                connectionStatus.className = 'badge bg-secondary';
         }
     }
 
