@@ -471,7 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>${strategyIcon} ${record.strategy}</td>
                         <td>
                             ${record.profit_loss !== null ?
-                                `<span class="${profitLossClass}">₩${record.profit_loss.toLocaleString()}</span>` :
+                                `<span class="${profitLossClass}">${record.profit_loss.toLocaleString()}%</span>` :
                                 '<span class="text-muted">-</span>'
                             }
                         </td>
