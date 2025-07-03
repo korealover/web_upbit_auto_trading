@@ -72,11 +72,13 @@ def update_tickers_from_upbit():
         import pyupbit
         # 원화 마켓의 모든 티커 가져오기
         all_tickers = pyupbit.get_tickers(fiat="KRW")
-        # print(all_tickers)
+        # 알파벳(사전)순으로 정렬
+        sorted_tickers = sorted(all_tickers)
+        print(sorted_tickers)
 
         # 티커 정보 가공 (티커와 이름 표시)
         updated_tickers = []
-        for ticker in all_tickers:
+        for ticker in sorted_tickers:
             # 심볼만 추출 (KRW- 제거)
             symbol = ticker.replace("KRW-", "")
             updated_tickers.append((ticker, f'{symbol}({symbol})'))
