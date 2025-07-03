@@ -283,7 +283,7 @@ class UpbitTradingBot:
                 self.logger.info(f"거래 결과: {ret}")
 
             self.logger.info(f"거래 사이클 종료: {self.args.ticker.data}")
-            self.logger.info("="*50)
+            self.logger.info("="*60)
 
         except Exception as e:
             self.logger.error(f"실행 중 오류 발생: {str(e)}", exc_info=True)
