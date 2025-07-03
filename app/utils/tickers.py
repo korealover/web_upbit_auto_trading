@@ -5,36 +5,19 @@
 
 # 주요 코인 티커 목록 (KRW 마켓)
 MAJOR_TICKERS = [
-    ('KRW-BTC', '비트코인(BTC)'),
-    ('KRW-ETH', '이더리움(ETH)'),
-    ('KRW-XRP', '리플(XRP)'),
     ('KRW-ADA', '에이다(ADA)'),
-    ('KRW-ICX', '아이콘(ICX)'),
-    ('KRW-USDT', '테더(USDT)'),
     ('KRW-ANIME', '애니메코인(ANIME)'),
-    ('KRW-KAITO', '카이토(KAITO)'),
+    ('KRW-BTC', '비트코인(BTC)'),
     ('KRW-DOGE', '도지코인(DOGE)'),
-    ('KRW-SOL', '솔라나(SOL)'),
-    ('KRW-DOT', '폴카닷(DOT)'),
-    ('KRW-AVAX', '아발란체(AVAX)'),
-    ('KRW-MATIC', '폴리곤(MATIC)'),
-    ('KRW-LINK', '체인링크(LINK)'),
-    ('KRW-ATOM', '코스모스(ATOM)'),
-    ('KRW-TRX', '트론(TRX)'),
+    ('KRW-ETH', '이더리움(ETH)'),
+    ('KRW-ICX', '아이콘(ICX)'),
+    ('KRW-KAITO', '카이토(KAITO)'),
+    ('KRW-SAHARA', '사하라에이아이(SAHARA)'),
     ('KRW-SHIB', '시바이누(SHIB)'),
-    ('KRW-SAND', '샌드박스(SAND)'),
-    ('KRW-NEAR', '니어프로토콜(NEAR)'),
-    ('KRW-MANA', '디센트럴랜드(MANA)'),
-    ('KRW-FLOW', '플로우(FLOW)'),
-    ('KRW-BCH', '비트코인캐이스(BCH)'),
-    ('KRW-LTC', '라이트코인(LTC)'),
-    ('KRW-EOS', '이오스(EOS)'),
-    ('KRW-XTZ', '테자리코인(XTZ)'),
-    ('KRW-BAT', '배트마이너(BAT)'),
-    ('KRW-ZIL', '지리(ZIL)'),
-    ('KRW-FIL', '파일로(FIL)'),
-    ('KRW-ALGO', '알고리즘(ALGO)'),
-    ('KRW-AAVE', '아이어브(AAVE)'),
+    ('KRW-TRUMP', '오피셜트럼프(TRUMP)'),
+    ('KRW-USDT', '테더(USDT)'),
+    ('KRW-XLM', '스텔라루멘(XLM)'),
+    ('KRW-XRP', '리플(XRP)'),
 ]
 
 
@@ -74,7 +57,7 @@ def update_tickers_from_upbit():
         all_tickers = pyupbit.get_tickers(fiat="KRW")
         # 알파벳(사전)순으로 정렬
         sorted_tickers = sorted(all_tickers)
-        print(sorted_tickers)
+        # print(sorted_tickers)
 
         # 티커 정보 가공 (티커와 이름 표시)
         updated_tickers = []
