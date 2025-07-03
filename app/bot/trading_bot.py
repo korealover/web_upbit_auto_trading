@@ -1,4 +1,6 @@
 # bot/trading_bot.py
+from flask_login import current_user
+
 from app.utils.telegram_utils import TelegramNotifier
 from config import Config
 from app.models import TradeRecord
@@ -10,12 +12,13 @@ import time
 class UpbitTradingBot:
     """업비트 자동 거래 봇 클래스"""
 
-    def __init__(self, args, upbit_api, strategy, logger):
+    def __init__(self, args, upbit_api, strategy, logger, username=None):
         """초기화"""
         self.args = args
         self.api = upbit_api
         self.strategy = strategy
         self.logger = logger
+        self.username = username
 
         # 사용자 ID 확인 및 저장
         self.user_id = None
@@ -29,7 +32,7 @@ class UpbitTradingBot:
         # 텔레그램 알림 초기화
         self.telegram_enabled = Config.TELEGRAM_NOTIFICATIONS_ENABLED
         if self.telegram_enabled and Config.TELEGRAM_BOT_TOKEN and Config.TELEGRAM_CHAT_ID:
-            self.telegram = TelegramNotifier(Config.TELEGRAM_BOT_TOKEN, Config.TELEGRAM_CHAT_ID, logger)
+            self.telegram = TelegramNotifier(Config.TELEGRAM_BOT_TOKEN, Config.TELEGRAM_CHAT_ID, logger, self.username)
             self.logger.info("텔레그램 알림 기능 활성화됨")
         else:
             self.telegram = None
@@ -270,6 +273,7 @@ class UpbitTradingBot:
     def run_cycle(self):
         """거래 사이클 실행"""
         try:
+            self.logger.info("="*20 + f" 거래자 ID : {self.username} " + "="*20)
             self.logger.info(f"거래 사이클 시작: {self.args.ticker.data}")
 
             # 트레이딩 실행
@@ -279,6 +283,7 @@ class UpbitTradingBot:
                 self.logger.info(f"거래 결과: {ret}")
 
             self.logger.info(f"거래 사이클 종료: {self.args.ticker.data}")
+            self.logger.info("="*50)
 
         except Exception as e:
             self.logger.error(f"실행 중 오류 발생: {str(e)}", exc_info=True)

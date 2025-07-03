@@ -24,7 +24,7 @@ def get_telegram_bot(token):
 class TelegramNotifier:
     """텔레그램 알림 클래스 (최적화)"""
 
-    def __init__(self, token, chat_id, logger=None):
+    def __init__(self, token, chat_id, logger=None, usename=None):
         """텔레그램 알림 초기화"""
         self.token = token
         self.chat_id = chat_id
@@ -36,6 +36,7 @@ class TelegramNotifier:
         self._loop = None
         self._sender_task = None
         self._initialize_async_components()
+        self.usename = usename
 
     def _initialize_async_components(self):
             """비동기 컴포넌트 초기화"""
@@ -186,6 +187,7 @@ class TelegramNotifier:
             message = (
                 f"🔵 *매수 완료*\n"
                 f"───────────\n"
+                f"• 매수자: `{self.usename}`\n"
                 f"• 코인: `{coin_symbol}`\n"
                 f"• 금액: `{amount:,.0f}원`\n"
             )
@@ -198,6 +200,7 @@ class TelegramNotifier:
             message = (
                 f"🔴 *매도 완료*\n"
                 f"───────────\n"
+                f"• 매도자: `{self.usename}`\n"
                 f"• 코인: `{coin_symbol}`\n"
                 f"• 수량: `{amount}`\n"
             )

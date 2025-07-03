@@ -393,7 +393,7 @@ def start_bot(ticker, strategy_name, settings):
 
     # 봇 생성 - WebSocket 지원을 위한 로거 생성
     websocket_logger = WebSocketLogger(ticker, user_id)
-    bot = UpbitTradingBot(settings, upbit_api, strategy, websocket_logger)
+    bot = UpbitTradingBot(settings, upbit_api, strategy, websocket_logger, current_user.username)
 
     # 봇 정보 저장
     trading_bots[user_id][ticker] = {
