@@ -465,13 +465,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td><small>${record.timestamp}</small></td>
                         <td><strong>${record.ticker}</strong></td>
                         <td><span class="${tradeTypeClass}">${record.trade_type}</span></td>
-                        <td>₩${record.price.toLocaleString()}</td>
+                        <td>₩${record.price.toLocaleString('ko-KR')}</td>
                         <td>${record.volume.toFixed(4)}</td>
-                        <td>₩${record.amount.toLocaleString()}</td>
+                        <td>₩${record.amount.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
                         <td>${strategyIcon} ${record.strategy}</td>
                         <td>
                             ${record.profit_loss !== null ?
-                                `<span class="${profitLossClass}">${record.profit_loss.toLocaleString()}%</span>` :
+                                `<span class="${profitLossClass}">${record.profit_loss.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}%</span>` :
                                 '<span class="text-muted">-</span>'
                             }
                         </td>

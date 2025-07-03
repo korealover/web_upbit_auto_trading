@@ -20,6 +20,7 @@ class Config:
     # 텔레그램 설정
     TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+    TELEGRAM_CHAT_ID_PERSONAL = os.environ.get("TELEGRAM_CHAT_ID_PERSONAL")
     TELEGRAM_NOTIFICATIONS_ENABLED = os.environ.get("TELEGRAM_NOTIFICATIONS_ENABLED", "False").lower() == "true"
 
     # DB 설정

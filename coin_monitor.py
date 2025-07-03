@@ -143,7 +143,7 @@ class TelegramBot:
 
 
 # 텔레그램 봇 인스턴스
-telegram_bot = TelegramBot(Config.TELEGRAM_BOT_TOKEN, Config.TELEGRAM_CHAT_ID)
+telegram_bot = TelegramBot(Config.TELEGRAM_BOT_TOKEN, Config.TELEGRAM_CHAT_ID_PERSONAL)
 
 
 def create_chart(ticker, interval='day', count=30):
