@@ -400,7 +400,8 @@ def start_bot(ticker, strategy_name, settings):
         'bot': bot,
         'strategy': strategy_name,
         'settings': settings,
-        'running': True
+        'running': True,
+        'interval_label': get_selected_label(settings.interval),
     }
 
     # 봇 실행 스레드 시작
@@ -408,6 +409,12 @@ def start_bot(ticker, strategy_name, settings):
     thread.daemon = True
     thread.start()
 
+# 선택 필드에서 라벨을 가져오기
+def get_selected_label(form_field):
+    for value, label in form_field.choices:
+        if value == form_field.data:
+            return label
+    return None
 
 def run_bot_thread(user_id, ticker):
     bot_info = trading_bots[user_id][ticker]
