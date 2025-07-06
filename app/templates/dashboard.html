@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block content %}
@@ -85,27 +84,70 @@
 
 <!-- 잔고 및 성과 정보 -->
 <div class="row mt-4">
-    <div class="col-md-4">
-        <div class="card">
+    <div class="col-md-6">
+        <div class="card h-100">
             <div class="card-header">
                 💰 잔고 정보
             </div>
             <div class="card-body">
-                <p><strong>보유 현금:</strong> {{ "₩{:,.0f}".format(balance_info.cash|default(0)) }}</p>
-                <p><strong>총 자산:</strong> {{ "₩{:,.0f}".format(balance_info.total_balance|default(0)) }}</p>
+                <div class="row">
+                    <div class="col-md-12">
+                        <p><strong>보유 현금:</strong> {{ "₩{:,.0f}".format(balance_info.cash|default(0)) }}</p>
+                        <p><strong>총 자산:</strong> {{ "₩{:,.0f}".format(balance_info.total_balance|default(0)) }}</p>
+                    </div>
+                </div>
                 {% if balance_info.coins %}
                 <hr>
-                <h6>보유 코인:</h6>
-                {% for coin in balance_info.coins %}
-                <small>{{ coin.ticker }}: {{ "{:.4f}".format(coin.balance) }}</small><br>
-                {% endfor %}
+                <h6 class="mb-3">보유 코인 정보</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr class="text-center">
+                                <th scope="col">코인</th>
+                                <th scope="col">보유량</th>
+                                <th scope="col">구매 단가</th>
+                                <th scope="col">현재 단가</th>
+                                <th scope="col">수익률</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for coin in balance_info.coins %}
+                            <tr class="text-center">
+                                <td>
+                                    <span class="fw-bold">{{ coin.ticker }}</span>
+                                </td>
+                                <td>
+                                    {{ "{:.4f}".format(coin.balance) }}
+                                </td>
+                                <td>
+                                    <span class="text-danger">
+                                        ₩{{ "{:,.0f}".format(coin.avg_buy_price|default(0)) }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="text-primary">
+                                        ₩{{ "{:,.0f}".format(coin.current_price|default(0)) }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% set profit = (coin.current_price|default(0)) - (coin.avg_buy_price|default(0)) %}
+                                    {% set rate = (profit / coin.avg_buy_price) * 100 if coin.avg_buy_price else 0 %}
+                                    <span class="{% if rate > 0 %}text-success{% elif rate < 0 %}text-danger{% endif %}">
+                                        {{ "{:+.2f}%".format(rate) }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
                 {% endif %}
             </div>
         </div>
     </div>
 
-    <div class="col-md-4">
-        <div class="card">
+    <div class="col-md-6">
+        <div class="card h-100">
             <div class="card-header">
                 📊 오늘의 성과
             </div>
@@ -128,39 +170,7 @@
             </div>
         </div>
     </div>
-
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                🎯 전략별 성과
-            </div>
-            <div class="card-body">
-                {% if strategy_performance %}
-                {% for strategy, perf in strategy_performance.items() %}
-                <div class="mb-2">
-                    <small>
-                        <strong>
-                            {% if strategy == 'rsi' %}📈 RSI
-                            {% elif strategy == 'adaptive' %}🎯 어댑티브
-                            {% elif strategy == 'ensemble' %}🔥 앙상블
-                            {% elif strategy == 'volatility' %}🚀 변동성
-                            {% else %}📊 볼린저{% endif %}
-                        :</strong>
-                        <span class="{% if perf.return > 0 %}text-success{% elif perf.return < 0 %}text-danger{% endif %}">
-                            {{ "{:+.2f}%".format(perf.return) }}
-                        </span>
-                        ({{ perf.trades }}회)
-                    </small>
-                </div>
-                {% endfor %}
-                {% else %}
-                <p class="text-muted">아직 거래 데이터가 없습니다.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
 </div>
-
 
 <!-- 거래 기록 -->
 <div class="row mt-4">

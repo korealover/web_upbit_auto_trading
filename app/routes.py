@@ -136,6 +136,7 @@ def dashboard():
             total_balance = balance_info['cash']
 
             if all_balances:
+                # print(all_balances)
                 for balance in all_balances:
                     if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
                         ticker = f"KRW-{balance['currency']}"
@@ -148,6 +149,7 @@ def dashboard():
                                 'ticker': ticker,
                                 'balance': float(balance['balance']),
                                 'value': coin_value,
+                                'avg_buy_price': float(balance['avg_buy_price']),
                                 'current_price': current_price
                             })
                         except Exception as e:
