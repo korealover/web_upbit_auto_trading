@@ -116,20 +116,20 @@
                                 <td>
                                     <span class="fw-bold">{{ coin.ticker }}</span>
                                 </td>
-                                <td>
+                                <td class="text-end">
                                     {{ "{:.4f}".format(coin.balance) }}
                                 </td>
-                                <td>
+                                <td class="text-end">
                                     <span class="text-danger">
                                         ₩{{ "{:,.0f}".format(coin.avg_buy_price|default(0)) }}
                                     </span>
                                 </td>
-                                <td>
+                                <td class="text-end">
                                     <span class="text-primary">
                                         ₩{{ "{:,.0f}".format(coin.current_price|default(0)) }}
                                     </span>
                                 </td>
-                                <td>
+                                <td class="text-end">
                                     {% set profit = (coin.current_price|default(0)) - (coin.avg_buy_price|default(0)) %}
                                     {% set rate = (profit / coin.avg_buy_price) * 100 if coin.avg_buy_price else 0 %}
                                     <span class="{% if rate > 0 %}text-success{% elif rate < 0 %}text-danger{% endif %}">
