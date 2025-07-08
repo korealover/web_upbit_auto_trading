@@ -115,3 +115,8 @@ class TradingSettingsForm(FlaskForm):
         super(TradingSettingsForm, self).__init__(*args, **kwargs)
         # 폼 초기화 시 티커 목록을 동적으로 설정
         self.ticker.choices = get_ticker_choices()
+
+
+class FavoriteForm(FlaskForm):
+    name = StringField('즐겨찾기 이름', validators=[DataRequired(message="이름을 입력해주세요.")])
+    submit = SubmitField('저장')

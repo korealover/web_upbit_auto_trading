@@ -2,8 +2,8 @@ from flask import Blueprint, render_template, request, jsonify, redirect, url_fo
 from flask_login import login_user, logout_user, current_user, login_required
 from flask_socketio import emit
 from app import db, socketio
-from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm
-from app.models import User, TradeRecord, kst_now
+from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm, FavoriteForm
+from app.models import User, TradeRecord, kst_now, TradingFavorite
 from app.api.upbit_api import UpbitAPI
 from app.bot.trading_bot import UpbitTradingBot
 from app.strategy import create_strategy
@@ -314,22 +314,22 @@ def dashboard():
                            strategy_performance=strategy_performance)
 
 
-@bp.route('/settings', methods=['GET', 'POST'])
-@login_required
-def settings():
-    form = TradingSettingsForm()
-    if form.validate_on_submit():
-        # 폼에서 설정값 추출
-        ticker = form.ticker.data
-        strategy_name = form.strategy.data
-        # 기타 설정값들...
-
-        # 봇 설정 및 시작
-        start_bot(ticker, strategy_name, form)
-        flash(f'{ticker} 봇이 시작되었습니다!', 'success')
-        return redirect(url_for('main.dashboard'))
-
-    return render_template('settings.html', form=form)
+# @bp.route('/settings', methods=['GET', 'POST'])
+# @login_required
+# def settings():
+#     form = TradingSettingsForm()
+#     if form.validate_on_submit():
+#         # 폼에서 설정값 추출
+#         ticker = form.ticker.data
+#         strategy_name = form.strategy.data
+#         # 기타 설정값들...
+#
+#         # 봇 설정 및 시작
+#         start_bot(ticker, strategy_name, form)
+#         flash(f'{ticker} 봇이 시작되었습니다!', 'success')
+#         return redirect(url_for('main.dashboard'))
+#
+#     return render_template('settings.html', form=form)
 
 
 @bp.route('/api/start_bot/<ticker>', methods=['POST'])
@@ -881,3 +881,81 @@ def get_ticker_trade_records(ticker):
         })
 
     return jsonify(result)
+
+
+@bp.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    form = TradingSettingsForm()
+    favorite_form = FavoriteForm()
+    favorite_id = request.args.get('favorite_id', type=int)
+
+    # 즐겨찾기 불러오기 (GET 요청 시)
+    if request.method == 'GET' and favorite_id:
+        favorite = TradingFavorite.query.get_or_404(favorite_id)
+        if favorite.user_id != current_user.id:
+            flash('해당 즐겨찾기에 대한 권한이 없습니다.', 'danger')
+            return redirect(url_for('main.favorites'))
+
+        # 폼에 데이터 채우기
+        form.process(data=favorite.to_dict())
+        flash(f'"{favorite.name}" 설정을 불러왔습니다. 필요시 수정 후 봇을 실행하세요.', 'info')
+
+    # (기존) 설정 저장 및 봇 실행 로직 (POST 요청 시)
+    if form.validate_on_submit() and request.method == 'POST' and not favorite_id:
+        # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
+        ticker = form.ticker.data
+        strategy_name = form.strategy.data
+        print(ticker, strategy_name)
+        start_bot(ticker, strategy_name, form)
+        flash('거래 설정이 적용되었습니다.', 'success')
+        return redirect(url_for('main.dashboard'))
+
+    return render_template('settings.html', title='거래 설정', form=form, favorite_form=favorite_form)
+
+
+@bp.route('/favorites')
+@login_required
+def favorites():
+    favorites = TradingFavorite.query.filter_by(user_id=current_user.id).order_by(TradingFavorite.created_at.desc()).all()
+    return render_template('favorites.html', title='즐겨찾기', favorites=favorites)
+
+
+@bp.route('/save_favorite', methods=['POST'])
+@login_required
+def save_favorite():
+    settings_form = TradingSettingsForm(request.form)
+    favorite_form = FavoriteForm(request.form)
+
+    if favorite_form.name.data:
+        favorite = TradingFavorite(
+            user_id=current_user.id,
+            name=favorite_form.name.data
+        )
+        # settings_form의 데이터로 favorite 객체 채우기
+        for field in settings_form:
+            if hasattr(favorite, field.name):
+                setattr(favorite, field.name, field.data)
+
+        db.session.add(favorite)
+        db.session.commit()
+        flash(f'"{favorite.name}" 이름으로 즐겨찾기에 저장되었습니다.', 'success')
+        return redirect(url_for('main.favorites'))
+    else:
+        flash('즐겨찾기 저장에 실패했습니다. 유효한 이름을 입력해주세요.', 'danger')
+        # 원래 폼 데이터를 유지하며 settings 페이지로 돌아가기
+        return render_template('settings.html', title='거래 설정', form=settings_form, favorite_form=favorite_form)
+
+
+@bp.route('/delete_favorite/<int:favorite_id>')
+@login_required
+def delete_favorite(favorite_id):
+    favorite = TradingFavorite.query.get_or_404(favorite_id)
+    if favorite.user_id != current_user.id:
+        flash('해당 즐겨찾기에 대한 권한이 없습니다.', 'danger')
+        return redirect(url_for('main.favorites'))
+
+    db.session.delete(favorite)
+    db.session.commit()
+    flash('즐겨찾기가 삭제되었습니다.', 'success')
+    return redirect(url_for('main.favorites'))

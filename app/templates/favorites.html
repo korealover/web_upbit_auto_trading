@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block head %}
+{{ super() }}
+<style>
+    /* 즐겨찾기 페이지를 위한 커스텀 스타일 */
+    .favorite-card {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        border: none;
+        border-radius: 0.75rem; /* 카드 모서리를 둥글게 처리 */
+    }
+    .favorite-card:hover {
+        transform: translateY(-5px); /* 마우스 호버 시 살짝 위로 이동 */
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1); /* 그림자 효과 강화 */
+    }
+    .card-header-icon {
+        font-size: 1.1rem;
+        color: #ffc107; /* 별 모양 아이콘 색상 */
+    }
+    .param-list .list-group-item {
+        padding: 0.6rem 0;
+        border: none;
+        background: none;
+        font-size: 0.9rem;
+    }
+    .param-list strong {
+        color: #555; /* 주요 파라미터 텍스트 색상 */
+    }
+    .param-list i {
+        width: 20px; /* 아이콘 너비 고정으로 정렬 */
+    }
+    .card-footer {
+        background-color: transparent;
+        border-top: 1px solid #f0f0f0;
+    }
+    /* 즐겨찾기가 없을 때 표시될 영역 스타일 */
+    .empty-state {
+        border: 2px dashed #e0e0e0;
+        padding: 3rem;
+        background-color: #f8f9fa;
+        border-radius: 0.75rem;
+    }
+    .empty-state i {
+        font-size: 3.5rem;
+        color: #ced4da;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+    <h2 class="fw-bold"><i class="fas fa-star text-warning me-2"></i>즐겨찾기 목록</h2>
+    <a href="{{ url_for('main.settings') }}" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i> 새 설정 만들기
+    </a>
+</div>
+
+{% if favorites %}
+<div class="row">
+    {% for favorite in favorites %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 favorite-card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-dark">
+                    <i class="fas fa-bookmark card-header-icon me-2"></i>
+                    {{ favorite.name }}
+                </h6>
+                <small class="text-muted">{{ favorite.created_at.strftime('%Y-%m-%d') }}</small>
+            </div>
+            <div class="card-body">
+                <!-- 주요 정보 (코인, 전략, 차트 간격) -->
+                <div class="d-flex justify-content-around text-center mb-4">
+                    <div>
+                        <h6 class="text-muted small">코인</h6>
+                        <span class="badge fs-6 text-bg-primary rounded-pill px-2">{{ favorite.ticker }}</span>
+                    </div>
+                    <div>
+                        <h6 class="text-muted small">전략</h6>
+                        <span class="badge fs-6 text-bg-info rounded-pill px-2">{{ favorite.strategy }}</span>
+                    </div>
+                     <div>
+                        <h6 class="text-muted small">차트 간격</h6>
+                        <span class="badge fs-6 text-bg-secondary rounded-pill px-2">{{ favorite.interval }}</span>
+                    </div>
+                </div>
+
+                <!-- 핵심 파라미터 리스트 -->
+                <ul class="list-group list-group-flush param-list mb-3">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <strong><i class="fas fa-money-bill-wave me-2 text-success"></i>매수 금액</strong>
+                        <span class="fw-light">{{ "{:,.0f}".format(favorite.buy_amount) }}원</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <strong><i class="fas fa-piggy-bank me-2 text-warning"></i>최소 현금</strong>
+                        <span class="fw-light">{{ "{:,.0f}".format(favorite.min_cash) }}원</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <strong><i class="fas fa-hourglass-half me-2 text-info"></i>거래 간격</strong>
+                        <span class="fw-light">{{ favorite.sleep_time }}초</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <strong><i class="fas fa-chart-pie me-2 text-danger"></i>매도 비율</strong>
+                        <span class="fw-light">{{ (favorite.sell_portion * 100)|round(1) }}%</span>
+                    </li>
+                </ul>
+
+                <!-- 전략별 상세 정보 -->
+                {% set strategy_icon = {
+                    'bollinger': 'fa-chart-area',
+                    'volatility': 'fa-rocket',
+                    'rsi': 'fa-wave-square',
+                    'ensemble': 'fa-sitemap'
+                } %}
+                {% if favorite.strategy in strategy_icon %}
+                <div class="alert alert-light p-2 small border-0">
+                    <strong><i class="fas {{ strategy_icon[favorite.strategy] }} me-1"></i>
+                    {% if favorite.strategy == 'bollinger' %}볼린저 밴드{% elif favorite.strategy == 'volatility' %}변동성 돌파{% elif favorite.strategy == 'rsi' %}RSI 전략{% elif favorite.strategy == 'ensemble' %}앙상블{% endif %}:
+                    </strong>
+                    {% if favorite.strategy == 'bollinger' %}기간: {{ favorite.window }}, 승수: {{ favorite.multiplier }}{% endif %}
+                    {% if favorite.strategy == 'volatility' %}K: {{ favorite.k }}, 목표: {{ favorite.target_profit }}%, 손절: {{ favorite.stop_loss }}%{% endif %}
+                    {% if favorite.strategy == 'rsi' %}기간: {{ favorite.rsi_period }}, 과매도: {{ favorite.rsi_oversold }}, 과매수: {{ favorite.rsi_overbought }}{% endif %}
+                    {% if favorite.strategy == 'ensemble' %}변동성: {{ favorite.ensemble_volatility_weight }}, 볼린저: {{ favorite.ensemble_bollinger_weight }}, RSI: {{ favorite.ensemble_rsi_weight }}{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer d-flex justify-content-end gap-2">
+                <a href="{{ url_for('main.settings', favorite_id=favorite.id) }}" class="btn btn-sm btn-success">
+                    <i class="fas fa-cogs me-1"></i> 설정 불러오기
+                </a>
+                <a href="{{ url_for('main.delete_favorite', favorite_id=favorite.id) }}"
+                   class="btn btn-sm btn-outline-danger"
+                   onclick="return confirm('\'{{ favorite.name }}\' 즐겨찾기를 정말로 삭제하시겠습니까?')">
+                    <i class="fas fa-trash"></i> 삭제
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center mt-5 empty-state">
+     <i class="fas fa-star-half-alt mb-3"></i>
+    <h4 class="fw-bold">저장된 즐겨찾기가 없습니다</h4>
+    <p class="text-muted">거래 설정을 만들고 즐겨찾기로 저장하여<br>언제든지 빠르게 설정을 불러오세요.</p>
+    <a href="{{ url_for('main.settings') }}" class="btn btn-primary mt-2">
+        <i class="fas fa-plus me-1"></i> 첫 설정 만들러 가기
+    </a>
+</div>
+{% endif %}
+{% endblock %}

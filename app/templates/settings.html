@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>거래 봇 설정</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>거래 봇 설정</h2>
+    <div>
+        <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#saveFavoriteModal">
+            <i class="fas fa-bookmark"></i> 현재 설정 저장
+        </button>
+    </div>
+</div>
+
 
 <div class="row mt-4">
     <div class="col-md-10 offset-md-1">
@@ -11,7 +19,7 @@
                 <small class="text-muted">전략별 상세 설정은 아래에서 확인하세요</small>
             </div>
             <div class="card-body">
-                <form method="POST" action="/settings">
+                <form method="POST" action="{{ url_for('main.settings') }}" id="settingsForm">
                     {{ form.hidden_tag() }}
 
                     <!-- 기본 설정 -->
@@ -198,6 +206,40 @@
         </div>
     </div>
 </div>
+
+<!-- 즐겨찾기 저장 Modal -->
+<div class="modal fade" id="saveFavoriteModal" tabindex="-1" aria-labelledby="saveFavoriteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="favoriteForm" method="POST" action="{{ url_for('main.save_favorite') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="saveFavoriteModalLabel">즐겨찾기로 저장</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>현재 페이지의 설정을 즐겨찾기에 저장합니다. 나중에 쉽게 불러올 수 있도록 이름을 지정해주세요.</p>
+
+                    <!-- 즐겨찾기 이름 폼 -->
+                    {{ favorite_form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ favorite_form.name.label(class="form-label") }}
+                        {{ favorite_form.name(class="form-control", id="favorite_name_input") }}
+                        {% if favorite_form.name.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ favorite_form.name.errors[0] }}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -205,6 +247,29 @@
     document.addEventListener('DOMContentLoaded', function() {
         const strategySelect = document.getElementById('strategy');
         const strategySettings = document.querySelectorAll('.strategy-settings');
+        const favoriteForm = document.getElementById('favoriteForm');
+        if(favoriteForm) {
+            favoriteForm.addEventListener('submit', function(e) {
+                e.preventDefault(); // 기본 제출 동작 중단
+
+                const mainForm = document.getElementById('settingsForm');
+                const mainFormData = new FormData(mainForm);
+
+                // 메인 폼 데이터를 즐겨찾기 폼 데이터에 추가
+                for (let [key, value] of mainFormData.entries()) {
+                    // 이미 존재하는 필드(예: csrf_token)는 덮어쓰지 않음
+                    if (!favoriteForm.querySelector(`[name="${key}"]`)) {
+                        const hiddenInput = document.createElement('input');
+                        hiddenInput.type = 'hidden';
+                        hiddenInput.name = key;
+                        hiddenInput.value = value;
+                        favoriteForm.appendChild(hiddenInput);
+                    }
+                }
+                // 이제 즐겨찾기 폼을 제출
+                this.submit();
+            });
+        }
 
         function toggleSettings() {
             // 모든 설정 숨기기
