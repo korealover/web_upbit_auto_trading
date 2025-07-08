@@ -3,35 +3,29 @@
 {% block head %}
 {{ super() }}
 <style>
-    /* 즐겨찾기 페이지를 위한 커스텀 스타일 */
-    .favorite-card {
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        border: none;
-        border-radius: 0.75rem; /* 카드 모서리를 둥글게 처리 */
-    }
-    .favorite-card:hover {
-        transform: translateY(-5px); /* 마우스 호버 시 살짝 위로 이동 */
-        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1); /* 그림자 효과 강화 */
-    }
     .card-header-icon {
         font-size: 1.1rem;
         color: #ffc107; /* 별 모양 아이콘 색상 */
     }
-    .param-list .list-group-item {
-        padding: 0.6rem 0;
-        border: none;
-        background: none;
+    /* 카드 본문 스타일 */
+    .card-body .badge {
+        font-size: 0.85rem;
+        padding: 0.4em 0.7em;
+    }
+    .param-row {
         font-size: 0.9rem;
     }
-    .param-list strong {
-        color: #555; /* 주요 파라미터 텍스트 색상 */
+    .param-row .param-label {
+        color: #6c757d;
     }
-    .param-list i {
-        width: 20px; /* 아이콘 너비 고정으로 정렬 */
+    .param-row .param-value {
+        font-weight: 500;
     }
-    .card-footer {
-        background-color: transparent;
-        border-top: 1px solid #f0f0f0;
+    .strategy-details-box {
+        background-color: #f0f6ff;
+    }
+    .strategy-details-box .param-label {
+        font-size: 0.8rem;
     }
     /* 즐겨찾기가 없을 때 표시될 영역 스타일 */
     .empty-state {
@@ -59,7 +53,7 @@
 <div class="row">
     {% for favorite in favorites %}
     <div class="col-md-6 col-lg-4 mb-4">
-        <div class="card h-100 favorite-card shadow-sm">
+        <div class="card h-100 shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h6 class="mb-0 fw-bold text-dark">
                     <i class="fas fa-bookmark card-header-icon me-2"></i>
@@ -69,57 +63,72 @@
             </div>
             <div class="card-body">
                 <!-- 주요 정보 (코인, 전략, 차트 간격) -->
-                <div class="d-flex justify-content-around text-center mb-4">
-                    <div>
-                        <h6 class="text-muted small">코인</h6>
-                        <span class="badge fs-6 text-bg-primary rounded-pill px-2">{{ favorite.ticker }}</span>
+                <div class="row text-center mb-3">
+                    <div class="col-4">
+                        <small class="text-muted">코인</small>
+                        <div class="mt-1"><span class="badge bg-primary">{{ favorite.ticker }}</span></div>
                     </div>
-                    <div>
-                        <h6 class="text-muted small">전략</h6>
-                        <span class="badge fs-6 text-bg-info rounded-pill px-2">{{ favorite.strategy }}</span>
+                    <div class="col-4">
+                        <small class="text-muted">전략</small>
+                        <div class="mt-1"><span class="badge bg-danger">{{ favorite.strategy }}</span></div>
                     </div>
-                     <div>
-                        <h6 class="text-muted small">차트 간격</h6>
-                        <span class="badge fs-6 text-bg-secondary rounded-pill px-2">{{ favorite.interval }}</span>
+                    <div class="col-4">
+                        <small class="text-muted">차트 간격</small>
+                        <div class="mt-1"><span class="badge bg-warning text-dark">{{ favorite.interval }}</span></div>
                     </div>
                 </div>
 
-                <!-- 핵심 파라미터 리스트 -->
-                <ul class="list-group list-group-flush param-list mb-3">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <strong><i class="fas fa-money-bill-wave me-2 text-success"></i>매수 금액</strong>
-                        <span class="fw-light">{{ "{:,.0f}".format(favorite.buy_amount) }}원</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <strong><i class="fas fa-piggy-bank me-2 text-warning"></i>최소 현금</strong>
-                        <span class="fw-light">{{ "{:,.0f}".format(favorite.min_cash) }}원</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <strong><i class="fas fa-hourglass-half me-2 text-info"></i>거래 간격</strong>
-                        <span class="fw-light">{{ favorite.sleep_time }}초</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <strong><i class="fas fa-chart-pie me-2 text-danger"></i>매도 비율</strong>
-                        <span class="fw-light">{{ (favorite.sell_portion * 100)|round(1) }}%</span>
-                    </li>
-                </ul>
+                <hr class="my-3">
+
+                <!-- 핵심 파라미터 -->
+                <div class="row param-row">
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="param-label"><i class="fas fa-money-bill-wave me-2 text-success"></i>매수 금액</span>
+                            <span class="param-value">{{ "{:,.0f}".format(favorite.buy_amount) }}원</span>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="param-label"><i class="fas fa-piggy-bank me-2 text-warning"></i>최소 현금</span>
+                            <span class="param-value">{{ "{:,.0f}".format(favorite.min_cash) }}원</span>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="param-label"><i class="fas fa-hourglass-half me-2 text-info"></i>거래 간격</span>
+                            <span class="param-value">{{ favorite.sleep_time }}초</span>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="param-label"><i class="fas fa-chart-pie me-2 text-danger"></i>매도 비율</span>
+                            <span class="param-value">{{ (favorite.sell_portion * 100)|round(1) }}%</span>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- 전략별 상세 정보 -->
-                {% set strategy_icon = {
-                    'bollinger': 'fa-chart-area',
-                    'volatility': 'fa-rocket',
-                    'rsi': 'fa-wave-square',
-                    'ensemble': 'fa-sitemap'
-                } %}
-                {% if favorite.strategy in strategy_icon %}
-                <div class="alert alert-light p-2 small border-0">
-                    <strong><i class="fas {{ strategy_icon[favorite.strategy] }} me-1"></i>
-                    {% if favorite.strategy == 'bollinger' %}볼린저 밴드{% elif favorite.strategy == 'volatility' %}변동성 돌파{% elif favorite.strategy == 'rsi' %}RSI 전략{% elif favorite.strategy == 'ensemble' %}앙상블{% endif %}:
-                    </strong>
-                    {% if favorite.strategy == 'bollinger' %}기간: {{ favorite.window }}, 승수: {{ favorite.multiplier }}{% endif %}
-                    {% if favorite.strategy == 'volatility' %}K: {{ favorite.k }}, 목표: {{ favorite.target_profit }}%, 손절: {{ favorite.stop_loss }}%{% endif %}
-                    {% if favorite.strategy == 'rsi' %}기간: {{ favorite.rsi_period }}, 과매도: {{ favorite.rsi_oversold }}, 과매수: {{ favorite.rsi_overbought }}{% endif %}
-                    {% if favorite.strategy == 'ensemble' %}변동성: {{ favorite.ensemble_volatility_weight }}, 볼린저: {{ favorite.ensemble_bollinger_weight }}, RSI: {{ favorite.ensemble_rsi_weight }}{% endif %}
+                {% if favorite.strategy in ['bollinger', 'volatility', 'rsi', 'ensemble'] %}
+                <div class="alert alert-light mt-3 p-2 strategy-details-box">
+                    <div class="row small text-center">
+                        {% if favorite.strategy == 'bollinger' %}
+                        <div class="col-6"><span class="param-label text-muted">기간</span> <strong class="d-block">{{ favorite.window }}</strong></div>
+                        <div class="col-6"><span class="param-label text-muted">승수</span> <strong class="d-block">{{ favorite.multiplier }}</strong></div>
+                        {% elif favorite.strategy == 'volatility' %}
+                        <div class="col-4"><span class="param-label text-muted">K</span> <strong class="d-block">{{ favorite.k }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">목표</span> <strong class="d-block">{{ favorite.target_profit }}%</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">손절</span> <strong class="d-block">{{ favorite.stop_loss }}%</strong></div>
+                        {% elif favorite.strategy == 'rsi' %}
+                        <div class="col-4"><span class="param-label text-muted">기간</span> <strong class="d-block">{{ favorite.rsi_period }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">과매도</span> <strong class="d-block">{{ favorite.rsi_oversold }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">과매수</span> <strong class="d-block">{{ favorite.rsi_overbought }}</strong></div>
+                        {% elif favorite.strategy == 'ensemble' %}
+                        <div class="col-4"><span class="param-label text-muted">변동성</span> <strong class="d-block">{{ favorite.ensemble_volatility_weight }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">볼린저</span> <strong class="d-block">{{ favorite.ensemble_bollinger_weight }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">RSI</span> <strong class="d-block">{{ favorite.ensemble_rsi_weight }}</strong></div>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endif %}
             </div>

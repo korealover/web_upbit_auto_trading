@@ -67,6 +67,7 @@ class UpbitTradingBot:
             ticker = self.args.ticker.data
             buy_amount = self.args.buy_amount.data
             min_cash = self.args.min_cash.data
+            prevent_loss_sale = self.args.prevent_loss_sale.data
 
             # 전략에 따라 분기
             if hasattr(self.args, 'strategy') and self.args.strategy.data == 'volatility':
@@ -182,6 +183,17 @@ class UpbitTradingBot:
 
                 # 현재가 조회하여 보유 코인 가치 확인
                 current_price = self.api.get_current_price(ticker)
+                if not current_price:
+                    self.logger.error("현재가를 조회할 수 없어 매도를 건너뜁니다.")
+                    return None
+
+                avg_buy_price = self.api.get_buy_avg(ticker)  # 평단가를 미리 조회
+
+                # 손절 금지 설정을 확인하여 매도를 건너뜁니다. (기본값: Y)
+                if prevent_loss_sale == 'Y' and avg_buy_price and current_price < avg_buy_price:
+                    self.logger.info(f"손절 금지 설정됨. 현재가({current_price}) < 평균 단가({avg_buy_price}). 매도하지 않습니다.")
+                    return None
+
                 if current_price:
                     total_value = balance_coin * current_price
                     self.logger.info(f"현재 보유 코인 총 가치: {total_value:,.2f}원")

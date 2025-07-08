@@ -60,6 +60,7 @@ class TradingFavorite(db.Model):
     min_cash = db.Column(db.Float, nullable=False)
     sleep_time = db.Column(db.Integer, nullable=False)
     sell_portion = db.Column(db.Float, nullable=False)
+    prevent_loss_sale = db.Column(db.String(1), nullable=False, default='N')
     window = db.Column(db.Integer, nullable=True)
     multiplier = db.Column(db.Float, nullable=True)
     k = db.Column(db.Float, nullable=True)
@@ -87,6 +88,7 @@ class TradingFavorite(db.Model):
             'min_cash': self.min_cash,
             'sleep_time': self.sleep_time,
             'sell_portion': self.sell_portion,
+            'prevent_loss_sale': self.prevent_loss_sale,
             'window': self.window,
             'multiplier': self.multiplier,
             'k': self.k,
