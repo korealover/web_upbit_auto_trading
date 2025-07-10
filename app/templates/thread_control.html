@@ -1,0 +1,686 @@
+{% extends "base.html" %}
+
+{% block title %}스레드 제어 대시보드{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .thread-card {
+        border-left: 4px solid;
+        transition: all 0.3s ease;
+    }
+    
+    .thread-running {
+        border-left-color: #28a745;
+        background-color: #f8fff8;
+    }
+    
+    .thread-stopped {
+        border-left-color: #dc3545;
+        background-color: #fff8f8;
+    }
+    
+    .thread-stopping {
+        border-left-color: #ffc107;
+        background-color: #fffef8;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .status-running {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .status-stopped {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .status-stopping {
+        background-color: #ffc107;
+        color: black;
+    }
+    
+    .btn-group-vertical .btn {
+        margin-bottom: 2px;
+    }
+    
+    .thread-info {
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+    
+    .emergency-zone {
+        border: 2px dashed #dc3545;
+        background-color: #fff5f5;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .refresh-indicator {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+    }
+    
+    .thread-details {
+        background-color: #f8f9fa;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 10px;
+        font-size: 0.85rem;
+    }
+    
+    .action-button {
+        min-width: 100px;
+    }
+    
+    .loading-spinner {
+        display: none;
+        width: 20px;
+        height: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 새로고침 인디케이터 -->
+    <div class="refresh-indicator">
+        <div class="spinner-border spinner-border-sm d-none" id="refreshSpinner" role="status">
+            <span class="visually-hidden">로딩중...</span>
+        </div>
+    </div>
+
+    <!-- 헤더 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5">
+                <i class="fas fa-cogs"></i> 스레드 제어 대시보드
+            </h1>
+            <p class="text-muted">거래봇 스레드를 실시간으로 모니터링하고 제어합니다</p>
+        </div>
+    </div>
+
+    <!-- 통계 카드 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <h3 id="totalThreads">-</h3>
+                <p class="mb-0"><i class="fas fa-list"></i> 총 스레드</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <h3 id="runningThreads">-</h3>
+                <p class="mb-0"><i class="fas fa-play"></i> 실행 중</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <h3 id="stoppedThreads">-</h3>
+                <p class="mb-0"><i class="fas fa-stop"></i> 중지됨</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <h3 id="lastUpdate">-</h3>
+                <p class="mb-0"><i class="fas fa-clock"></i> 마지막 업데이트</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 전체 제어 버튼 (관리자만) -->
+    {% if is_admin %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-shield-alt"></i> 관리자 제어</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button class="btn btn-warning btn-lg w-100" onclick="stopAllThreads()">
+                                <i class="fas fa-stop-circle"></i> 모든 스레드 중지
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-danger btn-lg w-100" onclick="confirmEmergencyStop()">
+                                <i class="fas fa-exclamation-triangle"></i> 긴급 중지
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 긴급 중지 확인 영역 -->
+                    <div class="emergency-zone d-none" id="emergencyZone">
+                        <h6 class="text-danger"><i class="fas fa-warning"></i> 긴급 중지 확인</h6>
+                        <p class="mb-3">이 작업은 모든 거래봇을 강제로 즉시 중지시킵니다. 실행 중인 거래가 있다면 중단될 수 있습니다.</p>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-danger" onclick="executeEmergencyStop()">
+                                <i class="fas fa-bomb"></i> 확인: 긴급 중지 실행
+                            </button>
+                            <button class="btn btn-secondary" onclick="cancelEmergencyStop()">
+                                <i class="fas fa-times"></i> 취소
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 필터 및 제어 -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input type="text" class="form-control" id="searchFilter" placeholder="사용자 ID, 티커, 스레드 ID 검색..." onkeyup="filterThreads()">
+            </div>
+        </div>
+        <div class="col-md-3">
+            <select class="form-select" id="statusFilter" onchange="filterThreads()">
+                <option value="">모든 상태</option>
+                <option value="running">실행 중</option>
+                <option value="stopped">중지됨</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button class="btn btn-primary w-100" onclick="refreshThreadStatus()">
+                <i class="fas fa-sync-alt" id="refreshIcon"></i> 새로고침
+            </button>
+        </div>
+    </div>
+
+    <!-- 스레드 목록 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-list"></i> 스레드 목록</h5>
+                </div>
+                <div class="card-body">
+                    <div id="threadsList">
+                        <!-- 스레드 카드들이 여기에 동적으로 추가됩니다 -->
+                        <div class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">로딩중...</span>
+                            </div>
+                            <p class="mt-2">스레드 정보를 불러오는 중...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 중지 이력 (관리자만) -->
+    {% if is_admin %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-history"></i> 중지 이력</h5>
+                    <button class="btn btn-sm btn-outline-primary float-end" onclick="loadStopHistory()">
+                        <i class="fas fa-refresh"></i> 새로고침
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="stopHistory">
+                        <p class="text-muted">중지 이력을 불러오는 중...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 확인 모달 -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalTitle">확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="confirmModalBody">
+                <!-- 확인 메시지 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="confirmModalButton">확인</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // 전역 변수
+    let threads = [];
+    let isAdmin = {{ 'true' if is_admin else 'false' }};
+    let currentUserId = {{ user_id if not is_admin else 'null' }};
+    let autoRefreshInterval;
+    
+    // 페이지 로드 시 초기화
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshThreadStatus();
+        
+        // 자동 새로고침 (30초마다)
+        autoRefreshInterval = setInterval(refreshThreadStatus, 30000);
+        
+        {% if is_admin %}
+        loadStopHistory();
+        {% endif %}
+    });
+    
+    // 스레드 상태 새로고침
+    async function refreshThreadStatus() {
+        try {
+            showRefreshSpinner(true);
+            
+            const params = new URLSearchParams();
+            if (!isAdmin && currentUserId) {
+                params.append('user_id', currentUserId);
+            }
+            
+            const response = await fetch(`/api/threads/status?${params}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                threads = data.data.threads;
+                updateStats(data.data);
+                displayThreads();
+                updateLastUpdate();
+            } else {
+                showError('스레드 상태 조회 실패: ' + data.message);
+            }
+        } catch (error) {
+            showError('네트워크 오류: ' + error.message);
+        } finally {
+            showRefreshSpinner(false);
+        }
+    }
+    
+    // 통계 업데이트
+    function updateStats(data) {
+        document.getElementById('totalThreads').textContent = data.total_threads;
+        document.getElementById('runningThreads').textContent = data.running_threads;
+        document.getElementById('stoppedThreads').textContent = data.stopped_threads;
+    }
+    
+    // 마지막 업데이트 시간 표시
+    function updateLastUpdate() {
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+    }
+    
+    // 스레드 목록 표시
+    function displayThreads(filteredThreads = null) {
+        const container = document.getElementById('threadsList');
+        const threadsToShow = filteredThreads || threads;
+        
+        if (threadsToShow.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-robot fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">실행 중인 거래봇이 없습니다</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = threadsToShow.map(thread => createThreadCard(thread)).join('');
+    }
+    
+    // 스레드 카드 생성
+    function createThreadCard(thread) {
+        const status = thread.running ? 'running' : (thread.stop_requested ? 'stopping' : 'stopped');
+        const statusText = {
+            'running': '실행 중',
+            'stopping': '중지 중',
+            'stopped': '중지됨'
+        }[status];
+        
+        const startTime = thread.start_time ? new Date(thread.start_time).toLocaleString() : '알 수 없음';
+        const settings = thread.settings || {};
+        
+        return `
+            <div class="thread-card card mb-3 thread-${status}" data-thread-id="${thread.thread_id}" data-user-id="${thread.user_id}" data-ticker="${thread.ticker}">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h6 class="card-title mb-2">
+                                <i class="fas fa-robot"></i> ${thread.ticker}
+                                <span class="status-badge status-${status} ms-2">${statusText}</span>
+                            </h6>
+                            <div class="thread-info">
+                                <div><strong>사용자 ID:</strong> ${thread.user_id}</div>
+                                <div><strong>스레드 ID:</strong> <code>${thread.thread_id || 'N/A'}</code></div>
+                                <div><strong>시작 시간:</strong> ${startTime}</div>
+                            </div>
+                            
+                            <div class="thread-details">
+                                <div><strong>전략:</strong> ${settings.strategy || 'N/A'}</div>
+                                <div><strong>매수 금액:</strong> ${settings.buy_amount ? Number(settings.buy_amount).toLocaleString() + '원' : 'N/A'}</div>
+                                <div><strong>최소 현금:</strong> ${settings.min_cash ? Number(settings.min_cash).toLocaleString() + '원' : 'N/A'}</div>
+                                <div><strong>실행 주기:</strong> ${settings.sleep_time || 'N/A'}초</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="btn-group-vertical w-100" role="group">
+                                <button class="btn btn-outline-warning action-button" 
+                                        onclick="stopThread(${thread.user_id}, '${thread.ticker}')"
+                                        ${!thread.running ? 'disabled' : ''}>
+                                    <i class="fas fa-stop"></i> 중지
+                                </button>
+                                
+                                <button class="btn btn-outline-danger action-button" 
+                                        onclick="stopThread(${thread.user_id}, '${thread.ticker}', true)">
+                                    <i class="fas fa-ban"></i> 강제 중지
+                                </button>
+                                
+                                <button class="btn btn-outline-success action-button" 
+                                        onclick="restartThread(${thread.user_id}, '${thread.ticker}')"
+                                        ${thread.running ? 'disabled' : ''}>
+                                    <i class="fas fa-play"></i> 재시작
+                                </button>
+                                
+                                ${isAdmin ? `
+                                <button class="btn btn-outline-info action-button" 
+                                        onclick="viewThreadDetails(${thread.user_id}, '${thread.ticker}')">
+                                    <i class="fas fa-info"></i> 상세 정보
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // 스레드 중지
+    async function stopThread(userId, ticker, force = false) {
+        const action = force ? '강제 중지' : '중지';
+        
+        if (!confirm(`${ticker} 스레드를 ${action}하시겠습니까?`)) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/threads/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    ticker: ticker,
+                    force: force
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showSuccess(`스레드 ${action} 성공: ${ticker}`);
+                refreshThreadStatus();
+            } else {
+                showError(`스레드 ${action} 실패: ` + data.message);
+            }
+        } catch (error) {
+            showError(`네트워크 오류: ${error.message}`);
+        }
+    }
+    
+    // 스레드 재시작
+    async function restartThread(userId, ticker) {
+        if (!confirm(`${ticker} 스레드를 재시작하시겠습니까?`)) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/threads/restart', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    ticker: ticker
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showSuccess(`스레드 재시작 준비 완료: ${ticker}`);
+                refreshThreadStatus();
+            } else {
+                showError('스레드 재시작 실패: ' + data.message);
+            }
+        } catch (error) {
+            showError(`네트워크 오류: ${error.message}`);
+        }
+    }
+    
+    // 모든 스레드 중지 (관리자만)
+    async function stopAllThreads() {
+        if (!isAdmin) return;
+        
+        if (!confirm('모든 스레드를 중지하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/threads/stop-all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    force: false
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showSuccess(`모든 스레드 중지 완료: ${data.data.successful_stops}개`);
+                refreshThreadStatus();
+            } else {
+                showError('전체 스레드 중지 실패: ' + data.message);
+            }
+        } catch (error) {
+            showError(`네트워크 오류: ${error.message}`);
+        }
+    }
+    
+    // 긴급 중지 확인
+    function confirmEmergencyStop() {
+        document.getElementById('emergencyZone').classList.remove('d-none');
+    }
+    
+    // 긴급 중지 취소
+    function cancelEmergencyStop() {
+        document.getElementById('emergencyZone').classList.add('d-none');
+    }
+    
+    // 긴급 중지 실행
+    async function executeEmergencyStop() {
+        try {
+            const response = await fetch('/api/threads/emergency-stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showWarning('긴급 중지가 실행되었습니다');
+                cancelEmergencyStop();
+                refreshThreadStatus();
+            } else {
+                showError('긴급 중지 실패: ' + data.message);
+            }
+        } catch (error) {
+            showError(`네트워크 오류: ${error.message}`);
+        }
+    }
+    
+    // 중지 이력 로드 (관리자만)
+    async function loadStopHistory() {
+        if (!isAdmin) return;
+        
+        try {
+            const response = await fetch('/api/threads/history');
+            const data = await response.json();
+            
+            if (data.success) {
+                displayStopHistory(data.data.history);
+            } else {
+                document.getElementById('stopHistory').innerHTML = 
+                    `<p class="text-danger">이력 로드 실패: ${data.message}</p>`;
+            }
+        } catch (error) {
+            document.getElementById('stopHistory').innerHTML = 
+                `<p class="text-danger">네트워크 오류: ${error.message}</p>`;
+        }
+    }
+    
+    // 중지 이력 표시
+    function displayStopHistory(history) {
+        const container = document.getElementById('stopHistory');
+        
+        if (history.length === 0) {
+            container.innerHTML = '<p class="text-muted">중지 이력이 없습니다.</p>';
+            return;
+        }
+        
+        const historyHTML = history.map(item => `
+            <div class="border-bottom py-2">
+                <div class="row">
+                    <div class="col-md-3">
+                        <strong>${item.ticker || 'N/A'}</strong>
+                        <small class="text-muted d-block">User ${item.user_id || 'N/A'}</small>
+                    </div>
+                    <div class="col-md-4">
+                        ${item.message}
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge ${item.success ? 'bg-success' : 'bg-danger'}">
+                            ${item.success ? '성공' : '실패'}
+                        </span>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <small class="text-muted">
+                            ${item.stop_time ? new Date(item.stop_time).toLocaleString() : 'N/A'}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+        container.innerHTML = historyHTML;
+    }
+    
+    // 필터링
+    function filterThreads() {
+        const searchTerm = document.getElementById('searchFilter').value.toLowerCase();
+        const statusFilter = document.getElementById('statusFilter').value;
+        
+        let filtered = threads.filter(thread => {
+            const matchesSearch = !searchTerm || 
+                thread.user_id.toString().includes(searchTerm) ||
+                thread.ticker.toLowerCase().includes(searchTerm) ||
+                (thread.thread_id && thread.thread_id.toString().includes(searchTerm));
+            
+            const matchesStatus = !statusFilter || 
+                (statusFilter === 'running' && thread.running) ||
+                (statusFilter === 'stopped' && !thread.running);
+            
+            return matchesSearch && matchesStatus;
+        });
+        
+        displayThreads(filtered);
+    }
+    
+    // 새로고침 스피너 표시
+    function showRefreshSpinner(show) {
+        const spinner = document.getElementById('refreshSpinner');
+        const icon = document.getElementById('refreshIcon');
+        
+        if (show) {
+            spinner.classList.remove('d-none');
+            icon.classList.add('fa-spin');
+        } else {
+            spinner.classList.add('d-none');
+            icon.classList.remove('fa-spin');
+        }
+    }
+    
+    // 알림 함수들
+    function showSuccess(message) {
+        showToast(message, 'success');
+    }
+    
+    function showError(message) {
+        showToast(message, 'danger');
+    }
+    
+    function showWarning(message) {
+        showToast(message, 'warning');
+    }
+    
+    function showToast(message, type) {
+        // Bootstrap 토스트 또는 간단한 알림
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(alertDiv);
+        
+        // 5초 후 자동 제거
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+            }
+        }, 5000);
+    }
+    
+    // 페이지 언로드 시 정리
+    window.addEventListener('beforeunload', function() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+    });
+</script>
+{% endblock %}

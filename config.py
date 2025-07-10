@@ -41,4 +41,14 @@ class Config:
     SOCKETIO_PING_TIMEOUT = 60
     SOCKETIO_PING_INTERVAL = 25
 
+    # 스레드 모니터링 설정
+    THREAD_MONITOR_ENABLED = os.environ.get('THREAD_MONITOR_ENABLED', 'True').lower() == 'true'
+    THREAD_MONITOR_MAX_HISTORY = int(os.environ.get('THREAD_MONITOR_MAX_HISTORY', '1000'))
+    THREAD_MONITOR_ALERT_THRESHOLDS = {
+        'max_threads': int(os.environ.get('MAX_THREADS_THRESHOLD', '50')),
+        'max_cpu': float(os.environ.get('MAX_CPU_THRESHOLD', '80.0')),
+        'max_memory': float(os.environ.get('MAX_MEMORY_THRESHOLD', '500.0')),
+        'max_thread_age': int(os.environ.get('MAX_THREAD_AGE_THRESHOLD', '3600'))
+    }
+
 

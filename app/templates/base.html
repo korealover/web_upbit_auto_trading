@@ -47,7 +47,6 @@
                             {{ current_user.username }}
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('main.dashboard') }}">대시보드</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('main.profile') }}">프로필 설정</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('main.logout') }}">로그아웃</a></li>
@@ -64,6 +63,16 @@
                     {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('main.admin_panel') }}">관리자 패널</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/thread-monitor">
+                            <i class="fas fa-microchip"></i> 스레드 모니터링
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/thread-control">
+                            <i class="fas fa-cogs"></i> 스레드 제어
+                        </a>
                     </li>
                     {% endif %}
                 </ul>

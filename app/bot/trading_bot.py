@@ -2,6 +2,27 @@
 from flask_login import current_user
 
 from app.utils.telegram_utils import TelegramNotifier
+try:
+    from app.utils.thread_monitor import thread_monitor, monitor_trading_thread
+    THREAD_MONITOR_AVAILABLE = True
+except ImportError:
+    THREAD_MONITOR_AVAILABLE = False
+    # 더미 클래스와 데코레이터
+    class DummyThreadMonitor:
+        def register_thread(self, **kwargs):
+            pass
+        def unregister_thread(self, **kwargs):
+            pass
+        def monitor_thread_context(self, **kwargs):
+            from contextlib import nullcontext
+            return nullcontext()
+    
+    thread_monitor = DummyThreadMonitor()
+    def monitor_trading_thread(**kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 from config import Config
 from app.models import TradeRecord
 from app import db
@@ -63,40 +84,78 @@ class UpbitTradingBot:
         except Exception as e:
             self.logger.error(f"텔레그램 거래 알림 전송 중 오류: {str(e)}")
 
+    def _get_field_value(self, field, default=None):
+        """WTForms 필드에서 안전하게 값 추출"""
+        try:
+            if hasattr(field, 'data'):
+                return field.data
+            elif isinstance(field, dict):
+                return field.get('data', default)
+            else:
+                return field if field is not None else default
+        except Exception as e:
+            self.logger.warning(f"필드 값 추출 중 오류: {e}")
+            return default
+
     def trading(self):
         """트레이딩 로직 실행"""
         try:
-            ticker = self.args.ticker.data
-            buy_amount = self.args.buy_amount.data
-            min_cash = self.args.min_cash.data
-            prevent_loss_sale = self.args.prevent_loss_sale.data
+            # 스레드 모니터링 등록 (사용 가능한 경우만)
+            if THREAD_MONITOR_AVAILABLE:
+                ticker_value = self._get_field_value(getattr(self.args, 'ticker', None))
+                strategy_value = self._get_field_value(getattr(self.args, 'strategy', None))
+                
+                thread_monitor.register_thread(
+                    user_id=self.user_id,
+                    ticker=ticker_value,
+                    strategy=strategy_value
+                )
+
+            # 필드 값들을 안전하게 추출
+            ticker = self._get_field_value(getattr(self.args, 'ticker', None))
+            buy_amount = self._get_field_value(getattr(self.args, 'buy_amount', None))
+            min_cash = self._get_field_value(getattr(self.args, 'min_cash', None))
+            prevent_loss_sale = self._get_field_value(getattr(self.args, 'prevent_loss_sale', None), 'N')
+
+            if not ticker:
+                self.logger.error("티커 정보를 가져올 수 없습니다.")
+                return None
 
             # 전략에 따라 분기
-            if hasattr(self.args, 'strategy') and self.args.strategy.data == 'volatility':
+            strategy_name = self._get_field_value(getattr(self.args, 'strategy', None))
+            
+            if strategy_name == 'volatility':
                 # 변동성 돌파 전략 사용
                 self.logger.info(f"변동성 돌파 전략으로 거래 분석 시작: {ticker}")
-                # 변동성 돌파 전략에 맞는 매개변수만 전달
-                signal = self.strategy.generate_volatility_signal(ticker, self.args.k.data, self.args.target_profit.data, self.args.stop_loss.data)
-            elif hasattr(self.args, 'strategy') and self.args.strategy.data == 'adaptive':
+                k_value = self._get_field_value(getattr(self.args, 'k', None))
+                target_profit = self._get_field_value(getattr(self.args, 'target_profit', None))
+                stop_loss = self._get_field_value(getattr(self.args, 'stop_loss', None))
+                signal = self.strategy.generate_volatility_signal(ticker, k_value, target_profit, stop_loss)
+                
+            elif strategy_name == 'adaptive':
                 # 어댑티브 전략 사용
                 self.logger.info(f"어댑티브 전략으로 거래 분석 시작: {ticker}")
-                # 어댑티브 전략은 ticker만 필요
                 signal = self.strategy.generate_signal(ticker)
-            elif hasattr(self.args, 'strategy') and self.args.strategy.data == 'ensemble':
+                
+            elif strategy_name == 'ensemble':
                 # 앙상블 전략 사용
                 self.logger.info(f"앙상블 전략으로 거래 분석 시작: {ticker}")
-                # 앙상블 전략은 ticker만 필요
                 signal = self.strategy.generate_signal(ticker)
-            elif hasattr(self.args, 'strategy') and self.args.strategy.data == 'rsi':
+                
+            elif strategy_name == 'rsi':
                 # RSI 전략 사용
                 self.logger.info(f"RSI 전략으로 거래 분석 시작: {ticker}")
-                # RSI 전략은 ticker만 필요
-                signal = self.strategy.generate_signal(ticker, self.args.rsi_period.data, self.args.rsi_oversold.data, self.args.rsi_overbought.data, self.args.rsi_timeframe.data)
+                rsi_period = self._get_field_value(getattr(self.args, 'rsi_period', None))
+                rsi_oversold = self._get_field_value(getattr(self.args, 'rsi_oversold', None))
+                rsi_overbought = self._get_field_value(getattr(self.args, 'rsi_overbought', None))
+                rsi_timeframe = self._get_field_value(getattr(self.args, 'rsi_timeframe', None))
+                signal = self.strategy.generate_signal(ticker, rsi_period, rsi_oversold, rsi_overbought, rsi_timeframe)
+                
             else:
                 # 볼린저 밴드 전략 사용 (기본값)
-                interval = self.args.interval.data
-                window = self.args.window.data
-                multiplier = self.args.multiplier.data
+                interval = self._get_field_value(getattr(self.args, 'interval', None))
+                window = self._get_field_value(getattr(self.args, 'window', None))
+                multiplier = self._get_field_value(getattr(self.args, 'multiplier', None))
 
                 self.logger.info(f"볼린저 밴드 전략으로 거래 분석 시작: {ticker}, 간격: {interval}")
 
@@ -112,7 +171,6 @@ class UpbitTradingBot:
 
                 # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
                 signal = self.strategy.generate_signal(ticker, prices, window, multiplier)
-                # signal = 'BUY'
 
             # 잔고 조회
             balance_cash = self.api.get_balance_cash()
@@ -206,18 +264,12 @@ class UpbitTradingBot:
                         return None
 
                 # 분할 매도 처리
-                sell_portion = getattr(self.args, 'sell_portion', 1.0)  # 기본값 1.0 (전량 매도)
-
-                # FloatField 객체에서 실제 값 가져오기
-                if hasattr(sell_portion, 'data'):
-                    sell_portion_value = sell_portion.data
-                else:
-                    sell_portion_value = sell_portion  # 이미 숫자인 경우
+                sell_portion = self._get_field_value(getattr(self.args, 'sell_portion', None), 1.0)
 
                 # 매도 전략 결정
-                if sell_portion_value < 1.0:
-                    self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion_value * 100:.1f}% 매도")
-                    order_result = self.api.order_sell_market_partial(ticker, sell_portion_value)
+                if sell_portion < 1.0:
+                    self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
+                    order_result = self.api.order_sell_market_partial(ticker, sell_portion)
 
                     # 분할 매도에서 오류가 발생한 경우 처리
                     if order_result and 'error' in order_result:
@@ -254,9 +306,9 @@ class UpbitTradingBot:
                         # 분할 매도에서 조정된 비율 사용
                         actual_portion = order_result['actual_sell_portion']
                         volume = balance_coin * actual_portion
-                        self.logger.info(f"실제 매도된 비율: {actual_portion * 100:.1f}% (원래 계획: {sell_portion_value * 100:.1f}%)")
-                    elif sell_portion_value < 1.0:
-                        volume = balance_coin * sell_portion_value
+                        self.logger.info(f"실제 매도된 비율: {actual_portion * 100:.1f}% (원래 계획: {sell_portion * 100:.1f}%)")
+                    elif sell_portion < 1.0:
+                        volume = balance_coin * sell_portion
                     else:
                         volume = balance_coin
 
@@ -292,7 +344,8 @@ class UpbitTradingBot:
                 return
 
             self.logger.info("=" * 20 + f" 거래자 ID : {self.username} " + "=" * 20)
-            self.logger.info(f"거래 사이클 시작: {self.args.ticker.data}")
+            ticker = self._get_field_value(getattr(self.args, 'ticker', None), 'Unknown')
+            self.logger.info(f"거래 사이클 시작: {ticker}")
 
             # 트레이딩 실행
             ret = self.trading()
@@ -300,7 +353,7 @@ class UpbitTradingBot:
             if ret:
                 self.logger.info(f"거래 결과: {ret}")
 
-            self.logger.info(f"거래 사이클 종료: {self.args.ticker.data}")
+            self.logger.info(f"거래 사이클 종료: {ticker}")
             self.logger.info("=" * 60)
 
         except Exception as e:
@@ -326,7 +379,6 @@ class UpbitTradingBot:
                 from app.models import kst_now  # 한국 시간 함수 import
 
                 # 매도인 경우 수익/손실률 계산
-                # profit_loss = None
                 if trade_type == 'SELL':
                     try:
                         # 평균 매수가 가져오기
@@ -337,6 +389,9 @@ class UpbitTradingBot:
                     except Exception as e:
                         self.logger.warning(f"수익률 계산 실패: {str(e)}")
 
+                # 전략 이름 안전하게 가져오기
+                strategy_name = self._get_field_value(getattr(self.args, 'strategy', None), 'unknown')
+
                 # TradeRecord 생성 및 저장
                 trade_record = TradeRecord(
                     user_id=self.user_id,
@@ -346,7 +401,7 @@ class UpbitTradingBot:
                     volume=volume,
                     amount=amount,
                     profit_loss=profit_loss,
-                    strategy=self.args.strategy.data if hasattr(self.args, 'strategy') else 'unknown',
+                    strategy=strategy_name,
                     timestamp=kst_now()  # UTC 대신 한국 시간 사용
                 )
 
@@ -363,24 +418,35 @@ class UpbitTradingBot:
     def run_bot_thread(self, user_id, ticker):
         """봇 실행 스레드"""
         try:
-            while not shutdown_event.is_set() and trading_bots[user_id][ticker]["running"]:
-                # 트레이딩 실행
-                self.run_cycle()
+            # 스레드 모니터링 컨텍스트 (사용 가능한 경우만)
+            if THREAD_MONITOR_AVAILABLE:
+                strategy_value = self._get_field_value(getattr(self.args, 'strategy', None), 'unknown')
 
-                # 봇이 종료되지 않았다면 대기 (단위: 초)
-                sleep_time = trading_bots[user_id][ticker]["settings"].get("sleep_time", 60)
-                time.sleep(sleep_time)
+                with thread_monitor.monitor_thread_context(
+                    user_id=user_id,
+                    ticker=ticker,
+                    strategy=strategy_value
+                ):
+                    self._run_trading_loop(user_id, ticker)
+            else:
+                self._run_trading_loop(user_id, ticker)
 
         except Exception as e:
             self.logger.error(f"봇 실행 중 오류 발생: {ticker}, {e}")
-
         finally:
-            self.logger.error(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
-
+            self.logger.info(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
             # 실행 종료한 봇은 글로벌 상태에서 제거
             with lock:
                 if user_id in trading_bots and ticker in trading_bots[user_id]:
                     del trading_bots[user_id][ticker]
                     self.logger.info(f"봇 제거 완료: {ticker}, User ID: {user_id}")
 
+    def _run_trading_loop(self, user_id, ticker):
+        """실제 거래 루프 실행"""
+        while not shutdown_event.is_set() and trading_bots[user_id][ticker]["running"]:
+            # 트레이딩 실행
+            self.run_cycle()
 
+            # 봇이 종료되지 않았다면 대기 (단위: 초)
+            sleep_time = trading_bots[user_id][ticker]["settings"].get("sleep_time", 60)
+            time.sleep(sleep_time)

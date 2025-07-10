@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, send_file
 from flask_login import login_user, logout_user, current_user, login_required
 from flask_socketio import emit
 from app import db, socketio
@@ -9,12 +9,15 @@ from app.strategy import create_strategy
 from app.utils.logging_utils import setup_logger, get_logger_with_current_date
 from app.utils.async_utils import AsyncHandler
 from app.utils.shared import trading_bots, lock
+from app.utils.thread_controller import thread_controller, stop_thread, stop_user_threads, stop_all_threads, emergency_stop, get_thread_status
 from app.bot.trading_bot import UpbitTradingBot
 import time
 import html
 import os
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
+from app.utils.thread_monitor import thread_monitor
+
 # 전역적으로 스레드 풀 생성 (최대 작업 스레드 수 조정 가능)
 thread_pool = ThreadPoolExecutor(max_workers=30)
 
@@ -970,3 +973,408 @@ def stop_all_bots():
         # 스레드 종료 완료 대기
         time.sleep(2)
         logger.info("모든 봇이 안전하게 중지되었습니다.")
+
+
+# 스레드 모니터링 라우트들
+@bp.route('/thread-monitor')
+@login_required
+def thread_monitor_dashboard():
+    """스레드 모니터링 대시보드"""
+    return render_template('thread_monitor.html')
+
+
+@bp.route('/api/thread-monitor/stats')
+@login_required
+def get_thread_stats():
+    """현재 스레드 통계 API"""
+    from dataclasses import asdict
+    stats = thread_monitor.collect_stats()
+    return jsonify(asdict(stats))
+
+
+@bp.route('/api/thread-monitor/details')
+@login_required
+def get_thread_details():
+    """상세 스레드 정보 API"""
+    return jsonify({'threads': thread_monitor.get_thread_details()})
+
+
+@bp.route('/api/thread-monitor/performance')
+@login_required
+def get_performance_report():
+    """성능 리포트 API"""
+    hours = request.args.get('hours', 24, type=int)
+    return jsonify(thread_monitor.get_performance_report(hours))
+
+
+@bp.route('/api/thread-monitor/alerts')
+@login_required
+def get_alerts():
+    """알림 목록 API"""
+    return jsonify({'alerts': thread_monitor.alerts})
+
+
+@bp.route('/api/thread-monitor/gc', methods=['POST'])
+@login_required
+def force_gc():
+    """강제 가비지 컬렉션 API"""
+    result = thread_monitor.force_garbage_collection()
+    return jsonify({'success': True, 'result': result})
+
+
+@bp.route('/api/thread-monitor/export')
+@login_required
+def export_thread_stats():
+    """통계 내보내기 API"""
+    import os
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'thread_stats_{timestamp}.json'
+    filepath = os.path.join('logs', filename)
+
+    thread_monitor.export_stats(filepath)
+
+    return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+# ===========================================
+# 스레드 제어 API 라우트들
+# ===========================================
+
+@bp.route('/api/threads/status')
+@login_required
+def api_get_thread_status():
+    """스레드 상태 조회 API"""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        ticker = request.args.get('ticker')
+
+        # 관리자가 아닌 경우 자신의 스레드만 조회 가능
+        if not current_user.is_admin and user_id and user_id != current_user.id:
+            return jsonify({
+                'success': False,
+                'message': '권한이 없습니다'
+            }), 403
+
+        # 일반 사용자는 자신의 스레드만 조회
+        if not current_user.is_admin:
+            user_id = current_user.id
+
+        status = get_thread_status(user_id, ticker)
+
+        return jsonify({
+            'success': True,
+            'data': status
+        })
+
+    except Exception as e:
+        logger.error(f"스레드 상태 조회 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'스레드 상태 조회 실패: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/threads/stop', methods=['POST'])
+@login_required
+def api_stop_thread():
+    """특정 스레드 중지 API"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        ticker = data.get('ticker')
+        force = data.get('force', False)
+
+        if not user_id or not ticker:
+            return jsonify({
+                'success': False,
+                'message': 'user_id와 ticker는 필수입니다'
+            }), 400
+
+        # 권한 확인: 관리자가 아닌 경우 자신의 스레드만 중지 가능
+        if not current_user.is_admin and user_id != current_user.id:
+            return jsonify({
+                'success': False,
+                'message': '권한이 없습니다'
+            }), 403
+
+        result = stop_thread(user_id, ticker, force)
+
+        if result.success:
+            flash(f'스레드 중지됨: {ticker}', 'success')
+            logger.info(f"스레드 중지: User {current_user.id}가 User {user_id}의 {ticker} 스레드 중지")
+        else:
+            flash(f'스레드 중지 실패: {result.message}', 'error')
+
+        return jsonify({
+            'success': result.success,
+            'message': result.message,
+            'data': {
+                'user_id': result.user_id,
+                'ticker': result.ticker,
+                'thread_id': result.thread_id,
+                'stop_time': result.stop_time.isoformat() if result.stop_time else None
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"스레드 중지 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'스레드 중지 실패: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/threads/stop-user', methods=['POST'])
+@login_required
+def api_stop_user_threads():
+    """사용자의 모든 스레드 중지 API"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        force = data.get('force', False)
+
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'message': 'user_id는 필수입니다'
+            }), 400
+
+        # 권한 확인
+        if not current_user.is_admin and user_id != current_user.id:
+            return jsonify({
+                'success': False,
+                'message': '권한이 없습니다'
+            }), 403
+
+        results = stop_user_threads(user_id, force)
+        successful_stops = [r for r in results if r.success]
+        failed_stops = [r for r in results if not r.success]
+
+        if successful_stops:
+            flash(f'{len(successful_stops)}개 스레드가 중지되었습니다', 'success')
+            logger.info(f"사용자 스레드 중지: User {current_user.id}가 User {user_id}의 {len(successful_stops)}개 스레드 중지")
+
+        if failed_stops:
+            flash(f'{len(failed_stops)}개 스레드 중지 실패', 'error')
+
+        return jsonify({
+            'success': len(failed_stops) == 0,
+            'message': f'{len(successful_stops)}개 성공, {len(failed_stops)}개 실패',
+            'data': {
+                'successful_stops': len(successful_stops),
+                'failed_stops': len(failed_stops),
+                'results': [
+                    {
+                        'success': r.success,
+                        'user_id': r.user_id,
+                        'ticker': r.ticker,
+                        'message': r.message,
+                        'stop_time': r.stop_time.isoformat() if r.stop_time else None
+                    } for r in results
+                ]
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"사용자 스레드 중지 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'사용자 스레드 중지 실패: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/threads/stop-all', methods=['POST'])
+@login_required
+def api_stop_all_threads():
+    """모든 스레드 중지 API (관리자만)"""
+    try:
+        # 관리자 권한 확인
+        if not current_user.is_admin:
+            return jsonify({
+                'success': False,
+                'message': '관리자 권한이 필요합니다'
+            }), 403
+
+        data = request.get_json() or {}
+        force = data.get('force', False)
+
+        results = stop_all_threads(force)
+        successful_stops = [r for r in results if r.success]
+        failed_stops = [r for r in results if not r.success]
+
+        if successful_stops:
+            flash(f'모든 스레드 중지 완료: {len(successful_stops)}개', 'success')
+            logger.warning(f"전체 스레드 중지: 관리자 {current_user.username}이 {len(successful_stops)}개 스레드 중지")
+
+        if failed_stops:
+            flash(f'{len(failed_stops)}개 스레드 중지 실패', 'error')
+
+        return jsonify({
+            'success': len(failed_stops) == 0,
+            'message': f'전체 중지 완료: {len(successful_stops)}개 성공, {len(failed_stops)}개 실패',
+            'data': {
+                'successful_stops': len(successful_stops),
+                'failed_stops': len(failed_stops),
+                'total_processed': len(results)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"전체 스레드 중지 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'전체 스레드 중지 실패: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/threads/emergency-stop', methods=['POST'])
+@login_required
+def api_emergency_stop():
+    """긴급 중지 API (관리자만)"""
+    try:
+        # 관리자 권한 확인
+        if not current_user.is_admin:
+            return jsonify({
+                'success': False,
+                'message': '관리자 권한이 필요합니다'
+            }), 403
+
+        results = emergency_stop()
+
+        flash('긴급 중지가 실행되었습니다', 'warning')
+        logger.critical(f"긴급 중지 실행: 관리자 {current_user.username}")
+
+        return jsonify({
+            'success': True,
+            'message': '긴급 중지 완료',
+            'data': {
+                'total_processed': len(results)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"긴급 중지 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'긴급 중지 실패: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/threads/restart', methods=['POST'])
+@login_required
+def api_restart_thread():
+    """스레드 재시작 API"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        ticker = data.get('ticker')
+
+        if not user_id or not ticker:
+            return jsonify({
+                'success': False,
+                'message': 'user_id와 ticker는 필수입니다'
+            }), 400
+
+        # 권한 확인
+        if not current_user.is_admin and user_id != current_user.id:
+            return jsonify({
+                'success': False,
+                'message': '권한이 없습니다'
+            }), 403
+
+        result = thread_controller.restart_thread(user_id, ticker)
+
+        if result.success:
+            flash(f'스레드 재시작: {ticker}', 'success')
+        else:
+            flash(f'스레드 재시작 실패: {result.message}', 'error')
+
+        return jsonify({
+            'success': result.success,
+            'message': result.message,
+            'data': {
+                'user_id': result.user_id,
+                'ticker': result.ticker
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"스레드 재시작 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'스레드 재시작 실패: {str(e)}'
+        }), 500
+
+
+@bp.route('/api/threads/history')
+@login_required
+def api_get_stop_history():
+    """스레드 중지 이력 조회 API (관리자만)"""
+    try:
+        # 관리자 권한 확인
+        if not current_user.is_admin:
+            return jsonify({
+                'success': False,
+                'message': '관리자 권한이 필요합니다'
+            }), 403
+
+        limit = request.args.get('limit', 50, type=int)
+        history = thread_controller.get_stop_history(limit)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'history': history,
+                'total_count': len(history)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"중지 이력 조회 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'중지 이력 조회 실패: {str(e)}'
+        }), 500
+
+
+# ===========================================
+# 웹 페이지 라우트들
+# ===========================================
+
+@bp.route('/thread-control')
+@login_required
+def thread_control_page():
+    """스레드 제어 페이지"""
+    # 관리자만 전체 제어 페이지 접근 가능
+    if current_user.is_admin:
+        return render_template('thread_control.html', is_admin=True)
+    else:
+        # 일반 사용자는 자신의 스레드만 제어 가능
+        return render_template('thread_control.html', is_admin=False, user_id=current_user.id)
+
+
+# ===========================================
+# 기존 거래 페이지에 중지 버튼 추가를 위한 라우트 수정
+# ===========================================
+
+@bp.route('/trading')
+@login_required
+def trading_dashboard():
+    """거래 대시보드 (스레드 상태 포함)"""
+    try:
+        # 사용자의 스레드 상태 조회
+        user_status = get_thread_status(current_user.id)
+
+        return render_template('trading.html',
+                               thread_status=user_status,
+                               user_id=current_user.id,
+                               is_admin=current_user.is_admin)
+    except Exception as e:
+        logger.error(f"거래 대시보드 로드 오류: {str(e)}")
+        flash('대시보드 로드 중 오류가 발생했습니다', 'error')
+        return render_template('trading.html',
+                               thread_status={'threads': []},
+                               user_id=current_user.id,
+                               is_admin=current_user.is_admin)

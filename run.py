@@ -3,7 +3,7 @@ import sys
 import eventlet
 from app import create_app, socketio
 from app.routes import stop_all_bots  # 봇 종료 함수
-from app.utils.shared import threading  # 타이포 수정
+import threading  # 수정: 표준 라이브러리에서 직접 임포트
 
 eventlet.monkey_patch()  # 필요 시 제거하고 WSGI 서버를 고려
 app = create_app()
