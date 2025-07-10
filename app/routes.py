@@ -5,22 +5,23 @@ from app import db, socketio
 from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm, FavoriteForm
 from app.models import User, TradeRecord, kst_now, TradingFavorite
 from app.api.upbit_api import UpbitAPI
-from app.bot.trading_bot import UpbitTradingBot
 from app.strategy import create_strategy
 from app.utils.logging_utils import setup_logger, get_logger_with_current_date
 from app.utils.async_utils import AsyncHandler
-from config import Config
-import threading
+from app.utils.shared import trading_bots, lock
+from app.bot.trading_bot import UpbitTradingBot
 import time
 import html
 import os
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+# 전역적으로 스레드 풀 생성 (최대 작업 스레드 수 조정 가능)
+thread_pool = ThreadPoolExecutor(max_workers=30)
 
 # Blueprint 생성
 bp = Blueprint('main', __name__)
 
 # 전역 변수
-trading_bots = {}
 async_handler = AsyncHandler(max_workers=5)
 upbit_apis = {}  # 사용자별 API 객체 저장
 logger = setup_logger('web', 'INFO', 7)
@@ -357,33 +358,24 @@ def stop_bot_route(ticker):
 def start_bot(ticker, strategy_name, settings):
     user_id = current_user.id
 
-    # 사용자별 봇 관리 구조 설정
-    if user_id not in trading_bots:
-        trading_bots[user_id] = {}
+    with lock:
+        if user_id not in trading_bots:
+            trading_bots[user_id] = {}
+        if user_id not in upbit_apis:
+            upbit_apis[user_id] = UpbitAPI(
+                current_user.upbit_access_key,
+                current_user.upbit_secret_key,
+                async_handler,
+                get_logger_with_current_date(ticker, 'INFO', 7)
+            )
+        if ticker in trading_bots[user_id]:
+            trading_bots[user_id][ticker]['running'] = False
+            time.sleep(1)
 
-    # 사용자별 API 객체 설정
-    if user_id not in upbit_apis:
-        upbit_apis[user_id] = UpbitAPI(
-            current_user.upbit_access_key,
-            current_user.upbit_secret_key,
-            async_handler,
-            get_logger_with_current_date(ticker, 'INFO', 7)
-        )
-
-    # 이미 실행 중인 봇이 있으면 종료
-    if ticker in trading_bots[user_id]:
-        trading_bots[user_id][ticker]['running'] = False
-        # 봇이 종료될 시간 여유 주기
-        time.sleep(1)
-
-    # 사용자의 API 객체 사용
     upbit_api = upbit_apis[user_id]
-
-    # 전략 생성
     logger = get_logger_with_current_date(ticker, 'INFO', 7)
     strategy = create_strategy(strategy_name, upbit_api, logger)
 
-    # settings 객체에 user_id 추가
     if hasattr(settings, '__dict__'):
         settings.user_id = user_id
         logger.info(f"settings 객체에 user_id 추가: {user_id} (속성 설정)")
@@ -393,23 +385,21 @@ def start_bot(ticker, strategy_name, settings):
     else:
         logger.warning(f"알 수 없는 settings 유형: {type(settings)}")
 
-    # 봇 생성 - WebSocket 지원을 위한 로거 생성
     websocket_logger = WebSocketLogger(ticker, user_id)
     bot = UpbitTradingBot(settings, upbit_api, strategy, websocket_logger, current_user.username)
 
-    # 봇 정보 저장
-    trading_bots[user_id][ticker] = {
-        'bot': bot,
-        'strategy': strategy_name,
-        'settings': settings,
-        'running': True,
-        'interval_label': get_selected_label(settings.interval),
-    }
+    with lock:
+        trading_bots[user_id][ticker] = {
+            'bot': bot,
+            'strategy': strategy_name,
+            'settings': settings,
+            'running': True,
+            'interval_label': get_selected_label(settings.interval),
+        }
 
-    # 봇 실행 스레드 시작
-    thread = threading.Thread(target=run_bot_thread, args=(user_id, ticker))
-    thread.daemon = True
-    thread.start()
+    # 스레드 풀에 작업 제출
+    thread_pool.submit(run_bot_process, user_id, ticker)
+
 
 # 선택 필드에서 라벨을 가져오기
 def get_selected_label(form_field):
@@ -418,11 +408,11 @@ def get_selected_label(form_field):
             return label
     return None
 
-def run_bot_thread(user_id, ticker):
-    bot_info = trading_bots[user_id][ticker]
-    bot = bot_info['bot']
-
+def run_bot_process(user_id, ticker):
+    """봇 실행 프로세스 (run_bot_thread에서 이름 변경)"""
     try:
+        bot_info = trading_bots[user_id][ticker]
+        bot = bot_info['bot']
         cycle_count = 0
         while bot_info['running']:
             cycle_count += 1
@@ -450,6 +440,14 @@ def run_bot_thread(user_id, ticker):
         websocket_logger = WebSocketLogger(ticker, user_id)
         websocket_logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
         bot_info['running'] = False
+
+    finally:
+        websocket_logger = WebSocketLogger(ticker, user_id)
+        # 종료 시 전역 상태에서 제거
+        with lock:
+            if user_id in trading_bots and ticker in trading_bots[user_id]:
+                del trading_bots[user_id][ticker]
+                websocket_logger.info(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
 
 
 @bp.route('/profile', methods=['GET', 'POST'])
@@ -906,7 +904,7 @@ def settings():
         # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
         ticker = form.ticker.data
         strategy_name = form.strategy.data
-        print(ticker, strategy_name)
+        # print(ticker, strategy_name)
         start_bot(ticker, strategy_name, form)
         flash('거래 설정이 적용되었습니다.', 'success')
         return redirect(url_for('main.dashboard'))
@@ -959,3 +957,16 @@ def delete_favorite(favorite_id):
     db.session.commit()
     flash('즐겨찾기가 삭제되었습니다.', 'success')
     return redirect(url_for('main.favorites'))
+
+
+def stop_all_bots():
+    """모든 트레이딩 봇 종료 처리"""
+    with lock:
+        for user_id, ticker_data in trading_bots.items():
+            for ticker, bot_info in ticker_data.items():
+                bot_info['running'] = False  # 봇 상태 플래그 False로 설정
+                logger.info(f"봇 중지 플래그 설정: {ticker} (User ID: {user_id})")
+
+        # 스레드 종료 완료 대기
+        time.sleep(2)
+        logger.info("모든 봇이 안전하게 중지되었습니다.")

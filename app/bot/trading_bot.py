@@ -7,7 +7,9 @@ from app.models import TradeRecord
 from app import db
 import datetime
 import time
-
+import threading
+from app.utils.shared import trading_bots, lock  # 공유 자원 가져오기
+shutdown_event = threading.Event()  # 글로벌 종료 이벤트 정의
 
 class UpbitTradingBot:
     """업비트 자동 거래 봇 클래스"""
@@ -285,7 +287,11 @@ class UpbitTradingBot:
     def run_cycle(self):
         """거래 사이클 실행"""
         try:
-            self.logger.info("="*20 + f" 거래자 ID : {self.username} " + "="*20)
+            if shutdown_event.is_set():
+                self.logger.info("종료 신호를 받았습니다. 거래 사이클을 중단합니다.")
+                return
+
+            self.logger.info("=" * 20 + f" 거래자 ID : {self.username} " + "=" * 20)
             self.logger.info(f"거래 사이클 시작: {self.args.ticker.data}")
 
             # 트레이딩 실행
@@ -295,7 +301,7 @@ class UpbitTradingBot:
                 self.logger.info(f"거래 결과: {ret}")
 
             self.logger.info(f"거래 사이클 종료: {self.args.ticker.data}")
-            self.logger.info("="*60)
+            self.logger.info("=" * 60)
 
         except Exception as e:
             self.logger.error(f"실행 중 오류 발생: {str(e)}", exc_info=True)
@@ -353,3 +359,28 @@ class UpbitTradingBot:
             self.logger.error(f"거래 기록 저장 중 오류: {str(e)}")
             import traceback
             self.logger.error(f"상세 오류: {traceback.format_exc()}")
+
+    def run_bot_thread(self, user_id, ticker):
+        """봇 실행 스레드"""
+        try:
+            while not shutdown_event.is_set() and trading_bots[user_id][ticker]["running"]:
+                # 트레이딩 실행
+                self.run_cycle()
+
+                # 봇이 종료되지 않았다면 대기 (단위: 초)
+                sleep_time = trading_bots[user_id][ticker]["settings"].get("sleep_time", 60)
+                time.sleep(sleep_time)
+
+        except Exception as e:
+            self.logger.error(f"봇 실행 중 오류 발생: {ticker}, {e}")
+
+        finally:
+            self.logger.error(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
+
+            # 실행 종료한 봇은 글로벌 상태에서 제거
+            with lock:
+                if user_id in trading_bots and ticker in trading_bots[user_id]:
+                    del trading_bots[user_id][ticker]
+                    self.logger.info(f"봇 제거 완료: {ticker}, User ID: {user_id}")
+
+
