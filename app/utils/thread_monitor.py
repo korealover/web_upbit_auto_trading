@@ -108,7 +108,7 @@ class ThreadPoolMonitor:
         current_time = datetime.now()
 
         # 기본 통계
-        total_threads = len(all_threads)
+        total_threads = len(all_threads)    # 전체 스레드
         active_threads = sum(1 for t in all_threads if t.is_alive())
         daemon_threads = sum(1 for t in all_threads if t.daemon)
 
@@ -124,11 +124,21 @@ class ThreadPoolMonitor:
         try:
             import psutil
             process = psutil.Process()
+
+            # CPU 사용률 측정 - 첫 번째 호출 후 짧은 간격을 두고 재측정
+            process.cpu_percent()  # 첫 번째 호출 (기준점 설정)
+            import time
+            time.sleep(0.1)  # 100ms 대기
             total_cpu_percent = process.cpu_percent()
+            # 메모리 사용량 (MB 단위)
             total_memory_mb = process.memory_info().rss / 1024 / 1024
+
         except ImportError:
             total_cpu_percent = 0.0
             total_memory_mb = 0.0
+        except Exception as e:
+            # psutil이 있지만 다른 오류가 발생한 경우
+            print(f"시스템 모니터링 오류: {e}")
 
         # 스레드 수명 계산
         thread_ages = []

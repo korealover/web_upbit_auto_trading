@@ -106,7 +106,7 @@ class UpbitTradingBot:
                 strategy_value = self._get_field_value(getattr(self.args, 'strategy', None))
                 
                 thread_monitor.register_thread(
-                    user_id=self.user_id,
+                    user_id=self.username,
                     ticker=ticker_value,
                     strategy=strategy_value
                 )

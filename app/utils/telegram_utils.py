@@ -57,7 +57,7 @@ class TelegramNotifier:
                 self._loop.run_forever()
 
             import threading
-            self._loop_thread = threading.Thread(target=run_event_loop, daemon=True)
+            self._loop_thread = threading.Thread(target=run_event_loop, daemon=True, name="TelegramNotifierLoopThread")
             self._loop_thread.start()
 
     async def _get_session(self):

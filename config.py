@@ -51,4 +51,9 @@ class Config:
         'max_thread_age': int(os.environ.get('MAX_THREAD_AGE_THRESHOLD', '3600'))
     }
 
+    # 스레드 풀 설정
+    MAX_WORKERS = int(os.environ.get('MAX_WORKERS', '100'))
+    THREAD_NAME_PREFIX = os.environ.get('THREAD_NAME_PREFIX', 'trading_bot_')
+
+
 

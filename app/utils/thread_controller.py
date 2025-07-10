@@ -152,17 +152,29 @@ class ThreadController:
             ))
         
         return results
-    
+
     def _serialize_settings(self, settings):
         """설정 객체를 JSON 직렬화 가능한 형태로 변환"""
         try:
             if not settings:
                 return {}
-            
+
             # WTForms 객체인 경우 데이터 추출
-            if hasattr(settings, '__dict__') and hasattr(settings, '_formdata'):
+            if hasattr(settings, '__dict__') and (hasattr(settings, '_formdata') or hasattr(settings, '_fields')):
                 # WTForms 객체로 추정됨
                 safe_settings = {}
+
+                # WTForms 객체의 경우 _fields 속성에서 필드 정보 추출
+                if hasattr(settings, '_fields'):
+                    for field_name, field_obj in settings._fields.items():
+                        try:
+                            if hasattr(field_obj, 'data'):
+                                safe_settings[field_name] = field_obj.data
+                        except Exception:
+                            safe_settings[field_name] = "N/A"
+                    return safe_settings
+
+                # 일반적인 속성 기반 추출
                 for attr_name in dir(settings):
                     if not attr_name.startswith('_') and not callable(getattr(settings, attr_name)):
                         try:
@@ -175,7 +187,7 @@ class ThreadController:
                         except Exception:
                             continue
                 return safe_settings
-            
+
             # 일반 딕셔너리인 경우
             elif isinstance(settings, dict):
                 safe_settings = {}
@@ -192,11 +204,11 @@ class ThreadController:
                     except Exception:
                         safe_settings[key] = "N/A"
                 return safe_settings
-            
+
             # 기타 객체인 경우 문자열로 변환
             else:
                 return {"raw_data": str(settings)}
-                
+
         except Exception as e:
             self.logger.warning(f"설정 직렬화 중 오류: {str(e)}")
             return {"error": "설정 데이터를 읽을 수 없습니다"}
@@ -212,6 +224,7 @@ class ThreadController:
 
         try:
             with lock:
+                # print(f"trading_bots: {trading_bots.items()}")
                 for uid, user_bots in trading_bots.items():
                     # 특정 사용자만 조회하는 경우
                     if user_id is not None and uid != user_id:
@@ -224,10 +237,14 @@ class ThreadController:
 
                         is_running = bot_info.get("running", False)
                         thread_id = bot_info.get("thread_id")
+                        strategy = bot_info.get("strategy")
+                        interval_label = bot_info.get("interval_label")
+                        username = bot_info.get("username")
 
                         # settings 안전하게 처리 (WTForms 객체 처리)
                         raw_settings = bot_info.get("settings", {})
                         safe_settings = self._serialize_settings(raw_settings)
+                        # print(f"safe_settings: {safe_settings}")
 
                         thread_data = {
                             "user_id": uid,
@@ -236,7 +253,10 @@ class ThreadController:
                             "running": is_running,
                             "settings": safe_settings,
                             "start_time": bot_info.get("start_time"),
-                            "stop_requested": self.stop_requests.get(f"{uid}_{tick}", False)
+                            "stop_requested": self.stop_requests.get(f"{uid}_{tick}", False),
+                            "strategy": strategy,
+                            "interval_label": interval_label,
+                            "username" : username
                         }
 
                         status["threads"].append(thread_data)

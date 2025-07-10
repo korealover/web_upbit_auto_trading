@@ -17,9 +17,14 @@ import os
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.thread_monitor import thread_monitor
+from config import Config
 
-# 전역적으로 스레드 풀 생성 (최대 작업 스레드 수 조정 가능)
-thread_pool = ThreadPoolExecutor(max_workers=30)
+
+# 환경 변수에서 Thread Pool 설정 로드
+thread_pool = ThreadPoolExecutor(
+    max_workers=Config.MAX_WORKERS,
+    thread_name_prefix=Config.THREAD_NAME_PREFIX
+)
 
 # Blueprint 생성
 bp = Blueprint('main', __name__)
@@ -398,10 +403,18 @@ def start_bot(ticker, strategy_name, settings):
             'settings': settings,
             'running': True,
             'interval_label': get_selected_label(settings.interval),
+            'username': current_user.username,
+            'thread_id': None,  # 초기값, 나중에 업데이트
+            'start_time': datetime.now()
+
         }
 
-    # 스레드 풀에 작업 제출
-    thread_pool.submit(run_bot_process, user_id, ticker)
+    # 스레드 풀에 작업 제출하고 Future 객체 반환
+    future = thread_pool.submit(run_bot_process, user_id, ticker)
+
+    # thread_id 업데이트 (Future 객체의 내부 스레드 ID 사용)
+    with lock:
+        trading_bots[user_id][ticker]['thread_id'] = id(future)  # 또는 다른 고유 식별자
 
 
 # 선택 필드에서 라벨을 가져오기
@@ -1031,7 +1044,10 @@ def export_thread_stats():
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f'thread_stats_{timestamp}.json'
-    filepath = os.path.join('logs', filename)
+    # 프로젝트 루트 디렉토리 얻기
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    project_root = os.path.dirname(basedir)  # app 디렉토리에서 상위로 이동
+    filepath = os.path.join(project_root, 'logs', filename)
 
     thread_monitor.export_stats(filepath)
 
