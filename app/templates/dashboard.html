@@ -483,11 +483,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="table-responsive">
                     <table class="table table-striped table-sm">
                         <thead>
-                            <tr>
+                            <tr class="text-center">
                                 <th>시간</th>
                                 <th>티커</th>
                                 <th>거래유형</th>
-                                <th>가격</th>
+                                <th>단가</th>
                                 <th>수량</th>
                                 <th>거래금액</th>
                                 <th>전략</th>
@@ -507,9 +507,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td><small>${record.timestamp}</small></td>
                         <td><strong>${record.ticker}</strong></td>
                         <td><span class="${tradeTypeClass}">${record.trade_type}</span></td>
-                        <td>₩${record.price.toLocaleString('ko-KR')}</td>
-                        <td>${record.volume.toFixed(4)}</td>
-                        <td>₩${record.amount.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
+                        <td class="text-end">₩${record.price.toLocaleString('ko-KR')}</td>
+                        <td class="text-end">${record.volume.toFixed(4)}</td>
+                        <td class="text-end">₩${record.amount.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
                         <td>${strategyIcon} ${record.strategy}</td>
                         <td>
                             ${record.profit_loss !== null ?
