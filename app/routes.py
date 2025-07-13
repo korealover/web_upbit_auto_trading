@@ -186,7 +186,7 @@ def dashboard():
     try:
         # 사용자별 봇 정보 가져오기
         user_bots = scheduled_bots.get(user_id, {})
-        # print(f"사용자의 봇 정보: {user_bots}")
+        print(f"사용자의 봇 정보: {user_bots}")
 
         # 봇 정보에 마지막 신호 시간 추가 TODO
         for ticker, bot_info in user_bots.items():
@@ -213,8 +213,8 @@ def dashboard():
                     bot_info['last_signal_time'] = None
 
                 # 추가 정보 설정 (템플릿 호환성을 위해)
-                if 'interval' in bot_info:
-                    bot_info['interval_label'] = get_selected_label(bot_info['interval'])
+                if 'interval_label' in bot_info:
+                    bot_info['interval_label'] = get_selected_label(bot_info['interval_label'])
 
                 # 실행 상태 확인
                 if 'running' in bot_info:
@@ -226,9 +226,6 @@ def dashboard():
                 logger.warning(f"봇 {ticker} 마지막 신호 시간 조회 실패: {str(e)}")
                 bot_info['last_signal_time'] = None
                 bot_info['running'] = False
-
-
-
 
         # 업비트 잔고 확인
         balance_info['cash'] = api.get_balance_cash()
@@ -504,7 +501,7 @@ def start_bot(ticker, strategy_name, settings):
                 'cycle_count': 0,
                 'last_run': None,
                 'running': True,  # 실행 상태 추가
-                'interval_label': get_selected_label(sleep_time)  # 수정된 부분: sleep_time 직접 전달
+                'interval_label': get_selected_label(settings['interval'])
             }
 
         logger.info(f"APScheduler 봇 시작 성공: {ticker} (Job ID: {job_id})")
