@@ -78,42 +78,81 @@ class ThreadController:
                 message=error_msg,
                 stop_time=datetime.now()
             )
-    
-    def stop_user_threads(self, user_id: int, force: bool = False) -> List[ThreadStopResult]:
-        """특정 사용자의 모든 스레드 중지"""
-        results = []
-        
+
+    def stop_user_threads(self, user_id, ticker_filter=None):
+        """특정 사용자의 스레드 중지 (선택적으로 티커 필터 적용)"""
         try:
-            with lock:
-                if user_id not in trading_bots:
+            results = []
+            user_threads = []
+
+            # 현재 실행 중인 스레드에서 해당 사용자의 스레드 찾기
+            for thread in threading.enumerate():
+                if hasattr(thread, 'user_id') and thread.user_id == user_id:
+                    # 티커 필터가 있으면 해당 티커만 선택
+                    if ticker_filter is None or (hasattr(thread, 'ticker') and thread.ticker == ticker_filter):
+                        user_threads.append(thread)
+
+            if not user_threads:
+                self.logger.info(f"사용자 {user_id}의 실행 중인 스레드를 찾을 수 없습니다{' (티커: ' + ticker_filter + ')' if ticker_filter else ''}")
+                return results
+
+            # 각 스레드에 대해 중지 요청
+            for thread in user_threads:
+                try:
+                    thread_id = getattr(thread, 'thread_id', thread.name)
+                    ticker = getattr(thread, 'ticker', 'Unknown')
+
+                    # 스레드 중지 플래그 설정
+                    if hasattr(thread, 'stop_event'):
+                        thread.stop_event.set()
+
+                    # 스레드 종료 대기 (타임아웃 설정)
+                    if thread.is_alive():
+                        thread.join(timeout=5.0)
+
+                    # 결과 확인
+                    if not thread.is_alive():
+                        result = ThreadStopResult(
+                            success=True,
+                            thread_id=thread_id,
+                            user_id=user_id,
+                            ticker=ticker,
+                            message=f"스레드가 성공적으로 중지되었습니다.",
+                            stop_time=datetime.now()
+                        )
+                        self.logger.info(f"사용자 {user_id}의 스레드 중지 성공: {thread_id}")
+                    else:
+                        result = ThreadStopResult(
+                            success=False,
+                            thread_id=thread_id,
+                            user_id=user_id,
+                            ticker=ticker,
+                            message=f"스레드 중지 타임아웃",
+                            stop_time=datetime.now()
+                        )
+                        self.logger.warning(f"사용자 {user_id}의 스레드 중지 타임아웃: {thread_id}")
+
+                    results.append(result)
+                    self.stop_history.append(result)
+
+                except Exception as e:
                     result = ThreadStopResult(
                         success=False,
+                        thread_id=getattr(thread, 'thread_id', thread.name),
                         user_id=user_id,
-                        message=f"사용자 {user_id}의 스레드를 찾을 수 없습니다",
+                        ticker=getattr(thread, 'ticker', 'Unknown'),
+                        message=f"스레드 중지 오류: {str(e)}",
                         stop_time=datetime.now()
                     )
                     results.append(result)
-                    return results
-                
-                # 해당 사용자의 모든 티커에 대해 중지 요청
-                tickers = list(trading_bots[user_id].keys())
-                for ticker in tickers:
-                    result = self.stop_specific_thread(user_id, ticker, force)
-                    results.append(result)
-                
-                self.logger.info(f"사용자 {user_id}의 모든 스레드 중지 완료: {len(results)}개")
-                
+                    self.stop_history.append(result)
+                    self.logger.error(f"사용자 {user_id}의 스레드 중지 오류: {e}")
+
+            return results
+
         except Exception as e:
-            error_msg = f"사용자 스레드 중지 중 오류: {str(e)}"
-            self.logger.error(error_msg)
-            results.append(ThreadStopResult(
-                success=False,
-                user_id=user_id,
-                message=error_msg,
-                stop_time=datetime.now()
-            ))
-        
-        return results
+            self.logger.error(f"사용자 스레드 중지 중 오류 발생: {e}")
+            return []
     
     def stop_all_threads(self, force: bool = False) -> List[ThreadStopResult]:
         """모든 거래 스레드 중지"""

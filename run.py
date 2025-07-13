@@ -1,36 +1,66 @@
-import signal
-import sys
-import eventlet
-from app import create_app, socketio
-from app.routes import stop_all_bots  # 봇 종료 함수
-import threading  # 수정: 표준 라이브러리에서 직접 임포트
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_login import LoginManager
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+from datetime import datetime
 
-eventlet.monkey_patch()  # 필요 시 제거하고 WSGI 서버를 고려
-app = create_app()
-shutdown_event = threading.Event()  # 종료 이벤트 관리
+db = SQLAlchemy()
+migrate = Migrate()
+login_manager = LoginManager()
 
-def handle_shutdown_signal(signum, frame):
-    """서버 종료 과정 핸들링."""
-    print("서버 종료 신호(Signal: {})를 받았습니다. 봇을 종료하는 중...".format(signum))
-    shutdown_event.set()  # 종료하기 위해 이벤트 설정
+
+def create_app():
+    app = Flask(__name__)
+
+    # 환경변수에서 설정 로드
+    app.config.from_object('config.Config')
+
+    # 확장 기능 초기화
+    db.init_app(app)
+    migrate.init_app(app, db)
+    login_manager.init_app(app)
+    login_manager.login_view = 'main.login'
+    login_manager.login_message = '로그인이 필요합니다.'
+
+    # 블루프린트 등록
+    from app.routes import bp as main_bp
+    app.register_blueprint(main_bp)
+
+    # 로그 설정
+    if not app.debug:
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+
+        file_handler = RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+
+        app.logger.setLevel(logging.INFO)
+        app.logger.info('Application startup')
+
+    # 스케줄러 초기화 (애플리케이션 컨텍스트에서 실행)
+    with app.app_context():
+        initialize_scheduler(app)
+
+    return app
+
+
+def initialize_scheduler(app):
+    """스케줄러 초기화"""
     try:
-        stop_all_bots()  # 모든 봇 종료 (비동기 처리 고려)
+        from app.utils.scheduler_manager import scheduler_manager
+        if not scheduler_manager.is_started():
+            scheduler_manager.start()
+            app.logger.info("트레이딩 스케줄러가 시작되었습니다.")
     except Exception as e:
-        print(f"봇 종료 중 오류 발생: {str(e)}")
-    finally:
-        print("서버를 종료합니다.")
-        sys.exit(0)
+        app.logger.error(f"스케줄러 초기화 실패: {e}")
 
-# 종료 신호 핸들러 등록
-signal.signal(signal.SIGINT, handle_shutdown_signal)  # Ctrl+C
-signal.signal(signal.SIGTERM, handle_shutdown_signal)  # 일반 종료 신호
 
-if __name__ == "__main__":
-    try:
-        # 개발 서버 실행 (운영에서는 gunicorn을 사용 권장)
-        print("서버를 시작합니다...")
-        socketio.run(app, debug=True, host="0.0.0.0", port=5000, allow_unsafe_werkzeug=True)
-    except KeyboardInterrupt:
-        handle_shutdown_signal(signal.SIGINT, None)
-    except Exception as e:
-        print(f"서버 실행 중 오류 발생: {str(e)}")
+if __name__ == '__main__':
+    app = create_app()
+    app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,5 +1,5 @@
-# bot/trading_bot.py
 from flask_login import current_user
+from app.utils.scheduler_manager import scheduler_manager
 
 from app.utils.telegram_utils import TelegramNotifier
 try:
@@ -42,6 +42,8 @@ class UpbitTradingBot:
         self.strategy = strategy
         self.logger = logger
         self.username = username
+        self.job_id = None
+        self.is_running = False
 
         # 사용자 ID 확인 및 저장
         self.user_id = None
@@ -364,7 +366,6 @@ class UpbitTradingBot:
         try:
             # Flask 애플리케이션 컨텍스트를 정확하게 가져오기
             from app import create_app
-            from config import Config
 
             # 현재 앱 인스턴스 가져오기 또는 새로 생성
             try:
@@ -372,7 +373,7 @@ class UpbitTradingBot:
                 app = current_app._get_current_object()
             except RuntimeError:
                 # 현재 앱 컨텍스트가 없는 경우 새로 생성
-                app = create_app(Config)
+                app = create_app()
 
             with app.app_context():
                 from app.models import TradeRecord, db
@@ -415,38 +416,65 @@ class UpbitTradingBot:
             import traceback
             self.logger.error(f"상세 오류: {traceback.format_exc()}")
 
-    def run_bot_thread(self, user_id, ticker):
-        """봇 실행 스레드"""
-        try:
-            # 스레드 모니터링 컨텍스트 (사용 가능한 경우만)
-            if THREAD_MONITOR_AVAILABLE:
-                strategy_value = self._get_field_value(getattr(self.args, 'strategy', None), 'unknown')
+    def start_scheduled_trading(self, interval_seconds=None):
+        """스케줄링된 트레이딩 시작"""
+        if self.is_running:
+            self.logger.warning("이미 실행 중인 트레이딩 봇입니다.")
+            return False
 
-                with thread_monitor.monitor_thread_context(
-                    user_id=user_id,
-                    ticker=ticker,
-                    strategy=strategy_value
-                ):
-                    self._run_trading_loop(user_id, ticker)
-            else:
-                self._run_trading_loop(user_id, ticker)
+        # 간격 설정 (기본값: args에서 가져오기)
+        if interval_seconds is None:
+            interval_seconds = self._get_field_value(getattr(self.args, 'sleep_time', None), 30)
+
+        # 작업 ID 생성
+        ticker = self._get_field_value(getattr(self.args, 'ticker', None))
+        strategy = self._get_field_value(getattr(self.args, 'strategy', None))
+        self.job_id = f"{self.username}_{ticker}_{strategy}_{int(datetime.now().timestamp())}"
+
+        # 스케줄러에 작업 추가
+        success = scheduler_manager.add_trading_job(
+            job_id=self.job_id,
+            trading_func=self._scheduled_trading_cycle,
+            interval_seconds=interval_seconds,
+            user_id=self.username,
+            ticker=ticker,
+            strategy=strategy
+        )
+
+        if success:
+            self.is_running = True
+            self.logger.info(f"스케줄링된 트레이딩 시작: {self.job_id}")
+            return True
+        else:
+            self.logger.error("스케줄링된 트레이딩 시작 실패")
+            return False
+
+    def stop_scheduled_trading(self):
+        """스케줄링된 트레이딩 중지"""
+        if not self.is_running or not self.job_id:
+            return False
+
+        success = scheduler_manager.remove_job(self.job_id)
+        if success:
+            self.is_running = False
+            self.logger.info(f"스케줄링된 트레이딩 중지: {self.job_id}")
+            return True
+        else:
+            self.logger.error("스케줄링된 트레이딩 중지 실패")
+            return False
+
+    def _scheduled_trading_cycle(self):
+        """스케줄러에서 호출되는 트레이딩 사이클"""
+        try:
+            # 작업 실행 횟수 업데이트
+            if self.job_id and self.job_id in scheduler_manager.active_jobs:
+                job_info = scheduler_manager.active_jobs[self.job_id]
+                job_info['run_count'] += 1
+                job_info['last_run'] = datetime.now()
+
+            # 기존 trading() 메서드 호출
+            self.trading()
 
         except Exception as e:
-            self.logger.error(f"봇 실행 중 오류 발생: {ticker}, {e}")
-        finally:
-            self.logger.info(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
-            # 실행 종료한 봇은 글로벌 상태에서 제거
-            with lock:
-                if user_id in trading_bots and ticker in trading_bots[user_id]:
-                    del trading_bots[user_id][ticker]
-                    self.logger.info(f"봇 제거 완료: {ticker}, User ID: {user_id}")
+            self.logger.error(f"스케줄링된 트레이딩 사이클 실행 중 오류: {e}", exc_info=True)
 
-    def _run_trading_loop(self, user_id, ticker):
-        """실제 거래 루프 실행"""
-        while not shutdown_event.is_set() and trading_bots[user_id][ticker]["running"]:
-            # 트레이딩 실행
-            self.run_cycle()
-
-            # 봇이 종료되지 않았다면 대기 (단위: 초)
-            sleep_time = trading_bots[user_id][ticker]["settings"].get("sleep_time", 60)
-            time.sleep(sleep_time)

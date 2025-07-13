@@ -1,6 +1,5 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
-from flask_socketio import emit
 from app import db, socketio
 from app.forms import TradingSettingsForm, LoginForm, RegistrationForm, ProfileForm, FavoriteForm
 from app.models import User, TradeRecord, kst_now, TradingFavorite
@@ -8,23 +7,16 @@ from app.api.upbit_api import UpbitAPI
 from app.strategy import create_strategy
 from app.utils.logging_utils import setup_logger, get_logger_with_current_date
 from app.utils.async_utils import AsyncHandler
-from app.utils.shared import trading_bots, lock
-from app.utils.thread_controller import thread_controller, stop_thread, stop_user_threads, stop_all_threads, emergency_stop, get_thread_status
+from app.utils.shared import trading_bots
 from app.bot.trading_bot import UpbitTradingBot
 import time
 import html
 import os
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
-from app.utils.thread_monitor import thread_monitor
-from config import Config
+from app.utils.scheduler_manager import scheduler_manager
+import uuid
 
-
-# 환경 변수에서 Thread Pool 설정 로드
-thread_pool = ThreadPoolExecutor(
-    max_workers=Config.MAX_WORKERS,
-    thread_name_prefix=Config.THREAD_NAME_PREFIX
-)
+scheduled_bots = {}  # {user_id: {ticker: {'job_id': str, 'bot': obj, 'info': dict}}}
 
 # Blueprint 생성
 bp = Blueprint('main', __name__)
@@ -38,13 +30,13 @@ logger = setup_logger('web', 'INFO', 7)
 websocket_clients = {}  # 클라이언트별 구독 정보 저장
 log_subscribers = {}  # 로그 구독자 관리
 
-
+# 메인 페이지
 @bp.route('/')
 def index():
     return render_template('index.html')
 
 
-# routes.py의 로그인 함수 수정
+# 로그인
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -65,11 +57,11 @@ def login():
         next_page = request.args.get('next')
         if not next_page or not next_page.startswith('/'):
             next_page = url_for('main.index')
-        flash('로그인되었습니다!', 'success')
+        flash('로그인 되었습니다!', 'success')
         return redirect(next_page)
     return render_template('login.html', title='로그인', form=form)
 
-
+# 로그아웃
 @bp.route('/logout')
 def logout():
     logout_user()
@@ -77,7 +69,7 @@ def logout():
     return redirect(url_for('main.index'))
 
 
-# routes.py의 회원가입 함수 수정
+# 회원가입
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
@@ -105,7 +97,7 @@ def register():
         return redirect(url_for('main.login'))
     return render_template('register.html', title='회원가입', form=form)
 
-
+# 관리자 회원 가입 알림
 def notify_admin_new_registration(user):
     """관리자에게 새 회원가입 알림"""
     admins = User.query.filter_by(is_admin=True).all()
@@ -113,7 +105,66 @@ def notify_admin_new_registration(user):
     for admin in admins:
         logger.info(f"관리자 {admin.username}에게 새 회원 {user.username} 가입 알림")
 
+# 회원 프로필
+@bp.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    form = ProfileForm(current_user.username, current_user.email)
+    if form.validate_on_submit():
+        current_user.username = form.username.data
+        current_user.email = form.email.data
 
+        # API 키가 입력된 경우에만 업데이트
+        if form.upbit_access_key.data:
+            current_user.upbit_access_key = form.upbit_access_key.data
+        if form.upbit_secret_key.data:
+            current_user.upbit_secret_key = form.upbit_secret_key.data
+
+        db.session.commit()
+
+        # API 객체 재생성 (API 키가 변경된 경우)
+        if form.upbit_access_key.data or form.upbit_secret_key.data:
+            user_id = current_user.id
+            if user_id in upbit_apis:
+                del upbit_apis[user_id]  # 기존 API 객체 제거
+
+            # 만약 사용자의 봇이 실행 중이었다면 중지
+            if user_id in trading_bots:
+                for ticker in list(trading_bots[user_id].keys()):
+                    trading_bots[user_id][ticker]['running'] = False
+                trading_bots[user_id] = {}
+
+        flash('프로필이 업데이트되었습니다.', 'success')
+        return redirect(url_for('main.profile'))
+    elif request.method == 'GET':
+        form.username.data = current_user.username
+        form.email.data = current_user.email
+        # API 키는 보안상 폼에 미리 채우지 않음
+
+    return render_template('profile.html', title='프로필', form=form)
+
+# 업비트 Key 유효성 검증
+@bp.route('/validate_api_keys', methods=['POST'])
+@login_required
+def validate_api_keys():
+    data = request.json
+    access_key = data.get('access_key')
+    secret_key = data.get('secret_key')
+
+    try:
+        # 임시 API 객체 생성하여 잔고 조회 시도
+        from pyupbit import Upbit
+        temp_upbit = Upbit(access_key, secret_key)
+        balance = temp_upbit.get_balance("KRW")
+
+        if balance is not None:
+            return jsonify({'valid': True, 'message': '업비트 API 키가 유효합니다.'})
+        else:
+            return jsonify({'valid': False, 'message': 'API 키로 잔고를 조회할 수 없습니다.'})
+    except Exception as e:
+        return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
+
+# 대시보드
 @bp.route('/dashboard')
 @login_required
 def dashboard():
@@ -130,11 +181,60 @@ def dashboard():
 
     # 현재 사용자의 API 객체 사용
     api = upbit_apis[user_id]
+    print(f"현재 사용자의 API 객체: {api}")
 
     # 잔고 정보 조회
     balance_info = {}
     try:
+        # 사용자별 봇 정보 가져오기
+        user_bots = scheduled_bots.get(user_id, {})
+        print(f"사용자의 봇 정보: {user_bots}")
+
+        # 봇 정보에 마지막 신호 시간 추가 TODO
+        for ticker, bot_info in user_bots.items():
+            print(f"이는 봇 정보: {bot_info}")
+            try:
+                # 마지막 로그에서 신호 시간 추출 (선택적 구현)
+                today = datetime.now().strftime('%Y%m%d')
+                ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
+                log_filename = f"{today}_{ticker_symbol}.log"
+                log_path = os.path.join('logs', log_filename)
+
+                if os.path.exists(log_path):
+                    last_lines = tail_file(log_path, 10)
+                    for line in reversed(last_lines):
+                        if '매수' in line or '매도' in line or '신호' in line:
+                            # 로그에서 시간 추출
+                            parts = line.split(' - ')
+                            if len(parts) >= 1:
+                                bot_info['last_signal_time'] = parts[0]
+                                break
+                    else:
+                        bot_info['last_signal_time'] = None
+                else:
+                    bot_info['last_signal_time'] = None
+
+                # 추가 정보 설정 (템플릿 호환성을 위해)
+                if 'interval' in bot_info:
+                    bot_info['interval_label'] = get_selected_label(bot_info['interval'])
+
+                # 실행 상태 확인
+                if 'running' in bot_info:
+                    bot_info['running'] = True if bot_info['running'] else False
+                else:
+                    bot_info['running'] = False
+
+            except Exception as e:
+                logger.warning(f"봇 {ticker} 마지막 신호 시간 조회 실패: {str(e)}")
+                bot_info['last_signal_time'] = None
+                bot_info['running'] = False
+
+
+
+
+        # 업비트 잔고 확인
         balance_info['cash'] = api.get_balance_cash()
+        print(f"잔고 정보: {balance_info['cash']}")
         if balance_info['cash'] is None:
             balance_info['cash'] = 0
 
@@ -150,7 +250,8 @@ def dashboard():
                     if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
                         ticker = f"KRW-{balance['currency']}"
                         try:
-                            current_price = api.get_current_price(ticker)  # get_ticker를 get_current_price로 변경
+                            # 현재 코인 가격
+                            current_price = api.get_current_price(ticker)
                             coin_value = float(balance['balance']) * current_price
                             total_balance += coin_value
 
@@ -278,36 +379,6 @@ def dashboard():
                 'trades': stats['trades']
             }
 
-    # 사용자별 봇 정보 가져오기
-    user_bots = trading_bots.get(user_id, {})
-
-    # 봇 정보에 마지막 신호 시간 추가
-    for ticker, bot_info in user_bots.items():
-        try:
-            # 마지막 로그에서 신호 시간 추출 (선택적 구현)
-            today = datetime.now().strftime('%Y%m%d')
-            ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
-            log_filename = f"{today}_{ticker_symbol}.log"
-            log_path = os.path.join('logs', log_filename)
-
-            if os.path.exists(log_path):
-                last_lines = tail_file(log_path, 10)
-                for line in reversed(last_lines):
-                    if '매수' in line or '매도' in line or '신호' in line:
-                        # 로그에서 시간 추출
-                        parts = line.split(' - ')
-                        if len(parts) >= 1:
-                            bot_info['last_signal_time'] = parts[0]
-                            break
-                else:
-                    bot_info['last_signal_time'] = None
-            else:
-                bot_info['last_signal_time'] = None
-
-        except Exception as e:
-            logger.warning(f"봇 {ticker} 마지막 신호 시간 조회 실패: {str(e)}")
-            bot_info['last_signal_time'] = None
-
     # 거래 기록 조회 (최근 20개)
     trade_records = TradeRecord.query.filter_by(
         user_id=current_user.id
@@ -323,52 +394,60 @@ def dashboard():
                            strategy_performance=strategy_performance)
 
 
-# @bp.route('/settings', methods=['GET', 'POST'])
-# @login_required
-# def settings():
-#     form = TradingSettingsForm()
-#     if form.validate_on_submit():
-#         # 폼에서 설정값 추출
-#         ticker = form.ticker.data
-#         strategy_name = form.strategy.data
-#         # 기타 설정값들...
-#
-#         # 봇 설정 및 시작
-#         start_bot(ticker, strategy_name, form)
-#         flash(f'{ticker} 봇이 시작되었습니다!', 'success')
-#         return redirect(url_for('main.dashboard'))
-#
-#     return render_template('settings.html', form=form)
-
-
-@bp.route('/api/start_bot/<ticker>', methods=['POST'])
+# 자동매매 설정
+@bp.route('/settings', methods=['GET', 'POST'])
 @login_required
-def start_bot_route(ticker):
-    # AJAX 요청으로 봇 시작
-    data = request.json
-    start_bot(ticker, data['strategy'], data)
-    return jsonify({'status': 'success', 'message': f'{ticker} 봇이 시작되었습니다'})
+def settings():
+    form = TradingSettingsForm()
+    favorite_form = FavoriteForm()
+    favorite_id = request.args.get('favorite_id', type=int)
 
+    # 즐겨찾기 불러오기 (GET 요청 시)
+    if request.method == 'GET' and favorite_id:
+        favorite = TradingFavorite.query.get_or_404(favorite_id)
+        if favorite.user_id != current_user.id:
+            flash('해당 즐겨찾기에 대한 권한이 없습니다.', 'danger')
+            return redirect(url_for('main.favorites'))
 
-@bp.route('/api/stop_bot/<ticker>', methods=['POST'])
-@login_required
-def stop_bot_route(ticker):
-    user_id = current_user.id
+        # 폼에 데이터 채우기
+        form.process(data=favorite.to_dict())
+        flash(f'"{favorite.name}" 설정을 불러왔습니다. 필요시 수정 후 봇을 실행하세요.', 'info')
 
-    if user_id in trading_bots and ticker in trading_bots[user_id]:
-        # 봇 종료 로직
-        trading_bots[user_id][ticker]['running'] = False
-        del trading_bots[user_id][ticker]
-        return jsonify({'status': 'success', 'message': f'{ticker} 봇이 종료되었습니다'})
-    return jsonify({'status': 'error', 'message': '해당 봇을 찾을 수 없습니다'})
+    # (기존) 설정 저장 및 봇 실행 로직 (POST 요청 시)
+    if form.validate_on_submit() and request.method == 'POST' and not favorite_id:
+        # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
+        ticker = form.ticker.data
+        strategy_name = form.strategy.data
+
+        start_bot(ticker, strategy_name, form)
+        flash('거래 설정이 적용되었습니다.', 'success')
+        return redirect(url_for('main.dashboard'))
+
+    return render_template('settings.html', title='거래 설정', form=form, favorite_form=favorite_form)
 
 
 def start_bot(ticker, strategy_name, settings):
+    """APScheduler를 사용한 자동매매 시작"""
     user_id = current_user.id
+    try:
+        logger = get_logger_with_current_date(ticker, 'INFO', 7)
+        # 기존에 같은 ticker 관련 봇이 있다면 삭제 진행
+        if user_id in scheduled_bots:
+            if ticker in scheduled_bots[user_id]:
+                old_job_id = scheduled_bots[user_id][ticker]['job_id']
+                scheduler_manager.remove_job(old_job_id)
+                logger.info(f"기존 스케줄 작업 중지: {user_id} / {ticker} / {old_job_id}")
+                time.sleep(2)
+            # return
+    except Exception as e:
+        logger.error(f"기존 스케줄 작업 중지 에러: {e}")
 
-    with lock:
-        if user_id not in trading_bots:
-            trading_bots[user_id] = {}
+    with scheduler_manager.lock:
+        # 초기화
+        if user_id not in scheduled_bots:
+            scheduled_bots[user_id] = {}
+
+        # API 초기화
         if user_id not in upbit_apis:
             upbit_apis[user_id] = UpbitAPI(
                 current_user.upbit_access_key,
@@ -376,14 +455,11 @@ def start_bot(ticker, strategy_name, settings):
                 async_handler,
                 get_logger_with_current_date(ticker, 'INFO', 7)
             )
-        if ticker in trading_bots[user_id]:
-            trading_bots[user_id][ticker]['running'] = False
-            time.sleep(1)
 
     upbit_api = upbit_apis[user_id]
-    logger = get_logger_with_current_date(ticker, 'INFO', 7)
     strategy = create_strategy(strategy_name, upbit_api, logger)
 
+    # settings에 user_id 추가
     if hasattr(settings, '__dict__'):
         settings.user_id = user_id
         logger.info(f"settings 객체에 user_id 추가: {user_id} (속성 설정)")
@@ -396,133 +472,273 @@ def start_bot(ticker, strategy_name, settings):
     websocket_logger = WebSocketLogger(ticker, user_id)
     bot = UpbitTradingBot(settings, upbit_api, strategy, websocket_logger, current_user.username)
 
-    with lock:
-        trading_bots[user_id][ticker] = {
-            'bot': bot,
-            'strategy': strategy_name,
-            'settings': settings,
-            'running': True,
-            'interval_label': get_selected_label(settings.interval),
-            'username': current_user.username,
-            'thread_id': None,  # 초기값, 나중에 업데이트
-            'start_time': datetime.now()
+    # 거래 간격 설정
+    if hasattr(settings, 'sleep_time'):
+        sleep_time = settings.sleep_time.data if hasattr(settings.sleep_time, 'data') else settings.sleep_time
+    elif isinstance(settings, dict) and 'sleep_time' in settings:
+        sleep_time = settings['sleep_time']
+    else:
+        sleep_time = 30  # 기본값
 
-        }
+    # 고유한 작업 ID 생성
+    job_id = f"Trading_bot_{user_id}_{ticker}_{strategy_name}_{uuid.uuid4().hex[:8]}"
 
-    # 스레드 풀에 작업 제출하고 Future 객체 반환
-    future = thread_pool.submit(run_bot_process, user_id, ticker)
+    # 스케줄러에 작업 추가 - 수정된 부분
+    success = scheduler_manager.add_trading_job(
+        job_id=job_id,
+        trading_func=lambda: scheduled_trading_cycle(user_id, ticker, bot, websocket_logger),
+        interval_seconds=sleep_time,
+        user_id=user_id,
+        ticker=ticker,
+        strategy=strategy_name
+    )
 
-    # thread_id 업데이트 (Future 객체의 내부 스레드 ID 사용)
-    with lock:
-        trading_bots[user_id][ticker]['thread_id'] = id(future)  # 또는 다른 고유 식별자
+    if success:
+        with scheduler_manager.lock:
+            scheduled_bots[user_id][ticker] = {
+                'job_id': job_id,
+                'bot': bot,
+                'strategy': strategy_name,
+                'settings': settings,
+                'interval': sleep_time,
+                'start_time': datetime.now(),
+                'username': current_user.username,
+                'cycle_count': 0,
+                'last_run': None,
+                'running': True,  # 실행 상태 추가
+                'interval_label': get_selected_label(sleep_time)  # 수정된 부분: sleep_time 직접 전달
+            }
 
+        logger.info(f"APScheduler 봇 시작 성공: {ticker} (Job ID: {job_id})")
+        return job_id
+    else:
+        logger.error(f"APScheduler 봇 시작 실패: {ticker}")
+        return None
+
+
+def scheduled_trading_cycle(user_id, ticker, bot=None, websocket_logger=None):
+    """스케줄러에서 호출되는 트레이딩 사이클 - 수정된 함수"""
+    try:
+        # 봇 정보 확인 - 전달받은 bot이 있으면 우선 사용
+        if bot is not None:
+            # 전달받은 bot과 websocket_logger 사용
+            if websocket_logger is None:
+                websocket_logger = WebSocketLogger(ticker, user_id)
+
+            bot.logger = websocket_logger
+
+            # scheduled_bots에서 사이클 카운트 업데이트 (있는 경우에만)
+            if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
+                bot_info = scheduled_bots[user_id][ticker]
+                bot_info['cycle_count'] = bot_info.get('cycle_count', 0) + 1
+                bot_info['last_run'] = datetime.now()
+                cycle_count = bot_info['cycle_count']
+            else:
+                # 임시로 카운트 관리
+                cycle_count = getattr(bot, '_cycle_count', 0) + 1
+                bot._cycle_count = cycle_count
+
+            websocket_logger.info(f"트레이딩 사이클 시작: {user_id}/{ticker} (#{cycle_count})")
+
+            # 트레이딩 사이클 실행
+            bot.run_cycle()
+
+            websocket_logger.info(f"트레이딩 사이클 완료: {user_id}/{ticker}")
+            return
+
+        # 전달받은 bot이 없는 경우 저장된 봇 정보에서 가져오기
+        if user_id not in scheduled_bots or ticker not in scheduled_bots[user_id]:
+            logger.warning(f"스케줄된 봇 정보를 찾을 수 없음: {user_id}/{ticker}")
+            return
+
+        bot_info = scheduled_bots[user_id][ticker]
+        bot = bot_info['bot']
+
+        # 사이클 카운트 증가 (직접 접근)
+        bot_info['cycle_count'] = bot_info.get('cycle_count', 0) + 1
+        bot_info['last_run'] = datetime.now()
+
+        # 웹소켓 로거 설정
+        if websocket_logger is None:
+            websocket_logger = WebSocketLogger(ticker, user_id)
+
+        bot.logger = websocket_logger
+
+        websocket_logger.info(f"트레이딩 사이클 시작: {user_id}/{ticker} (#{bot_info['cycle_count']})")
+
+        # 트레이딩 사이클 실행
+        bot.run_cycle()
+
+        websocket_logger.info(f"트레이딩 사이클 완료: {user_id}/{ticker}")
+
+    except Exception as e:
+        logger.error(f"스케줄된 트레이딩 사이클 실행 중 오류: {user_id}/{ticker} - {str(e)}")
+
+        # 오류 발생 시 봇 정리
+        try:
+            if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
+                job_id = scheduled_bots[user_id][ticker].get('job_id')
+                if job_id:
+                    scheduler_manager.remove_job(job_id)
+                del scheduled_bots[user_id][ticker]
+                logger.info(f"오류로 인한 봇 정리: {user_id}/{ticker}")
+        except Exception as cleanup_error:
+            logger.error(f"봇 정리 중 오류: {cleanup_error}")
+
+
+@bp.route('/api/stop_bot/<ticker>', methods=['POST'])
+@login_required
+def stop_bot_route(ticker):
+    """특정 티커의 봇 중지"""
+    try:
+        user_id = current_user.id
+        success = stop_bot(user_id, ticker)
+
+        if success:
+            return jsonify({
+                'status': 'success',
+                'message': f'{ticker} 봇이 성공적으로 중지되었습니다.'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'{ticker} 봇 중지에 실패했습니다.'
+            })
+    except Exception as e:
+        logger.error(f"봇 중지 오류: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'봇 중지 중 오류가 발생했습니다: {str(e)}'
+        })
+
+
+def stop_bot(user_id, ticker):
+    """봇 중지 함수"""
+    try:
+        # 봇 정보 확인
+        if user_id not in scheduled_bots:
+            logger.warning(f"사용자 {user_id}의 봇 정보가 없습니다.")
+            return False
+
+        if ticker not in scheduled_bots[user_id]:
+            logger.warning(f"봇 정보를 찾을 수 없음: {user_id}/{ticker}")
+            return False
+
+        bot_info = scheduled_bots[user_id][ticker]
+
+        # 스케줄러 작업 중지
+        job_id = bot_info.get('job_id')
+        if job_id:
+            try:
+                scheduler_manager.remove_job(job_id)
+                logger.info(f"스케줄러 작업 중지: {job_id}")
+            except Exception as e:
+                logger.warning(f"스케줄러 작업 중지 중 오류: {e}")
+
+        # 봇 객체 중지
+        bot = bot_info.get('bot')
+        if bot:
+            try:
+                bot.is_running = False
+                if hasattr(bot, 'stop_scheduled_trading'):
+                    bot.stop_scheduled_trading()
+                logger.info(f"봇 객체 중지: {user_id}/{ticker}")
+            except Exception as e:
+                logger.warning(f"봇 객체 중지 중 오류: {e}")
+
+        # 봇 정보 삭제
+        del scheduled_bots[user_id][ticker]
+
+        # 사용자의 모든 봇이 중지되었다면 사용자 정보도 정리
+        if not scheduled_bots[user_id]:
+            del scheduled_bots[user_id]
+
+        logger.info(f"봇 중지 완료: {user_id}/{ticker}")
+        return True
+
+    except Exception as e:
+        logger.error(f"봇 중지 중 오류: {user_id}/{ticker} - {str(e)}")
+        return False
 
 # 선택 필드에서 라벨을 가져오기
-def get_selected_label(form_field):
-    for value, label in form_field.choices:
-        if value == form_field.data:
-            return label
-    return None
+def get_selected_label(value):
+    """선택된 값에 대한 라벨 반환 - 수정된 함수"""
+    # value가 정수(sleep_time)인 경우 처리
+    if isinstance(value, int):
+        if value < 60:
+            return f"{value}초"
+        elif value < 3600:
+            minutes = value // 60
+            return f"{minutes}분"
+        else:
+            hours = value // 3600
+            return f"{hours}시간"
+
+    # value가 form field인 경우 기존 로직
+    if hasattr(value, 'choices'):
+        try:
+            for choice_value, label in value.choices:
+                if choice_value == value.data:
+                    return label
+        except:
+            pass
+
+    # 기본값 반환
+    return str(value)
+
 
 def run_bot_process(user_id, ticker):
-    """봇 실행 프로세스 (run_bot_thread에서 이름 변경)"""
+    """봇 실행 프로세스"""
     try:
-        bot_info = trading_bots[user_id][ticker]
+        # trading_bots 대신 scheduled_bots 사용
+        if user_id not in scheduled_bots or ticker not in scheduled_bots[user_id]:
+            logger.warning(f"봇 정보를 찾을 수 없음: {user_id}/{ticker}")
+            return
+
+        bot_info = scheduled_bots[user_id][ticker]
         bot = bot_info['bot']
         cycle_count = 0
-        while bot_info['running']:
+
+        # 실행 상태 확인을 위한 플래그 추가
+        bot_info['running'] = True
+
+        while bot_info.get('running', False):
             cycle_count += 1
             # 매 사이클마다 로거를 최신 날짜로 업데이트
             websocket_logger = WebSocketLogger(ticker, user_id)
-            bot.logger = websocket_logger  # 봇의 로거 업데이트
+            bot.logger = websocket_logger
 
             websocket_logger.info(f"{ticker} 사이클 #{cycle_count} 시작")
 
             # 거래 사이클 실행
             bot.run_cycle()
 
-            # 설정된 시간만큼 대기
-            if hasattr(bot_info['settings'], 'sleep_time'):
-                sleep_time = bot_info['settings'].sleep_time.data
-            # AJAX 요청으로부터 받은 데이터인 경우 (딕셔너리)
-            elif isinstance(bot_info['settings'], dict) and 'sleep_time' in bot_info['settings']:
-                sleep_time = bot_info['settings']['sleep_time']
+            # 설정된 시간만큼 대기 (직접 접근)
+            settings = bot_info.get('settings')
+            if settings:
+                if hasattr(settings, 'sleep_time'):
+                    sleep_time = settings.sleep_time.data
+                elif isinstance(settings, dict) and 'sleep_time' in settings:
+                    sleep_time = settings['sleep_time']
+                else:
+                    sleep_time = bot_info.get('interval', 30)
             else:
-                sleep_time = 30  # 기본값
+                sleep_time = bot_info.get('interval', 30)
 
             time.sleep(sleep_time)
 
     except Exception as e:
         websocket_logger = WebSocketLogger(ticker, user_id)
         websocket_logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
-        bot_info['running'] = False
+        if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
+            scheduled_bots[user_id][ticker]['running'] = False
 
     finally:
         websocket_logger = WebSocketLogger(ticker, user_id)
         # 종료 시 전역 상태에서 제거
-        with lock:
-            if user_id in trading_bots and ticker in trading_bots[user_id]:
-                del trading_bots[user_id][ticker]
-                websocket_logger.info(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
-
-
-@bp.route('/profile', methods=['GET', 'POST'])
-@login_required
-def profile():
-    form = ProfileForm(current_user.username, current_user.email)
-    if form.validate_on_submit():
-        current_user.username = form.username.data
-        current_user.email = form.email.data
-
-        # API 키가 입력된 경우에만 업데이트
-        if form.upbit_access_key.data:
-            current_user.upbit_access_key = form.upbit_access_key.data
-        if form.upbit_secret_key.data:
-            current_user.upbit_secret_key = form.upbit_secret_key.data
-
-        db.session.commit()
-
-        # API 객체 재생성 (API 키가 변경된 경우)
-        if form.upbit_access_key.data or form.upbit_secret_key.data:
-            user_id = current_user.id
-            if user_id in upbit_apis:
-                del upbit_apis[user_id]  # 기존 API 객체 제거
-
-            # 만약 사용자의 봇이 실행 중이었다면 중지
-            if user_id in trading_bots:
-                for ticker in list(trading_bots[user_id].keys()):
-                    trading_bots[user_id][ticker]['running'] = False
-                trading_bots[user_id] = {}
-
-        flash('프로필이 업데이트되었습니다.', 'success')
-        return redirect(url_for('main.profile'))
-    elif request.method == 'GET':
-        form.username.data = current_user.username
-        form.email.data = current_user.email
-        # API 키는 보안상 폼에 미리 채우지 않음
-
-    return render_template('profile.html', title='프로필', form=form)
-
-
-@bp.route('/validate_api_keys', methods=['POST'])
-@login_required
-def validate_api_keys():
-    data = request.json
-    access_key = data.get('access_key')
-    secret_key = data.get('secret_key')
-
-    try:
-        # 임시 API 객체 생성하여 잔고 조회 시도
-        from pyupbit import Upbit
-        temp_upbit = Upbit(access_key, secret_key)
-        balance = temp_upbit.get_balance("KRW")
-
-        if balance is not None:
-            return jsonify({'valid': True, 'message': '업비트 API 키가 유효합니다.'})
-        else:
-            return jsonify({'valid': False, 'message': 'API 키로 잔고를 조회할 수 없습니다.'})
-    except Exception as e:
-        return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
+        if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
+            del scheduled_bots[user_id][ticker]
+            websocket_logger.info(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
 
 
 # ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
@@ -897,37 +1113,6 @@ def get_ticker_trade_records(ticker):
     return jsonify(result)
 
 
-@bp.route('/settings', methods=['GET', 'POST'])
-@login_required
-def settings():
-    form = TradingSettingsForm()
-    favorite_form = FavoriteForm()
-    favorite_id = request.args.get('favorite_id', type=int)
-
-    # 즐겨찾기 불러오기 (GET 요청 시)
-    if request.method == 'GET' and favorite_id:
-        favorite = TradingFavorite.query.get_or_404(favorite_id)
-        if favorite.user_id != current_user.id:
-            flash('해당 즐겨찾기에 대한 권한이 없습니다.', 'danger')
-            return redirect(url_for('main.favorites'))
-
-        # 폼에 데이터 채우기
-        form.process(data=favorite.to_dict())
-        flash(f'"{favorite.name}" 설정을 불러왔습니다. 필요시 수정 후 봇을 실행하세요.', 'info')
-
-    # (기존) 설정 저장 및 봇 실행 로직 (POST 요청 시)
-    if form.validate_on_submit() and request.method == 'POST' and not favorite_id:
-        # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
-        ticker = form.ticker.data
-        strategy_name = form.strategy.data
-        # print(ticker, strategy_name)
-        start_bot(ticker, strategy_name, form)
-        flash('거래 설정이 적용되었습니다.', 'success')
-        return redirect(url_for('main.dashboard'))
-
-    return render_template('settings.html', title='거래 설정', form=form, favorite_form=favorite_form)
-
-
 @bp.route('/favorites')
 @login_required
 def favorites():
@@ -975,422 +1160,99 @@ def delete_favorite(favorite_id):
     return redirect(url_for('main.favorites'))
 
 
+@bp.route('/stop_all_bots', methods=['POST'])
+@login_required
 def stop_all_bots():
-    """모든 트레이딩 봇 종료 처리"""
-    with lock:
-        for user_id, ticker_data in trading_bots.items():
-            for ticker, bot_info in ticker_data.items():
-                bot_info['running'] = False  # 봇 상태 플래그 False로 설정
-                logger.info(f"봇 중지 플래그 설정: {ticker} (User ID: {user_id})")
-
-        # 스레드 종료 완료 대기
-        time.sleep(2)
-        logger.info("모든 봇이 안전하게 중지되었습니다.")
-
-
-# 스레드 모니터링 라우트들
-@bp.route('/thread-monitor')
-@login_required
-def thread_monitor_dashboard():
-    """스레드 모니터링 대시보드"""
-    return render_template('thread_monitor.html')
-
-
-@bp.route('/api/thread-monitor/stats')
-@login_required
-def get_thread_stats():
-    """현재 스레드 통계 API"""
-    from dataclasses import asdict
-    stats = thread_monitor.collect_stats()
-    return jsonify(asdict(stats))
-
-
-@bp.route('/api/thread-monitor/details')
-@login_required
-def get_thread_details():
-    """상세 스레드 정보 API"""
-    return jsonify({'threads': thread_monitor.get_thread_details()})
-
-
-@bp.route('/api/thread-monitor/performance')
-@login_required
-def get_performance_report():
-    """성능 리포트 API"""
-    hours = request.args.get('hours', 24, type=int)
-    return jsonify(thread_monitor.get_performance_report(hours))
-
-
-@bp.route('/api/thread-monitor/alerts')
-@login_required
-def get_alerts():
-    """알림 목록 API"""
-    return jsonify({'alerts': thread_monitor.alerts})
-
-
-@bp.route('/api/thread-monitor/gc', methods=['POST'])
-@login_required
-def force_gc():
-    """강제 가비지 컬렉션 API"""
-    result = thread_monitor.force_garbage_collection()
-    return jsonify({'success': True, 'result': result})
-
-
-@bp.route('/api/thread-monitor/export')
-@login_required
-def export_thread_stats():
-    """통계 내보내기 API"""
-    import os
-    from datetime import datetime
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'thread_stats_{timestamp}.json'
-    # 프로젝트 루트 디렉토리 얻기
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    project_root = os.path.dirname(basedir)  # app 디렉토리에서 상위로 이동
-    filepath = os.path.join(project_root, 'logs', filename)
-
-    thread_monitor.export_stats(filepath)
-
-    return send_file(filepath, as_attachment=True, download_name=filename)
-
-
-# ===========================================
-# 스레드 제어 API 라우트들
-# ===========================================
-
-@bp.route('/api/threads/status')
-@login_required
-def api_get_thread_status():
-    """스레드 상태 조회 API"""
+    """모든 봇 중지"""
     try:
-        user_id = request.args.get('user_id', type=int)
-        ticker = request.args.get('ticker')
+        user_id = current_user.id
+        stopped_bots = []
 
-        # 관리자가 아닌 경우 자신의 스레드만 조회 가능
-        if not current_user.is_admin and user_id and user_id != current_user.id:
-            return jsonify({
-                'success': False,
-                'message': '권한이 없습니다'
-            }), 403
+        if user_id in scheduled_bots:
+            # 사용자의 모든 봇 목록 복사 (반복 중 딕셔너리 변경 방지)
+            user_bot_tickers = list(scheduled_bots[user_id].keys())
 
-        # 일반 사용자는 자신의 스레드만 조회
-        if not current_user.is_admin:
-            user_id = current_user.id
-
-        status = get_thread_status(user_id, ticker)
+            for ticker in user_bot_tickers:
+                try:
+                    if stop_bot(user_id, ticker):
+                        stopped_bots.append(ticker)
+                        logger.info(f"봇 중지됨: {ticker}")
+                except Exception as e:
+                    logger.error(f"봇 중지 중 오류: {ticker} - {str(e)}")
 
         return jsonify({
             'success': True,
-            'data': status
+            'message': f'{len(stopped_bots)}개의 봇이 중지되었습니다.',
+            'stopped_bots': stopped_bots
         })
 
     except Exception as e:
-        logger.error(f"스레드 상태 조회 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'스레드 상태 조회 실패: {str(e)}'
-        }), 500
+        logger.error(f"모든 봇 중지 중 오류: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
-@bp.route('/api/threads/stop', methods=['POST'])
+@bp.route('/api/scheduler/status')
 @login_required
-def api_stop_thread():
-    """특정 스레드 중지 API"""
+def get_scheduler_status():
+    """모든 사용자의 스케줄러 상태 조회"""
     try:
-        data = request.get_json()
-        user_id = data.get('user_id')
-        ticker = data.get('ticker')
-        force = data.get('force', False)
+        # 모든 사용자의 봇 정보를 조회
+        all_user_bots = []
 
-        if not user_id or not ticker:
-            return jsonify({
-                'success': False,
-                'message': 'user_id와 ticker는 필수입니다'
-            }), 400
+        # get_jobs() 대신 get_all_jobs() 사용
+        all_jobs = scheduler_manager.get_all_jobs()
 
-        # 권한 확인: 관리자가 아닌 경우 자신의 스레드만 중지 가능
-        if not current_user.is_admin and user_id != current_user.id:
-            return jsonify({
-                'success': False,
-                'message': '권한이 없습니다'
-            }), 403
+        status = {
+            'scheduler_running': scheduler_manager.is_started(),
+            'total_jobs': len(all_jobs),
+            'all_user_bots': []
+        }
 
-        result = stop_thread(user_id, ticker, force)
+        # scheduled_bots의 모든 사용자 정보 순회
+        for user_id, user_bots in scheduled_bots.items():
+            user_bot_list = []
 
-        if result.success:
-            flash(f'스레드 중지됨: {ticker}', 'success')
-            logger.info(f"스레드 중지: User {current_user.id}가 User {user_id}의 {ticker} 스레드 중지")
-        else:
-            flash(f'스레드 중지 실패: {result.message}', 'error')
+            for ticker, bot_info in user_bots.items():
+                job_id = bot_info.get('job_id')
 
-        return jsonify({
-            'success': result.success,
-            'message': result.message,
-            'data': {
-                'user_id': result.user_id,
-                'ticker': result.ticker,
-                'thread_id': result.thread_id,
-                'stop_time': result.stop_time.isoformat() if result.stop_time else None
-            }
-        })
+                # scheduler_manager에서 job 정보 가져오기
+                job_info_from_scheduler = scheduler_manager.get_job_info(job_id) if job_id else None
+
+                # APScheduler에서 직접 job 가져오기
+                job = None
+                if job_id and scheduler_manager.scheduler:
+                    try:
+                        job = scheduler_manager.scheduler.get_job(job_id)
+                    except:
+                        job = None
+
+                bot_status = {
+                    'ticker': ticker,
+                    'strategy': bot_info.get('strategy', 'Unknown'),
+                    'start_time': bot_info.get('start_time', datetime.now()).strftime('%Y-%m-%d %H:%M:%S'),
+                    'cycle_count': bot_info.get('cycle_count', 0),
+                    'last_run': bot_info.get('last_run', datetime.now()).strftime('%Y-%m-%d %H:%M:%S') if bot_info.get('last_run') else 'Never',
+                    'next_run': job.next_run_time.strftime('%Y-%m-%d %H:%M:%S') if job and job.next_run_time else 'Unknown',
+                    'job_id': job_id,
+                    'running': job is not None,
+                    'interval': bot_info.get('interval', 0),
+                    'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
+                    'username': bot_info.get('username', 'Unknown')
+                }
+
+                user_bot_list.append(bot_status)
+
+            # 사용자별 봇 정보 추가
+            if user_bot_list:  # 봇이 있는 사용자만 추가
+                user_info = {
+                    'user_id': user_id,
+                    'bot_count': len(user_bot_list),
+                    'bots': user_bot_list
+                }
+                status['all_user_bots'].append(user_info)
+
+        return jsonify(status)
 
     except Exception as e:
-        logger.error(f"스레드 중지 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'스레드 중지 실패: {str(e)}'
-        }), 500
-
-
-@bp.route('/api/threads/stop-user', methods=['POST'])
-@login_required
-def api_stop_user_threads():
-    """사용자의 모든 스레드 중지 API"""
-    try:
-        data = request.get_json()
-        user_id = data.get('user_id')
-        force = data.get('force', False)
-
-        if not user_id:
-            return jsonify({
-                'success': False,
-                'message': 'user_id는 필수입니다'
-            }), 400
-
-        # 권한 확인
-        if not current_user.is_admin and user_id != current_user.id:
-            return jsonify({
-                'success': False,
-                'message': '권한이 없습니다'
-            }), 403
-
-        results = stop_user_threads(user_id, force)
-        successful_stops = [r for r in results if r.success]
-        failed_stops = [r for r in results if not r.success]
-
-        if successful_stops:
-            flash(f'{len(successful_stops)}개 스레드가 중지되었습니다', 'success')
-            logger.info(f"사용자 스레드 중지: User {current_user.id}가 User {user_id}의 {len(successful_stops)}개 스레드 중지")
-
-        if failed_stops:
-            flash(f'{len(failed_stops)}개 스레드 중지 실패', 'error')
-
-        return jsonify({
-            'success': len(failed_stops) == 0,
-            'message': f'{len(successful_stops)}개 성공, {len(failed_stops)}개 실패',
-            'data': {
-                'successful_stops': len(successful_stops),
-                'failed_stops': len(failed_stops),
-                'results': [
-                    {
-                        'success': r.success,
-                        'user_id': r.user_id,
-                        'ticker': r.ticker,
-                        'message': r.message,
-                        'stop_time': r.stop_time.isoformat() if r.stop_time else None
-                    } for r in results
-                ]
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"사용자 스레드 중지 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'사용자 스레드 중지 실패: {str(e)}'
-        }), 500
-
-
-@bp.route('/api/threads/stop-all', methods=['POST'])
-@login_required
-def api_stop_all_threads():
-    """모든 스레드 중지 API (관리자만)"""
-    try:
-        # 관리자 권한 확인
-        if not current_user.is_admin:
-            return jsonify({
-                'success': False,
-                'message': '관리자 권한이 필요합니다'
-            }), 403
-
-        data = request.get_json() or {}
-        force = data.get('force', False)
-
-        results = stop_all_threads(force)
-        successful_stops = [r for r in results if r.success]
-        failed_stops = [r for r in results if not r.success]
-
-        if successful_stops:
-            flash(f'모든 스레드 중지 완료: {len(successful_stops)}개', 'success')
-            logger.warning(f"전체 스레드 중지: 관리자 {current_user.username}이 {len(successful_stops)}개 스레드 중지")
-
-        if failed_stops:
-            flash(f'{len(failed_stops)}개 스레드 중지 실패', 'error')
-
-        return jsonify({
-            'success': len(failed_stops) == 0,
-            'message': f'전체 중지 완료: {len(successful_stops)}개 성공, {len(failed_stops)}개 실패',
-            'data': {
-                'successful_stops': len(successful_stops),
-                'failed_stops': len(failed_stops),
-                'total_processed': len(results)
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"전체 스레드 중지 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'전체 스레드 중지 실패: {str(e)}'
-        }), 500
-
-
-@bp.route('/api/threads/emergency-stop', methods=['POST'])
-@login_required
-def api_emergency_stop():
-    """긴급 중지 API (관리자만)"""
-    try:
-        # 관리자 권한 확인
-        if not current_user.is_admin:
-            return jsonify({
-                'success': False,
-                'message': '관리자 권한이 필요합니다'
-            }), 403
-
-        results = emergency_stop()
-
-        flash('긴급 중지가 실행되었습니다', 'warning')
-        logger.critical(f"긴급 중지 실행: 관리자 {current_user.username}")
-
-        return jsonify({
-            'success': True,
-            'message': '긴급 중지 완료',
-            'data': {
-                'total_processed': len(results)
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"긴급 중지 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'긴급 중지 실패: {str(e)}'
-        }), 500
-
-
-@bp.route('/api/threads/restart', methods=['POST'])
-@login_required
-def api_restart_thread():
-    """스레드 재시작 API"""
-    try:
-        data = request.get_json()
-        user_id = data.get('user_id')
-        ticker = data.get('ticker')
-
-        if not user_id or not ticker:
-            return jsonify({
-                'success': False,
-                'message': 'user_id와 ticker는 필수입니다'
-            }), 400
-
-        # 권한 확인
-        if not current_user.is_admin and user_id != current_user.id:
-            return jsonify({
-                'success': False,
-                'message': '권한이 없습니다'
-            }), 403
-
-        result = thread_controller.restart_thread(user_id, ticker)
-
-        if result.success:
-            flash(f'스레드 재시작: {ticker}', 'success')
-        else:
-            flash(f'스레드 재시작 실패: {result.message}', 'error')
-
-        return jsonify({
-            'success': result.success,
-            'message': result.message,
-            'data': {
-                'user_id': result.user_id,
-                'ticker': result.ticker
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"스레드 재시작 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'스레드 재시작 실패: {str(e)}'
-        }), 500
-
-
-@bp.route('/api/threads/history')
-@login_required
-def api_get_stop_history():
-    """스레드 중지 이력 조회 API (관리자만)"""
-    try:
-        # 관리자 권한 확인
-        if not current_user.is_admin:
-            return jsonify({
-                'success': False,
-                'message': '관리자 권한이 필요합니다'
-            }), 403
-
-        limit = request.args.get('limit', 50, type=int)
-        history = thread_controller.get_stop_history(limit)
-
-        return jsonify({
-            'success': True,
-            'data': {
-                'history': history,
-                'total_count': len(history)
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"중지 이력 조회 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'중지 이력 조회 실패: {str(e)}'
-        }), 500
-
-
-# ===========================================
-# 웹 페이지 라우트들
-# ===========================================
-
-@bp.route('/thread-control')
-@login_required
-def thread_control_page():
-    """스레드 제어 페이지"""
-    # 관리자만 전체 제어 페이지 접근 가능
-    if current_user.is_admin:
-        return render_template('thread_control.html', is_admin=True)
-    else:
-        # 일반 사용자는 자신의 스레드만 제어 가능
-        return render_template('thread_control.html', is_admin=False, user_id=current_user.id)
-
-
-# ===========================================
-# 기존 거래 페이지에 중지 버튼 추가를 위한 라우트 수정
-# ===========================================
-
-@bp.route('/trading')
-@login_required
-def trading_dashboard():
-    """거래 대시보드 (스레드 상태 포함)"""
-    try:
-        # 사용자의 스레드 상태 조회
-        user_status = get_thread_status(current_user.id)
-
-        return render_template('trading.html',
-                               thread_status=user_status,
-                               user_id=current_user.id,
-                               is_admin=current_user.is_admin)
-    except Exception as e:
-        logger.error(f"거래 대시보드 로드 오류: {str(e)}")
-        flash('대시보드 로드 중 오류가 발생했습니다', 'error')
-        return render_template('trading.html',
-                               thread_status={'threads': []},
-                               user_id=current_user.id,
-                               is_admin=current_user.is_admin)
+        logger.error(f"모든 사용자의 스케줄러 상태 조회 중 오류: {str(e)}")
+        return jsonify({'error': str(e)}), 500

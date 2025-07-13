@@ -5,6 +5,7 @@ description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp==3.12.12",
+    "apscheduler>=3.11.0",
     "email-validator>=2.2.0",
     "eventlet>=0.40.0",
     "flask>=3.1.1",
