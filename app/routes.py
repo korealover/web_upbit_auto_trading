@@ -10,9 +10,8 @@ from app.utils.async_utils import AsyncHandler
 from app.utils.shared import scheduled_bots
 from app.bot.trading_bot import UpbitTradingBot
 import time
-import html
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from app.utils.scheduler_manager import scheduler_manager
 import uuid
 
@@ -23,10 +22,6 @@ bp = Blueprint('main', __name__)
 async_handler = AsyncHandler(max_workers=5)
 upbit_apis = {}  # 사용자별 API 객체 저장
 logger = setup_logger('web', 'INFO', 7)
-
-# WebSocket 관련 전역 변수
-websocket_clients = {}  # 클라이언트별 구독 정보 저장
-log_subscribers = {}  # 로그 구독자 관리
 
 # 메인 페이지
 @bp.route('/')
@@ -58,6 +53,7 @@ def login():
         flash('로그인 되었습니다!', 'success')
         return redirect(next_page)
     return render_template('login.html', title='로그인', form=form)
+
 
 # 로그아웃
 @bp.route('/logout')
@@ -95,6 +91,7 @@ def register():
         return redirect(url_for('main.login'))
     return render_template('register.html', title='회원가입', form=form)
 
+
 # 관리자 회원 가입 알림
 def notify_admin_new_registration(user):
     """관리자에게 새 회원가입 알림"""
@@ -102,6 +99,7 @@ def notify_admin_new_registration(user):
     # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
     for admin in admins:
         logger.info(f"관리자 {admin.username}에게 새 회원 {user.username} 가입 알림")
+
 
 # 회원 프로필
 @bp.route('/profile', methods=['GET', 'POST'])
@@ -141,6 +139,7 @@ def profile():
 
     return render_template('profile.html', title='프로필', form=form)
 
+
 # 업비트 Key 유효성 검증
 @bp.route('/validate_api_keys', methods=['POST'])
 @login_required
@@ -161,6 +160,7 @@ def validate_api_keys():
             return jsonify({'valid': False, 'message': 'API 키로 잔고를 조회할 수 없습니다.'})
     except Exception as e:
         return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
+
 
 # 대시보드
 @bp.route('/dashboard')
@@ -186,7 +186,7 @@ def dashboard():
     try:
         # 사용자별 봇 정보 가져오기
         user_bots = scheduled_bots.get(user_id, {})
-        print(f"사용자의 봇 정보: {user_bots}")
+        # print(f"사용자의 봇 정보: {user_bots}")
 
         # 봇 정보에 마지막 신호 시간 추가 TODO
         for ticker, bot_info in user_bots.items():
@@ -393,6 +393,7 @@ def dashboard():
 @bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
+    """APScheduler를 사용한 자동매매 셋팅"""
     form = TradingSettingsForm()
     favorite_form = FavoriteForm()
     favorite_id = request.args.get('favorite_id', type=int)
@@ -421,6 +422,7 @@ def settings():
     return render_template('settings.html', title='거래 설정', form=form, favorite_form=favorite_form)
 
 
+# 자동매매 시작
 def start_bot(ticker, strategy_name, settings):
     """APScheduler를 사용한 자동매매 시작"""
     user_id = current_user.id
@@ -501,7 +503,7 @@ def start_bot(ticker, strategy_name, settings):
                 'cycle_count': 0,
                 'last_run': None,
                 'running': True,  # 실행 상태 추가
-                'interval_label': get_selected_label(settings['interval'])
+                'interval_label': get_selected_label(settings['interval'])  # 수정된 부분: sleep_time 직접 전달
             }
 
         logger.info(f"APScheduler 봇 시작 성공: {ticker} (Job ID: {job_id})")
@@ -511,8 +513,9 @@ def start_bot(ticker, strategy_name, settings):
         return None
 
 
+# 스케줄러 호출
 def scheduled_trading_cycle(user_id, ticker, bot=None, websocket_logger=None):
-    """스케줄러에서 호출되는 트레이딩 사이클 - 수정된 함수"""
+    """스케줄러에서 호출되는 트레이딩 사이클 """
     try:
         # 봇 정보 확인 - 전달받은 bot이 있으면 우선 사용
         if bot is not None:
@@ -581,6 +584,7 @@ def scheduled_trading_cycle(user_id, ticker, bot=None, websocket_logger=None):
             logger.error(f"봇 정리 중 오류: {cleanup_error}")
 
 
+# 자동매매 중지
 @bp.route('/api/stop_bot/<ticker>', methods=['POST'])
 @login_required
 def stop_bot_route(ticker):
@@ -607,6 +611,7 @@ def stop_bot_route(ticker):
         })
 
 
+# 자동매매 중지
 def stop_bot(user_id, ticker):
     """봇 중지 함수"""
     try:
@@ -655,6 +660,7 @@ def stop_bot(user_id, ticker):
         logger.error(f"봇 중지 중 오류: {user_id}/{ticker} - {str(e)}")
         return False
 
+
 # 선택 필드에서 라벨을 가져오기
 def get_selected_label(value):
     """선택된 값에 대한 라벨 반환 - 수정된 함수"""
@@ -675,73 +681,18 @@ def get_selected_label(value):
             for choice_value, label in value.choices:
                 if choice_value == value.data:
                     return label
-        except:
+        except Exception as e:
+            logger.error(f"get_selected_label: {e}")
             pass
 
     # 기본값 반환
     return str(value)
 
 
-def run_bot_process(user_id, ticker):
-    """봇 실행 프로세스"""
-    try:
-        # trading_bots 대신 scheduled_bots 사용
-        if user_id not in scheduled_bots or ticker not in scheduled_bots[user_id]:
-            logger.warning(f"봇 정보를 찾을 수 없음: {user_id}/{ticker}")
-            return
-
-        bot_info = scheduled_bots[user_id][ticker]
-        bot = bot_info['bot']
-        cycle_count = 0
-
-        # 실행 상태 확인을 위한 플래그 추가
-        bot_info['running'] = True
-
-        while bot_info.get('running', False):
-            cycle_count += 1
-            # 매 사이클마다 로거를 최신 날짜로 업데이트
-            websocket_logger = WebSocketLogger(ticker, user_id)
-            bot.logger = websocket_logger
-
-            websocket_logger.info(f"{ticker} 사이클 #{cycle_count} 시작")
-
-            # 거래 사이클 실행
-            bot.run_cycle()
-
-            # 설정된 시간만큼 대기 (직접 접근)
-            settings = bot_info.get('settings')
-            if settings:
-                if hasattr(settings, 'sleep_time'):
-                    sleep_time = settings.sleep_time.data
-                elif isinstance(settings, dict) and 'sleep_time' in settings:
-                    sleep_time = settings['sleep_time']
-                else:
-                    sleep_time = bot_info.get('interval', 30)
-            else:
-                sleep_time = bot_info.get('interval', 30)
-
-            time.sleep(sleep_time)
-
-    except Exception as e:
-        websocket_logger = WebSocketLogger(ticker, user_id)
-        websocket_logger.error(f"{ticker} 봇 실행 중 오류 발생: {str(e)}", exc_info=True)
-        if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
-            scheduled_bots[user_id][ticker]['running'] = False
-
-    finally:
-        websocket_logger = WebSocketLogger(ticker, user_id)
-        # 종료 시 전역 상태에서 제거
-        if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
-            del scheduled_bots[user_id][ticker]
-            websocket_logger.info(f"트레이딩 봇 종료: {ticker}, User ID: {user_id}")
-
-
 # ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
 # 이 부분들은 websocket_handlers.py에서 처리됩니다.
-# ===== WebSocket 로거 클래스 =====
 class WebSocketLogger:
     """WebSocket을 통해 실시간 로그를 전송하는 로거"""
-
     def __init__(self, ticker, user_id):
         self.ticker = ticker
         self.user_id = str(user_id)
@@ -805,103 +756,6 @@ class WebSocketLogger:
         self._emit_log('DEBUG', message)
 
 
-# ===== 기존 REST API 엔드포인트들 유지 =====
-@bp.route('/api/logs/<ticker>')
-@login_required
-def get_ticker_logs(ticker):
-    # 로그 디렉토리
-    log_dir = 'logs'
-
-    # 오늘 날짜의 로그 파일 찾기
-    today = datetime.now().strftime('%Y%m%d')
-    ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
-    log_filename = f"{today}_{ticker_symbol}.log"
-    log_path = os.path.join(log_dir, log_filename)
-
-    # 로그 파일이 없으면 빈 배열 반환
-    if not os.path.exists(log_path):
-        # 가장 최근 날짜의 로그 파일 찾기
-        for days_back in range(1, 4):  # 1~3일 전까지 확인
-            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
-            old_log_filename = f"{check_date}_{ticker_symbol}.log"
-            old_log_path = os.path.join(log_dir, old_log_filename)
-
-            if os.path.exists(old_log_path):
-                # 이전 날짜의 로그 파일 찾았을 때
-                log_path = old_log_path
-                break
-        else:
-            # 3일 이내에 로그 파일을 찾지 못한 경우
-            return jsonify([])
-
-    # 로그 파일의 마지막 100줄 효율적으로 읽기
-    last_lines = tail_file(log_path, 100)
-
-    # 로그 라인 파싱
-    logs = []
-    for line in last_lines:
-        # 간단한 로그 파싱 (예: "2023-01-01 12:34:56 - INFO - 메시지")
-        parts = line.strip().split(' - ', 2)
-        if len(parts) >= 3:
-            timestamp, level, message = parts
-            # HTML 특수 문자 이스케이프 처리
-            message = html.escape(message)
-            logs.append({
-                'timestamp': timestamp,
-                'level': level,
-                'message': message
-            })
-
-    return jsonify(logs)
-
-
-@bp.route('/api/logs')
-@login_required
-def get_all_logs():
-    # 로그 디렉토리
-    log_dir = 'logs'
-
-    # 오늘 날짜의 기본 로그 파일 찾기
-    today = datetime.now().strftime('%Y%m%d')
-    log_filename = f"{today}_web.log"
-    log_path = os.path.join(log_dir, log_filename)
-
-    # 로그 파일이 없으면 빈 배열 반환
-    if not os.path.exists(log_path):
-        # 가장 최근 날짜의 로그 파일 찾기
-        for days_back in range(1, 4):  # 1~3일 전까지 확인
-            check_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
-            old_log_filename = f"{check_date}_web.log"
-            old_log_path = os.path.join(log_dir, old_log_filename)
-
-            if os.path.exists(old_log_path):
-                # 이전 날짜의 로그 파일 찾았을 때
-                log_path = old_log_path
-                break
-        else:
-            # 3일 이내에 로그 파일을 찾지 못한 경우
-            return jsonify([])
-
-    # 로그 파일의 마지막 100줄 효율적으로 읽기
-    last_lines = tail_file(log_path, 100)
-
-    # 로그 라인 파싱
-    logs = []
-    for line in last_lines:
-        parts = line.strip().split(' - ', 2)
-        if len(parts) >= 3:
-            timestamp, level, message = parts
-            # HTML 특수 문자 이스케이프 처리
-            message = html.escape(message)
-            logs.append({
-                'timestamp': timestamp,
-                'level': level,
-                'message': message
-            })
-
-    return jsonify(logs)
-
-
 @bp.route('/api/active_tickers')
 @login_required
 def get_active_tickers():
@@ -958,7 +812,7 @@ def tail_file(file_path, n=100):
         return []
 
 
-# routes.py에 관리자 페이지 추가
+# routes.py에 관리자 페이지
 @bp.route('/admin')
 @login_required
 def admin_panel():
@@ -1034,18 +888,7 @@ def notify_user_rejection(user):
     logger.info(f"사용자 {user.username}에게 계정 거부 알림")
 
 
-@bp.route('/admin/monitor')
-@login_required
-def admin_monitor():
-    """관리자 모니터링 대시보드"""
-    if not current_user.is_admin:
-        flash('관리자 권한이 필요합니다.', 'danger')
-        return redirect(url_for('main.index'))
-
-    return render_template('admin/monitor_dashboard.html')
-
-
-# 티커별 거래 기록 가져오는 API 엔드포인트 수정
+# 티커별 거래 기록 가져오는 API 엔드포인트 수정 dashboard 에서 필요함
 @bp.route('/api/trade_records')
 @login_required
 def get_trade_records():
@@ -1119,6 +962,7 @@ def get_ticker_trade_records(ticker):
     return jsonify(result)
 
 
+# 즐겨찾기
 @bp.route('/favorites')
 @login_required
 def favorites():
@@ -1126,6 +970,7 @@ def favorites():
     return render_template('favorites.html', title='즐겨찾기', favorites=favorites)
 
 
+# 즐겨찾기 저장
 @bp.route('/save_favorite', methods=['POST'])
 @login_required
 def save_favorite():
@@ -1152,6 +997,7 @@ def save_favorite():
         return render_template('settings.html', title='거래 설정', form=settings_form, favorite_form=favorite_form)
 
 
+# 즐겨찾기 삭제
 @bp.route('/delete_favorite/<int:favorite_id>')
 @login_required
 def delete_favorite(favorite_id):
@@ -1166,35 +1012,15 @@ def delete_favorite(favorite_id):
     return redirect(url_for('main.favorites'))
 
 
-@bp.route('/stop_all_bots', methods=['POST'])
+@bp.route('/admin/monitor')
 @login_required
-def stop_all_bots():
-    """모든 봇 중지"""
-    try:
-        user_id = current_user.id
-        stopped_bots = []
+def admin_monitor():
+    """관리자 모니터링 대시보드"""
+    if not current_user.is_admin:
+        flash('관리자 권한이 필요합니다.', 'danger')
+        return redirect(url_for('main.index'))
 
-        if user_id in scheduled_bots:
-            # 사용자의 모든 봇 목록 복사 (반복 중 딕셔너리 변경 방지)
-            user_bot_tickers = list(scheduled_bots[user_id].keys())
-
-            for ticker in user_bot_tickers:
-                try:
-                    if stop_bot(user_id, ticker):
-                        stopped_bots.append(ticker)
-                        logger.info(f"봇 중지됨: {ticker}")
-                except Exception as e:
-                    logger.error(f"봇 중지 중 오류: {ticker} - {str(e)}")
-
-        return jsonify({
-            'success': True,
-            'message': f'{len(stopped_bots)}개의 봇이 중지되었습니다.',
-            'stopped_bots': stopped_bots
-        })
-
-    except Exception as e:
-        logger.error(f"모든 봇 중지 중 오류: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+    return render_template('admin/monitor_dashboard.html')
 
 
 @bp.route('/api/scheduler/status')
@@ -1220,8 +1046,8 @@ def get_scheduler_status():
 
             for ticker, bot_info in user_bots.items():
                 job_id = bot_info.get('job_id')
+                formdata = bot_info.get('settings')  # TradingSettingsForm 객체
 
-                # scheduler_manager에서 job 정보 가져오기
                 job_info_from_scheduler = scheduler_manager.get_job_info(job_id) if job_id else None
 
                 # APScheduler에서 직접 job 가져오기
@@ -1243,7 +1069,9 @@ def get_scheduler_status():
                     'running': job is not None,
                     'interval': bot_info.get('interval', 0),
                     'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
-                    'username': bot_info.get('username', 'Unknown')
+                    'username': bot_info.get('username', 'Unknown'),
+                    'interval_label': get_selected_label(bot_info.get('interval_label')),
+                    'buy_amount': formdata.buy_amount.data if formdata else None,
                 }
 
                 user_bot_list.append(bot_status)

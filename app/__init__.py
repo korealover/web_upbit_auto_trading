@@ -6,6 +6,7 @@ from flask_login import LoginManager
 from flask_migrate import Migrate
 import os
 import logging
+from datetime import datetime
 
 # 글로벌 객체들
 db = SQLAlchemy()
@@ -25,8 +26,7 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     migrate.init_app(app, db)
-    socketio.init_app(app, cors_allowed_origins="*",
-                      async_mode='eventlet')
+    socketio.init_app(app, cors_allowed_origins="*", async_mode='eventlet')
 
     # 로그인 설정
     login_manager.login_view = 'main.login'
@@ -40,7 +40,8 @@ def create_app():
     if not app.debug:
         if not os.path.exists('logs'):
             os.mkdir('logs')
-        file_handler = logging.FileHandler('logs/app.log')
+        today = datetime.now().strftime('%Y%m%d')
+        file_handler = logging.FileHandler(f'logs/app_{today}.log')
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
         ))

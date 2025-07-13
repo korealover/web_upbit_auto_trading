@@ -251,8 +251,8 @@ class UpbitTradingBot:
 
                 avg_buy_price = self.api.get_buy_avg(ticker)  # 평단가를 미리 조회
 
-                # 손절 금지 설정을 확인하여 매도를 건너뜁니다. (기본값: Y) 최소 0.001%는 먹자(0.0005%는 수수료를 주니까)
-                if prevent_loss_sale == 'Y' and avg_buy_price and current_price < (avg_buy_price * 1.001):
+                # 손절 금지 설정을 확인하여 매도를 건너뜁니다. (기본값: Y) 최소 0.001는 먹자(0.1%는 수수료(매수/매도)를 주니까 -> 0.01%은 수수료, 0.01%은 먹자)
+                if prevent_loss_sale == 'Y' and avg_buy_price and current_price < (avg_buy_price * 1.002):
                     self.logger.info(f"손절 금지 설정됨. 현재가({current_price}) < 평균 단가({avg_buy_price}). 매도하지 않습니다.")
                     return None
 

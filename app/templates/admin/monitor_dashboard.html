@@ -4,64 +4,113 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row">
+    <!-- 헤더 -->
+    <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1>스케줄러 모니터링 대시보드</h1>
-                <button id="refreshBtn" class="btn btn-primary">
-                    <i class="fas fa-sync-alt"></i> 새로고침
-                </button>
-            </div>
-
-            <!-- 스케줄러 상태 개요 -->
-            <div class="row mb-4">
-                <div class="col-md-3">
-                    <div class="card bg-primary text-white">
-                        <div class="card-body">
-                            <h5 class="card-title">스케줄러 상태</h5>
-                            <p class="card-text" id="scheduler-status">-</p>
-                        </div>
-                    </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="dashboard-title">
+                        <i class="fas fa-chart-line me-3"></i>
+                        스케줄러 모니터링 대시보드
+                    </h1>
+                    <p class="text-muted mb-0">실시간 자동매매 봇 상태를 모니터링하세요</p>
                 </div>
-                <div class="col-md-3">
-                    <div class="card bg-success text-white">
-                        <div class="card-body">
-                            <h5 class="card-title">총 작업 수</h5>
-                            <p class="card-text" id="total-jobs">-</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-info text-white">
-                        <div class="card-body">
-                            <h5 class="card-title">활성 사용자</h5>
-                            <p class="card-text" id="active-users">-</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-warning text-white">
-                        <div class="card-body">
-                            <h5 class="card-title">마지막 업데이트</h5>
-                            <p class="card-text" id="last-update">-</p>
+                <div class="d-flex gap-2">
+                    <button id="refreshBtn" class="btn btn-primary btn-lg">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        새로고침
+                    </button>
+                    <div class="auto-refresh-toggle">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoRefreshToggle" checked>
+                            <label class="form-check-label" for="autoRefreshToggle">
+                                자동 새로고침
+                            </label>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <!-- 사용자별 봇 상태 -->
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">사용자별 봇 상태</h5>
+    <!-- 상태 개요 카드 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card primary">
+                <div class="stat-icon">
+                    <i class="fas fa-server"></i>
                 </div>
-                <div class="card-body">
-                    <div id="user-bots-container">
-                        <div class="text-center">
-                            <div class="spinner-border" role="status">
-                                <span class="sr-only">Loading...</span>
-                            </div>
-                        </div>
+                <div class="stat-content">
+                    <h5>스케줄러 상태</h5>
+                    <p id="scheduler-status" class="stat-number">-</p>
+                    <div class="stat-indicator" id="scheduler-indicator"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card success">
+                <div class="stat-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="stat-content">
+                    <h5>총 작업 수</h5>
+                    <p id="total-jobs" class="stat-number">-</p>
+                    <small class="text-muted">개의 봇이 실행 중</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card info">
+                <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-content">
+                    <h5>활성 사용자</h5>
+                    <p id="active-users" class="stat-number">-</p>
+                    <small class="text-muted">명이 봇을 사용 중</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card warning">
+                <div class="stat-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-content">
+                    <h5>마지막 업데이트</h5>
+                    <p id="last-update" class="stat-time">-</p>
+                    <div class="update-indicator"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 사용자별 봇 상태 -->
+    <div class="main-content-card">
+        <div class="card-header-custom">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-area me-2"></i>
+                        사용자별 봇 상태
+                    </h5>
+                    <small class="text-muted">실시간 자동매매 봇 모니터링</small>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-sm btn-outline-primary" id="expandAllBtn">
+                        <i class="fas fa-expand-alt me-1"></i>
+                        전체 펼치기
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body-custom">
+            <div id="user-bots-container">
+                <div class="text-center loading-container">
+                    <div class="spinner-border spinner-border-lg text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
+                    <p class="mt-3 text-muted">데이터를 불러오는 중...</p>
                 </div>
             </div>
         </div>
@@ -69,21 +118,228 @@
 </div>
 
 <style>
-.bot-status-badge {
-    font-size: 0.8em;
-    padding: 0.25rem 0.5rem;
-}
-
-.user-card {
-    border-left: 4px solid #007bff;
-    margin-bottom: 1rem;
-}
-
-.bot-card {
-    border: 1px solid #dee2e6;
-    border-radius: 0.25rem;
-    padding: 0.75rem;
+/* 대시보드 전체 스타일 */
+.dashboard-title {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
     margin-bottom: 0.5rem;
+}
+
+/* 상태 카드 스타일 */
+.stat-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: none;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--card-color), var(--card-color-light));
+}
+
+.stat-card.primary {
+    --card-color: #007bff;
+    --card-color-light: #4dabf7;
+}
+
+.stat-card.success {
+    --card-color: #28a745;
+    --card-color-light: #51cf66;
+}
+
+.stat-card.info {
+    --card-color: #17a2b8;
+    --card-color-light: #22b8cf;
+}
+
+.stat-card.warning {
+    --card-color: #ffc107;
+    --card-color-light: #ffd43b;
+}
+
+.stat-icon {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--card-color), var(--card-color-light));
+    color: white;
+    font-size: 1.5rem;
+    opacity: 0.9;
+}
+
+.stat-content h5 {
+    color: #6c757d;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--card-color);
+    margin-bottom: 0.25rem;
+}
+
+.stat-time {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--card-color);
+    margin-bottom: 0.25rem;
+}
+
+.stat-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 0.5rem;
+}
+
+.stat-indicator.running {
+    background-color: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.stat-indicator.stopped {
+    background-color: #dc3545;
+}
+
+.update-indicator {
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--card-color), transparent);
+    border-radius: 1px;
+    animation: updatePulse 3s infinite;
+}
+
+@keyframes updatePulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+/* 메인 컨텐츠 카드 */
+.main-content-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: none;
+    overflow: hidden;
+}
+
+.card-header-custom {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 1.5rem;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.card-body-custom {
+    padding: 1.5rem;
+}
+
+.header-actions .btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+/* 로딩 컨테이너 */
+.loading-container {
+    padding: 3rem;
+}
+
+.spinner-border-lg {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* 자동 새로고침 토글 */
+.auto-refresh-toggle {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: rgba(255,255,255,0.1);
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+}
+
+.auto-refresh-toggle .form-check-label {
+    color: #6c757d;
+    font-weight: 500;
+    margin-left: 0.5rem;
+}
+
+/* 사용자 카드 스타일 */
+.user-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.user-card:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+
+.user-card .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-bottom: none;
+}
+
+.user-card .card-header h6 {
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+.user-card .badge {
+    background: rgba(255,255,255,0.2);
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+/* 봇 카드 스타일 (기존 스타일 유지하면서 개선) */
+.bot-card {
+    border: none;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.bot-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.12);
 }
 
 .bot-card.running {
@@ -95,49 +351,196 @@
 }
 
 .status-indicator {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    margin-right: 5px;
+    display: inline-block;
 }
 
-.status-running {
+.status-indicator.running {
     background-color: #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
+    animation: pulse 2s infinite;
 }
 
-.status-stopped {
+.status-indicator.stopped {
     background-color: #dc3545;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3);
 }
 
-.table-responsive {
-    max-height: 600px;
-    overflow-y: auto;
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(40, 167, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
 }
 
-.timestamp {
-    font-size: 0.9em;
+.info-item {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(255,255,255,0.8);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.info-item:hover {
+    background: rgba(255,255,255,1);
+    transform: translateY(-1px);
+}
+
+.info-item small {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.info-item .fw-bold {
+    font-size: 1.1rem;
+}
+
+.time-info {
+    background: rgba(255,255,255,0.8);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 3px solid #007bff;
+}
+
+.time-item {
+    display: flex;
+    align-items: center;
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+.time-item:last-child {
+    margin-bottom: 0;
+}
+
+.bot-status-badge {
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-section {
+    background: rgba(255,255,255,0.6);
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+/* 빈 상태 스타일 */
+.empty-state {
+    text-align: center;
+    padding: 3rem;
     color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state h5 {
+    margin-bottom: 0.5rem;
+}
+
+/* 오류 상태 스타일 */
+.error-state {
+    text-align: center;
+    padding: 3rem;
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    border-radius: 12px;
+    border: 1px solid #fca5a5;
+}
+
+.error-state i {
+    font-size: 3rem;
+    color: #dc2626;
+    margin-bottom: 1rem;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .dashboard-title {
+        font-size: 1.5rem;
+    }
+
+    .stat-card {
+        margin-bottom: 1rem;
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1.2rem;
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+    }
+
+    .header-actions {
+        margin-top: 1rem;
+    }
 }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let refreshInterval;
+    let isAutoRefresh = true;
 
     // 초기 데이터 로드
     loadSchedulerStatus();
 
     // 자동 새로고침 설정 (30초마다)
-    refreshInterval = setInterval(loadSchedulerStatus, 30000);
+    setAutoRefresh();
 
     // 새로고침 버튼 이벤트
     document.getElementById('refreshBtn').addEventListener('click', function() {
-        loadSchedulerStatus();
+        const btn = this;
+        const icon = btn.querySelector('i');
+
+        // 버튼 애니메이션
+        icon.classList.add('fa-spin');
+        btn.disabled = true;
+
+        loadSchedulerStatus().finally(() => {
+            icon.classList.remove('fa-spin');
+            btn.disabled = false;
+        });
     });
 
+    // 자동 새로고침 토글
+    document.getElementById('autoRefreshToggle').addEventListener('change', function() {
+        isAutoRefresh = this.checked;
+        setAutoRefresh();
+    });
+
+    // 전체 펼치기 버튼
+    document.getElementById('expandAllBtn').addEventListener('click', function() {
+        const userCards = document.querySelectorAll('.user-card .card-body');
+        userCards.forEach(card => {
+            card.style.display = card.style.display === 'none' ? 'block' : 'none';
+        });
+    });
+
+    function setAutoRefresh() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+
+        if (isAutoRefresh) {
+            refreshInterval = setInterval(loadSchedulerStatus, 30000);
+        }
+    }
+
     function loadSchedulerStatus() {
-        fetch('/api/scheduler/status')
+        return fetch('/api/scheduler/status')
             .then(response => response.json())
             .then(data => {
                 updateDashboard(data);
@@ -150,12 +553,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateDashboard(data) {
         // 상태 개요 업데이트
-        document.getElementById('scheduler-status').textContent =
-            data.scheduler_running ? '실행 중' : '정지';
+        const schedulerStatus = data.scheduler_running ? '실행 중' : '정지';
+        const schedulerIndicator = document.getElementById('scheduler-indicator');
+
+        document.getElementById('scheduler-status').textContent = schedulerStatus;
         document.getElementById('total-jobs').textContent = data.total_jobs;
         document.getElementById('active-users').textContent = data.all_user_bots.length;
-        document.getElementById('last-update').textContent =
-            new Date().toLocaleString('ko-KR');
+        document.getElementById('last-update').textContent = new Date().toLocaleString('ko-KR');
+
+        // 스케줄러 상태 표시
+        schedulerIndicator.className = `stat-indicator ${data.scheduler_running ? 'running' : 'stopped'}`;
 
         // 사용자별 봇 상태 업데이트
         updateUserBots(data.all_user_bots);
@@ -165,7 +572,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const container = document.getElementById('user-bots-container');
 
         if (userBots.length === 0) {
-            container.innerHTML = '<div class="text-center text-muted">실행 중인 봇이 없습니다.</div>';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-robot"></i>
+                    <h5>실행 중인 봇이 없습니다</h5>
+                    <p>현재 활성화된 자동매매 봇이 없습니다.</p>
+                </div>
+            `;
             return;
         }
 
@@ -174,10 +587,13 @@ document.addEventListener('DOMContentLoaded', function() {
             html += `
                 <div class="user-card card">
                     <div class="card-header">
-                        <h6 class="mb-0">
-                            사용자 ID: ${userInfo.user_id}
-                            <span class="badge badge-secondary">${userInfo.bot_count}개 봇</span>
-                        </h6>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-user me-2"></i>
+                                사용자 ID: ${userInfo.user_id}
+                            </h6>
+                            <span class="badge">${userInfo.bot_count}개 봇</span>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="row">
@@ -186,30 +602,84 @@ document.addEventListener('DOMContentLoaded', function() {
             userInfo.bots.forEach(bot => {
                 const statusClass = bot.running ? 'running' : 'stopped';
                 const statusText = bot.running ? '실행 중' : '정지';
-                const statusIndicator = bot.running ? 'status-running' : 'status-stopped';
+                const statusIndicator = bot.running ? 'running' : 'stopped';
 
                 html += `
-                    <div class="col-md-6 col-lg-4">
-                        <div class="bot-card ${statusClass}">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="mb-1">
-                                        <span class="status-indicator ${statusIndicator}"></span>
-                                        ${bot.ticker}
-                                    </h6>
-                                    <small class="text-muted">전략: ${bot.strategy}</small>
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card bot-card shadow-sm ${statusClass}">
+                            <div class="card-body">
+                                <!-- 헤더 섹션 -->
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div class="d-flex align-items-center">
+                                        <span class="status-indicator ${statusIndicator} me-2"></span>
+                                        <div>
+                                            <h6 class="mb-0 fw-bold text-primary">${bot.ticker}</h6>
+                                            <small class="text-muted">
+                                                <i class="fas fa-chart-line me-1"></i>
+                                                ${bot.strategy}
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <span class="badge bg-${bot.running ? 'success' : 'danger'} bot-status-badge">
+                                        <i class="fas fa-${bot.running ? 'play' : 'stop'} me-1"></i>
+                                        ${statusText}
+                                    </span>
                                 </div>
-                                <span class="badge badge-${bot.running ? 'success' : 'danger'} bot-status-badge">
-                                    ${statusText}
-                                </span>
-                            </div>
-                            <div class="mt-2">
-                                <div class="small">
-                                    <div>실행 횟수: ${bot.run_count}</div>
-                                    <div>간격: ${bot.interval}초</div>
-                                    <div class="timestamp">시작: ${bot.start_time}</div>
-                                    <div class="timestamp">최근 실행: ${bot.last_run}</div>
-                                    <div class="timestamp">다음 실행: ${bot.next_run}</div>
+
+                                <!-- 정보 섹션 -->
+                                <div class="info-section">
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-6">
+                                            <div class="info-item">
+                                                <i class="fas fa-sync-alt text-info me-1"></i>
+                                                <small class="text-muted">실행 횟수</small>
+                                                <div class="fw-bold">${bot.run_count}회</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="info-item">
+                                                <i class="fas fa-clock text-warning me-1"></i>
+                                                <small class="text-muted">실행 간격</small>
+                                                <div class="fw-bold">${bot.interval}초</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-6">
+                                            <div class="info-item">
+                                                <i class="fas fa-chart-bar text-success me-1"></i>
+                                                <small class="text-muted">차트 간격</small>
+                                                <div class="fw-bold">${bot.interval_label}</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="info-item">
+                                                <i class="fas fa-won-sign text-primary me-1"></i>
+                                                <small class="text-muted">매수 금액</small>
+                                                <div class="fw-bold">${bot.buy_amount}원</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 시간 정보 -->
+                                    <div class="time-info">
+                                        <div class="time-item">
+                                            <i class="fas fa-play-circle text-success me-2"></i>
+                                            <small class="text-muted">시작:</small>
+                                            <small class="ms-1">${bot.start_time}</small>
+                                        </div>
+                                        <div class="time-item">
+                                            <i class="fas fa-history text-info me-2"></i>
+                                            <small class="text-muted">최근 실행:</small>
+                                            <small class="ms-1">${bot.last_run || '없음'}</small>
+                                        </div>
+                                        <div class="time-item">
+                                            <i class="fas fa-forward text-warning me-2"></i>
+                                            <small class="text-muted">다음 실행:</small>
+                                            <small class="ms-1">${bot.next_run || '계산 중'}</small>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -230,8 +700,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function showError(message) {
         const container = document.getElementById('user-bots-container');
         container.innerHTML = `
-            <div class="alert alert-danger" role="alert">
-                <i class="fas fa-exclamation-triangle"></i> ${message}
+            <div class="error-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h5>오류 발생</h5>
+                <p>${message}</p>
+                <button class="btn btn-primary" onclick="loadSchedulerStatus()">
+                    <i class="fas fa-redo me-2"></i>다시 시도
+                </button>
             </div>
         `;
     }
