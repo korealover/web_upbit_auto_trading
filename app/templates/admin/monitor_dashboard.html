@@ -1,0 +1,247 @@
+{% extends 'base.html' %}
+
+{% block title %}스케줄러 모니터링 대시보드{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>스케줄러 모니터링 대시보드</h1>
+                <button id="refreshBtn" class="btn btn-primary">
+                    <i class="fas fa-sync-alt"></i> 새로고침
+                </button>
+            </div>
+
+            <!-- 스케줄러 상태 개요 -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">스케줄러 상태</h5>
+                            <p class="card-text" id="scheduler-status">-</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">총 작업 수</h5>
+                            <p class="card-text" id="total-jobs">-</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">활성 사용자</h5>
+                            <p class="card-text" id="active-users">-</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">마지막 업데이트</h5>
+                            <p class="card-text" id="last-update">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 사용자별 봇 상태 -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">사용자별 봇 상태</h5>
+                </div>
+                <div class="card-body">
+                    <div id="user-bots-container">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="sr-only">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.bot-status-badge {
+    font-size: 0.8em;
+    padding: 0.25rem 0.5rem;
+}
+
+.user-card {
+    border-left: 4px solid #007bff;
+    margin-bottom: 1rem;
+}
+
+.bot-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.bot-card.running {
+    border-left: 4px solid #28a745;
+}
+
+.bot-card.stopped {
+    border-left: 4px solid #dc3545;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-running {
+    background-color: #28a745;
+}
+
+.status-stopped {
+    background-color: #dc3545;
+}
+
+.table-responsive {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.timestamp {
+    font-size: 0.9em;
+    color: #6c757d;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let refreshInterval;
+
+    // 초기 데이터 로드
+    loadSchedulerStatus();
+
+    // 자동 새로고침 설정 (30초마다)
+    refreshInterval = setInterval(loadSchedulerStatus, 30000);
+
+    // 새로고침 버튼 이벤트
+    document.getElementById('refreshBtn').addEventListener('click', function() {
+        loadSchedulerStatus();
+    });
+
+    function loadSchedulerStatus() {
+        fetch('/api/scheduler/status')
+            .then(response => response.json())
+            .then(data => {
+                updateDashboard(data);
+            })
+            .catch(error => {
+                console.error('Error loading scheduler status:', error);
+                showError('스케줄러 상태를 불러오는 중 오류가 발생했습니다.');
+            });
+    }
+
+    function updateDashboard(data) {
+        // 상태 개요 업데이트
+        document.getElementById('scheduler-status').textContent =
+            data.scheduler_running ? '실행 중' : '정지';
+        document.getElementById('total-jobs').textContent = data.total_jobs;
+        document.getElementById('active-users').textContent = data.all_user_bots.length;
+        document.getElementById('last-update').textContent =
+            new Date().toLocaleString('ko-KR');
+
+        // 사용자별 봇 상태 업데이트
+        updateUserBots(data.all_user_bots);
+    }
+
+    function updateUserBots(userBots) {
+        const container = document.getElementById('user-bots-container');
+
+        if (userBots.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted">실행 중인 봇이 없습니다.</div>';
+            return;
+        }
+
+        let html = '';
+        userBots.forEach(userInfo => {
+            html += `
+                <div class="user-card card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            사용자 ID: ${userInfo.user_id}
+                            <span class="badge badge-secondary">${userInfo.bot_count}개 봇</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+            `;
+
+            userInfo.bots.forEach(bot => {
+                const statusClass = bot.running ? 'running' : 'stopped';
+                const statusText = bot.running ? '실행 중' : '정지';
+                const statusIndicator = bot.running ? 'status-running' : 'status-stopped';
+
+                html += `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="bot-card ${statusClass}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="mb-1">
+                                        <span class="status-indicator ${statusIndicator}"></span>
+                                        ${bot.ticker}
+                                    </h6>
+                                    <small class="text-muted">전략: ${bot.strategy}</small>
+                                </div>
+                                <span class="badge badge-${bot.running ? 'success' : 'danger'} bot-status-badge">
+                                    ${statusText}
+                                </span>
+                            </div>
+                            <div class="mt-2">
+                                <div class="small">
+                                    <div>실행 횟수: ${bot.run_count}</div>
+                                    <div>간격: ${bot.interval}초</div>
+                                    <div class="timestamp">시작: ${bot.start_time}</div>
+                                    <div class="timestamp">최근 실행: ${bot.last_run}</div>
+                                    <div class="timestamp">다음 실행: ${bot.next_run}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function showError(message) {
+        const container = document.getElementById('user-bots-container');
+        container.innerHTML = `
+            <div class="alert alert-danger" role="alert">
+                <i class="fas fa-exclamation-triangle"></i> ${message}
+            </div>
+        `;
+    }
+
+    // 페이지 언로드 시 interval 정리
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1037,6 +1037,17 @@ def notify_user_rejection(user):
     logger.info(f"사용자 {user.username}에게 계정 거부 알림")
 
 
+@bp.route('/admin/monitor')
+@login_required
+def admin_monitor():
+    """관리자 모니터링 대시보드"""
+    if not current_user.is_admin:
+        flash('관리자 권한이 필요합니다.', 'danger')
+        return redirect(url_for('main.index'))
+
+    return render_template('admin/monitor_dashboard.html')
+
+
 # 티커별 거래 기록 가져오는 API 엔드포인트 수정
 @bp.route('/api/trade_records')
 @login_required
