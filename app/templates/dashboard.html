@@ -12,9 +12,9 @@
                 <h5 class="mb-0">활성 전략 현황</h5>
             </div>
             <div class="card-body">
-                {% if trading_bots %}
+                {% if scheduled_bots %}
                 <div class="row">
-                    {% for ticker, bot_info in trading_bots.items() %}
+                    {% for ticker, bot_info in scheduled_bots.items() %}
                     <div class="col-md-4 mb-3">
                         <div class="card border-{% if bot_info.running %}success{% else %}danger{% endif %}">
                             <div class="card-body">

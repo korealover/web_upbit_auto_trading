@@ -7,7 +7,7 @@ from app.api.upbit_api import UpbitAPI
 from app.strategy import create_strategy
 from app.utils.logging_utils import setup_logger, get_logger_with_current_date
 from app.utils.async_utils import AsyncHandler
-from app.utils.shared import trading_bots
+from app.utils.shared import scheduled_bots
 from app.bot.trading_bot import UpbitTradingBot
 import time
 import html
@@ -15,8 +15,6 @@ import os
 from datetime import datetime, timedelta
 from app.utils.scheduler_manager import scheduler_manager
 import uuid
-
-scheduled_bots = {}  # {user_id: {ticker: {'job_id': str, 'bot': obj, 'info': dict}}}
 
 # Blueprint 생성
 bp = Blueprint('main', __name__)
@@ -129,10 +127,10 @@ def profile():
                 del upbit_apis[user_id]  # 기존 API 객체 제거
 
             # 만약 사용자의 봇이 실행 중이었다면 중지
-            if user_id in trading_bots:
-                for ticker in list(trading_bots[user_id].keys()):
-                    trading_bots[user_id][ticker]['running'] = False
-                trading_bots[user_id] = {}
+            if user_id in scheduled_bots:
+                for ticker in list(scheduled_bots[user_id].keys()):
+                    scheduled_bots[user_id][ticker]['running'] = False
+                scheduled_bots[user_id] = {}
 
         flash('프로필이 업데이트되었습니다.', 'success')
         return redirect(url_for('main.profile'))
@@ -188,11 +186,11 @@ def dashboard():
     try:
         # 사용자별 봇 정보 가져오기
         user_bots = scheduled_bots.get(user_id, {})
-        print(f"사용자의 봇 정보: {user_bots}")
+        # print(f"사용자의 봇 정보: {user_bots}")
 
         # 봇 정보에 마지막 신호 시간 추가 TODO
         for ticker, bot_info in user_bots.items():
-            print(f"이는 봇 정보: {bot_info}")
+            # print(f"이는 봇 정보: {bot_info}")
             try:
                 # 마지막 로그에서 신호 시간 추출 (선택적 구현)
                 today = datetime.now().strftime('%Y%m%d')
@@ -388,7 +386,7 @@ def dashboard():
 
     return render_template('dashboard.html',
                            balance_info=balance_info,
-                           trading_bots=user_bots,
+                           scheduled_bots=user_bots,
                            trade_records=trade_records,
                            daily_stats=daily_stats,
                            strategy_performance=strategy_performance)
@@ -912,8 +910,8 @@ def get_all_logs():
 def get_active_tickers():
     # 현재 사용자의 활성 티커 목록 반환
     user_id = current_user.id
-    if user_id in trading_bots:
-        tickers = list(trading_bots[user_id].keys())
+    if user_id in scheduled_bots:
+        tickers = list(scheduled_bots[user_id].keys())
         return jsonify(tickers)
     return jsonify([])
 

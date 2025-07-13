@@ -57,7 +57,7 @@ def update_tickers_from_upbit():
         all_tickers = pyupbit.get_tickers(fiat="KRW")
         # 알파벳(사전)순으로 정렬
         sorted_tickers = sorted(all_tickers)
-        # print(sorted_tickers)
+        print(f'어리 {all_tickers}')
 
         # 티커 정보 가공 (티커와 이름 표시)
         updated_tickers = []
