@@ -67,12 +67,14 @@ class TradingSettingsForm(FlaskForm):
 
     # 전략 선택 - 새로운 전략들 추가
     strategy = SelectField('거래 전략', choices=[
-        ('bollinger', '볼린저 밴드'),
-        ('volatility', '변동성 돌파'),
-        ('rsi', 'RSI 전략'),
-        ('adaptive', '어댑티브 전략 (시장 상황 자동 감지)'),
-        ('ensemble', '앙상블 전략 (다중 전략 결합)')
+        ('bollinger', '볼린저 밴드')
     ], default='bollinger')
+
+    # 당분다 다른 전략은 주석 처리 ,
+    # ('volatility', '변동성 돌파'),
+    # ('rsi', 'RSI 전략'),
+    # ('adaptive', '어댑티브 전략 (시장 상황 자동 감지)'),
+    # ('ensemble', '앙상블 전략 (다중 전략 결합)')
 
     # 공통 설정
     buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)

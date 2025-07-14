@@ -662,6 +662,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                         </div>
                                     </div>
 
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-6">
+                                            <div class="info-item">
+                                                <i class="fas fa-calculator text-success me-1"></i>
+                                                <small class="text-muted">이동평균 기간</small>
+                                                <div class="fw-bold">${bot.window}</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="info-item">
+                                                <i class="fas fa-sliders-h text-primary me-1"></i>
+                                                <small class="text-muted">볼린저 밴드 승수</small>
+                                                <div class="fw-bold">${parseFloat(bot.multiplier).toFixed(1)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <!-- 시간 정보 -->
                                     <div class="time-info">
                                         <div class="time-item">

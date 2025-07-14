@@ -1073,7 +1073,9 @@ def get_scheduler_status():
                     'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
                     'username': bot_info.get('username', 'Unknown'),
                     'interval_label': get_selected_label(bot_info.get('interval_label')),
-                    'buy_amount': formdata.buy_amount.data if formdata else None
+                    'buy_amount': formdata.buy_amount.data if formdata else None,
+                    'window': formdata.window.data if formdata else None,
+                    'multiplier': formdata.multiplier.data if formdata else None,
                 }
 
                 user_bot_list.append(bot_status)
