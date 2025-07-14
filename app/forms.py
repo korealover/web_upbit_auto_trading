@@ -111,7 +111,7 @@ class TradingSettingsForm(FlaskForm):
     ensemble_bollinger_weight = FloatField('볼린저 밴드 가중치', validators=[NumberRange(min=0, max=1)], default=0.4)
     ensemble_rsi_weight = FloatField('RSI 전략 가중치', validators=[NumberRange(min=0, max=1)], default=0.3)
 
-    submit = SubmitField('설정 저장 및 봇 시작')
+    submit = SubmitField('자동 거래 봇 시작')
 
     def __init__(self, *args, **kwargs):
         super(TradingSettingsForm, self).__init__(*args, **kwargs)
