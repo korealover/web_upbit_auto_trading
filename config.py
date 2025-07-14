@@ -52,8 +52,8 @@ class Config:
     }
 
     # 스레드 풀 설정
-    MAX_WORKERS = int(os.environ.get('MAX_WORKERS', '100'))
-    THREAD_NAME_PREFIX = os.environ.get('THREAD_NAME_PREFIX', 'trading_bot_')
+    MAX_WORKERS = int(os.environ.get('MAX_WORKERS', '5'))
+    THREAD_NAME_PREFIX = os.environ.get('THREAD_NAME_PREFIX', 'AsyncWorker')
 
 
 

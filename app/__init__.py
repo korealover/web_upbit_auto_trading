@@ -41,7 +41,7 @@ def create_app():
         if not os.path.exists('logs'):
             os.mkdir('logs')
         today = datetime.now().strftime('%Y%m%d')
-        file_handler = logging.FileHandler(f'logs/app_{today}.log')
+        file_handler = logging.FileHandler(f'logs/{today}_app.log')
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
         ))

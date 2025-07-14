@@ -179,7 +179,7 @@ def dashboard():
 
     # 현재 사용자의 API 객체 사용
     api = upbit_apis[user_id]
-    print(f"현재 사용자의 API 객체: {api}")
+    # print(f"현재 사용자의 API 객체: {api}")
 
     # 잔고 정보 조회
     balance_info = {}
@@ -229,7 +229,7 @@ def dashboard():
 
         # 업비트 잔고 확인
         balance_info['cash'] = api.get_balance_cash()
-        print(f"잔고 정보: {balance_info['cash']}")
+        # print(f"잔고 정보: {balance_info['cash']}")
         if balance_info['cash'] is None:
             balance_info['cash'] = 0
 
@@ -1043,10 +1043,12 @@ def get_scheduler_status():
         # scheduled_bots의 모든 사용자 정보 순회
         for user_id, user_bots in scheduled_bots.items():
             user_bot_list = []
+            # print(f"scheduled_bots[{user_id}] = {user_bots}")
 
             for ticker, bot_info in user_bots.items():
                 job_id = bot_info.get('job_id')
                 formdata = bot_info.get('settings')  # TradingSettingsForm 객체
+                # print(f"bot_info: {bot_info}, formdata: {formdata}")
 
                 job_info_from_scheduler = scheduler_manager.get_job_info(job_id) if job_id else None
 
@@ -1071,15 +1073,20 @@ def get_scheduler_status():
                     'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
                     'username': bot_info.get('username', 'Unknown'),
                     'interval_label': get_selected_label(bot_info.get('interval_label')),
-                    'buy_amount': formdata.buy_amount.data if formdata else None,
+                    'buy_amount': formdata.buy_amount.data if formdata else None
                 }
 
                 user_bot_list.append(bot_status)
+
+            # 사용자 username 가져오기
+            user = User.query.filter_by(id=user_id).first()
+            user_name = user.username if user else None
 
             # 사용자별 봇 정보 추가
             if user_bot_list:  # 봇이 있는 사용자만 추가
                 user_info = {
                     'user_id': user_id,
+                    'user_name' : user_name,
                     'bot_count': len(user_bot_list),
                     'bots': user_bot_list
                 }

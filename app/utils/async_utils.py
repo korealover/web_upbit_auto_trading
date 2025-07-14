@@ -1,13 +1,12 @@
 import asyncio
 import concurrent.futures
 import functools
-
-
+from config import Config
 
 class AsyncHandler:
     """비동기 작업 처리 핸들러 (최적화)"""
 
-    def __init__(self, max_workers=5, thread_name_prefix="AsyncWorker"):
+    def __init__(self, max_workers=Config.MAX_WORKERS, thread_name_prefix=Config.THREAD_NAME_PREFIX):
         """초기화 - 스레드 풀 옵션 개선"""
         self.executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=max_workers,
