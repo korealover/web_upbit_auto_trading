@@ -5,16 +5,10 @@
 
 # 주요 코인 티커 목록 (KRW 마켓) - 기본값 설정
 MAJOR_TICKERS = [
-    ('KRW-ADA', '에이다(ADA)'),
-    ('KRW-ANIME', '애니메코인(ANIME)'),
     ('KRW-BTC', '비트코인(BTC)'),
     ('KRW-DOGE', '도지코인(DOGE)'),
     ('KRW-ETH', '이더리움(ETH)'),
-    ('KRW-ICX', '아이콘(ICX)'),
-    ('KRW-KAITO', '카이토(KAITO)'),
-    ('KRW-SAHARA', '사하라에이아이(SAHARA)'),
-    ('KRW-SHIB', '시바이누(SHIB)'),
-    ('KRW-TRUMP', '오피셜트럼프(TRUMP)'),
+    ('KRW-SOL', '솔라나(SOL)'),
     ('KRW-USDT', '테더(USDT)'),
     ('KRW-XLM', '스텔라루멘(XLM)'),
     ('KRW-XRP', '리플(XRP)'),
