@@ -1179,6 +1179,7 @@ def favorites():
     return render_template('favorites.html', title='즐겨찾기', favorites=favorites)
 
 
+# 자동재시작 토글
 @bp.route('/toggle_auto_restart/<int:favorite_id>', methods=['POST'])
 @login_required
 def toggle_auto_restart(favorite_id):
