@@ -51,13 +51,6 @@
                                         {{ bot_info.settings.sleep_time.data|default('N/A') }} /
                                         <strong>매도 비율 : </strong>
                                         {{ bot_info.settings.sell_portion.data|default('N/A') }}%
-                                        {% if bot_info.strategy == 'bollinger' %}
-                                        <br>
-                                        <strong>이동평균 기간 : </strong>
-                                        {{ bot_info.settings.window.data|default('N/A') }} /
-                                        <strong>볼린저 밴드 승수 : </strong>
-                                        {{ "{:,.1f}".format(bot_info.settings.multiplier.data) if bot_info.settings.multiplier.data is not none else "N/A" }}
-                                        {% endif %}
                                     </small>
                                 </p>
                                 <div class="d-flex justify-content-between align-items-center">
