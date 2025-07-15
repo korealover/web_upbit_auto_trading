@@ -208,12 +208,169 @@ class UpbitTradingBot:
 
                 # 종가 데이터만 추출
                 prices = prices_data['close']
+                # print(ticker, prices, window, multiplier)
 
                 # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
                 signal = self.strategy.generate_signal(ticker, prices, window, multiplier)
 
-            # 나머지 로직은 동일...
-            # (잔고 조회, 매매 신호 처리 등)
+                # 잔고 조회
+                balance_cash = self.api.get_balance_cash()
+                balance_coin = self.api.get_balance_coin(ticker)
+
+                # 잔고 정보 로깅
+                if balance_cash is not None:
+                    self.logger.info(f"보유 현금: {balance_cash:,.2f}원")
+
+                if balance_coin is not None and balance_coin > 0:
+                    avg_price = self.api.get_buy_avg(ticker)
+                    current_price = self.api.get_current_price(ticker)
+
+                    if avg_price and current_price:
+                        profit_loss = (current_price - avg_price) / avg_price * 100
+                        value = balance_coin * current_price
+                        self.logger.info(f"보유 {ticker}: {balance_coin} (평균가: {avg_price:,.2f}, 현재가치: {value:,.2f}원, 수익률: {profit_loss:.2f}%)")
+
+                # 매매 신호에 따른 주문 처리
+                if signal == 'BUY' and balance_cash and balance_cash > min_cash:
+                    self.logger.info(f"매수 시그널 발생: {buy_amount:,.2f}원 매수 시도")
+                    order_result = self.api.order_buy_market(ticker, buy_amount)
+
+                    # 매수 완료 텔레그램 알림 전송
+                    if order_result and not isinstance(order_result, int) and 'error' not in order_result:
+                        # 주문 UUID 추출
+                        order_uuid = order_result.get('uuid')
+                        self.logger.info(f"매수 주문 접수됨, UUID: {order_uuid}")
+
+                        # 거래 체결 확인을 위해 잠시 대기
+                        time.sleep(2)
+
+                        # 현재 시장 가격 조회
+                        current_price = self.api.get_current_price(ticker)
+
+                        # 주문 후 실제 잔고 변화 확인
+                        before_coin = balance_coin or 0
+                        after_coin = self.api.get_balance_coin(ticker) or 0
+
+                        # 실제 매수된 수량 계산
+                        actual_volume = after_coin - before_coin
+
+                        if actual_volume > 0:
+                            self.logger.info(f"매수 체결 확인: {actual_volume} {ticker.split('-')[1]} 매수됨")
+
+                            # 매수 금액 (실제 지불한 금액)
+                            amount = buy_amount  # 주문 금액 사용
+
+                            # 텔레그램 알림 전송
+                            self.send_trade_notification('BUY', ticker, {
+                                'price': amount,
+                                'volume': actual_volume
+                            })
+
+                            # 거래 기록 저장
+                            self.record_trade('BUY', ticker, current_price, actual_volume, amount)
+                        else:
+                            self.logger.warning(f"매수 주문이 접수되었으나 아직 체결되지 않았습니다. UUID: {order_uuid}")
+
+                            # 체결되지 않은 경우, 예상 수량으로 기록
+                            estimated_volume = buy_amount / current_price if current_price else 0
+                            self.logger.info(f"예상 매수 수량: {estimated_volume} (현재가 기준)")
+
+                            # 거래 기록 저장 (예상 수량 사용)
+                            self.record_trade('BUY', ticker, current_price, estimated_volume, buy_amount)
+
+                    return order_result
+                elif signal == 'SELL' and balance_coin and balance_coin > 0:
+                    self.logger.info(f"매도 시그널 발생: {balance_coin} {ticker.split('-')[1]} 매도 시도")
+
+                    # 현재가 조회하여 보유 코인 가치 확인
+                    current_price = self.api.get_current_price(ticker)
+                    if not current_price:
+                        self.logger.error("현재가를 조회할 수 없어 매도를 건너뜁니다.")
+                        return None
+
+                    avg_buy_price = self.api.get_buy_avg(ticker)  # 평단가를 미리 조회
+
+                    # 손절 금지 설정을 확인하여 매도를 건너뜁니다. (기본값: Y) 최소 0.001는 먹자(0.1%는 수수료(매수/매도)를 주니까 -> 0.01%은 수수료, 0.01%은 먹자)
+                    if prevent_loss_sale == 'Y' and avg_buy_price and current_price < (avg_buy_price * 1.002):
+                        self.logger.info(f"손절 금지 설정됨. 현재가({current_price}) < 평균 단가({avg_buy_price}). 매도하지 않습니다.")
+                        return None
+
+                    if current_price:
+                        total_value = balance_coin * current_price
+                        self.logger.info(f"현재 보유 코인 총 가치: {total_value:,.2f}원")
+
+                        # 전체 가치가 5,000원 미만인 경우 경고
+                        if total_value < 5000:
+                            self.logger.warning(f"보유 코인 총 가치({total_value:,.2f}원)가 최소 주문 금액(5,000원) 미만입니다. 매도를 건너뜁니다.")
+                            return None
+
+                    # 분할 매도 처리
+                    sell_portion = self._get_field_value(getattr(self.args, 'sell_portion', None), 1.0)
+
+                    # 매도 전략 결정
+                    if sell_portion < 1.0:
+                        self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
+                        order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+
+                        # 분할 매도에서 오류가 발생한 경우 처리
+                        if order_result and 'error' in order_result:
+                            error_name = order_result['error'].get('name', '')
+
+                            if error_name == 'insufficient_total_value':
+                                self.logger.warning("보유 코인 가치가 부족하여 매도를 건너뜁니다.")
+                                return None
+                            elif error_name == 'too_small_volume':
+                                self.logger.warning("매도 수량이 너무 적어 전량 매도로 전환합니다.")
+                                # 전량 매도로 재시도
+                                order_result = self.api.order_sell_market(ticker, balance_coin)
+                            else:
+                                self.logger.error(f"분할 매도 오류: {order_result['error']['message']}")
+                                return None
+                    else:
+                        self.logger.info(f"전량 매도 시도: {balance_coin} {ticker.split('-')[1]}")
+                        order_result = self.api.order_sell_market(ticker, balance_coin)
+
+                    # 매도 완료 텔레그램 알림 전송
+                    if order_result and not isinstance(order_result, int) and 'error' not in order_result:
+                        # 주문 UUID 추출
+                        order_uuid = order_result.get('uuid')
+                        self.logger.info(f"매도 주문 접수됨, UUID: {order_uuid}")
+
+                        # 거래 체결 확인을 위해 잠시 대기
+                        time.sleep(2)
+
+                        # 현재 가격 조회
+                        current_price = self.api.get_current_price(ticker)
+
+                        # 실제 매도된 수량 계산
+                        if 'actual_sell_portion' in order_result:
+                            # 분할 매도에서 조정된 비율 사용
+                            actual_portion = order_result['actual_sell_portion']
+                            volume = balance_coin * actual_portion
+                            self.logger.info(f"실제 매도된 비율: {actual_portion * 100:.1f}% (원래 계획: {sell_portion * 100:.1f}%)")
+                        elif sell_portion < 1.0:
+                            volume = balance_coin * sell_portion
+                        else:
+                            volume = balance_coin
+
+                        # 매도 금액 계산
+                        amount = volume * current_price if current_price else 0
+
+                        # 텔레그램 알림 전송
+                        self.send_trade_notification('SELL', ticker, {
+                            'volume': volume
+                        })
+
+                        # 평균 매수가 조회 및 수익률 계산
+                        avg_buy_price = self.api.get_buy_avg(ticker)
+                        profit_loss = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price else None
+
+                        # 거래 기록 저장
+                        self.record_trade('SELL', ticker, current_price, volume, amount, profit_loss)
+
+                    return order_result
+                else:
+                    self.logger.info("포지션 유지 (매수/매도 조건 불충족)")
 
         except Exception as e:
             self.logger.error(f"거래 중 오류 발생: {str(e)}", exc_info=True)
