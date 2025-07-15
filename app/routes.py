@@ -179,18 +179,20 @@ def dashboard():
 
     # 현재 사용자의 API 객체 사용
     api = upbit_apis[user_id]
+    # print(f"현재 사용자의 API 객체: {api}")
 
     # 잔고 정보 조회
     balance_info = {}
     try:
         # 사용자별 봇 정보 가져오기
         user_bots = scheduled_bots.get(user_id, {})
+        # print(f"사용자의 봇 정보: {user_bots}")
 
-        # 봇 정보 정규화 및 템플릿 호환성 개선
+        # 봇 정보에 마지막 신호 시간 추가 TODO
         for ticker, bot_info in user_bots.items():
-            # print(f'user_id: {user_id}, ticker: {ticker}, bot_info: {bot_info}')
+            # print(f"이는 봇 정보: {bot_info}")
             try:
-                # 마지막 로그에서 신호 시간 추출
+                # 마지막 로그에서 신호 시간 추출 (선택적 구현)
                 today = datetime.now().strftime('%Y%m%d')
                 ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
                 log_filename = f"{today}_{ticker_symbol}.log"
@@ -210,7 +212,7 @@ def dashboard():
                 else:
                     bot_info['last_signal_time'] = None
 
-                # 템플릿 호환성을 위한 설정 구조 개선
+                # 추가 정보 설정 (템플릿 호환성을 위해)
                 if 'interval_label' in bot_info:
                     bot_info['interval_label'] = get_selected_label(bot_info['interval_label'])
 
@@ -220,123 +222,25 @@ def dashboard():
                 else:
                     bot_info['running'] = False
 
-                # settings 정규화 - Form 객체와 딕셔너리 모두 처리
-                settings = bot_info.get('settings', {})
-                normalized_settings = {}
-
-                def get_setting_value(setting_obj, default_value=None):
-                    """설정 값을 안전하게 추출"""
-                    if setting_obj is None:
-                        return default_value
-                    if hasattr(setting_obj, 'data'):
-                        return setting_obj.data
-                    return setting_obj
-
-                def safe_numeric_value(value, default=0):
-                    """숫자 값을 안전하게 변환"""
-                    if value is None:
-                        return default
-                    if isinstance(value, (int, float)):
-                        return value
-                    if isinstance(value, str):
-                        try:
-                            return float(value) if '.' in value else int(value)
-                        except (ValueError, TypeError):
-                            return default
-                    return default
-
-                # 필요한 설정 필드들을 정규화
-                setting_fields = {
-                    'buy_amount': 0,
-                    'min_cash': 0,
-                    'sell_portion': 100,
-                    'prevent_loss_sale': False,
-                    'sleep_time': 30,
-                    'ticker': ticker,
-                    'strategy': bot_info.get('strategy', ''),
-                    'interval': bot_info.get('interval', ''),
-                    'name': bot_info.get('name', ''),
-                    'window': 20,
-                    'multiplier': 2.0,
-                    'k': 0.5,
-                    'target_profit': 1.0,
-                    'stop_loss': 3.0,
-                    'rsi_period': 14,
-                    'rsi_oversold': 30,
-                    'rsi_overbought': 70,
-                    'rsi_timeframe': 'minute5'
-                }
-
-                for field_name, default_value in setting_fields.items():
-                    if isinstance(settings, dict):
-                        # 딕셔너리 형태의 settings (DB에서 복원된 경우)
-                        raw_value = settings.get(field_name, default_value)
-
-                        # 숫자 필드들은 안전하게 변환
-                        if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
-                                          'rsi_oversold', 'rsi_overbought']:
-                            raw_value = safe_numeric_value(raw_value, default_value)
-
-                        # 템플릿에서 직접 접근 가능하도록 간단한 구조로 변경
-                        normalized_settings[field_name] = raw_value
-                    else:
-                        # Form 객체 형태의 settings (웹에서 설정된 경우)
-                        if hasattr(settings, field_name):
-                            field_obj = getattr(settings, field_name)
-                            raw_value = get_setting_value(field_obj, default_value)
-
-                            # 숫자 필드들은 안전하게 변환
-                            if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
-                                              'rsi_oversold', 'rsi_overbought']:
-                                raw_value = safe_numeric_value(raw_value, default_value)
-
-                            normalized_settings[field_name] = raw_value
-                        else:
-                            normalized_settings[field_name] = default_value
-
-                # bot_info에 정규화된 settings 적용
-                bot_info['settings'] = normalized_settings
-
-                # 전략별 특수 필드 처리
-                strategy = bot_info.get('strategy', '')
-                if strategy == 'bollinger':
-                    # 볼린저 밴드 전략 관련 필드 확인
-                    if 'window' not in normalized_settings:
-                        normalized_settings['window'] = 20
-                    if 'multiplier' not in normalized_settings:
-                        normalized_settings['multiplier'] = 2.0
-
             except Exception as e:
-                logger.warning(f"봇 {ticker} 정보 처리 실패: {str(e)}")
+                logger.warning(f"봇 {ticker} 마지막 신호 시간 조회 실패: {str(e)}")
                 bot_info['last_signal_time'] = None
                 bot_info['running'] = False
-                # 기본 설정 구조 생성
-                bot_info['settings'] = {
-                    'buy_amount': 0,
-                    'min_cash': 0,
-                    'sell_portion': 100,
-                    'prevent_loss_sale': False,
-                    'sleep_time': 30,
-                    'ticker': ticker,
-                    'strategy': '',
-                    'interval': '',
-                    'name': '',
-                    'window': 20,
-                    'multiplier': 2.0
-                }
 
         # 업비트 잔고 확인
         balance_info['cash'] = api.get_balance_cash()
+        # print(f"잔고 정보: {balance_info['cash']}")
         if balance_info['cash'] is None:
             balance_info['cash'] = 0
 
         # 보유 코인 정보 조회 - pyupbit를 직접 사용
         try:
-            all_balances = api.upbit.get_balances()
+            all_balances = api.upbit.get_balances()  # pyupbit의 get_balances 메서드 사용
             balance_info['coins'] = []
             total_balance = balance_info['cash']
 
             if all_balances:
+                # print(all_balances)
                 for balance in all_balances:
                     if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
                         ticker = f"KRW-{balance['currency']}"
@@ -483,6 +387,7 @@ def dashboard():
                            trade_records=trade_records,
                            daily_stats=daily_stats,
                            strategy_performance=strategy_performance)
+
 
 # 자동매매 설정
 @bp.route('/settings', methods=['GET', 'POST'])
@@ -677,79 +582,6 @@ def scheduled_trading_cycle(user_id, ticker, bot=None, websocket_logger=None):
                 logger.info(f"오류로 인한 봇 정리: {user_id}/{ticker}")
         except Exception as cleanup_error:
             logger.error(f"봇 정리 중 오류: {cleanup_error}")
-
-
-def create_trading_bot_from_favorite(favorite):
-    """TradingFavorite 객체로부터 트레이딩 봇 생성"""
-    try:
-        from app.models import User
-        from app.bot.trading_bot import UpbitTradingBot
-        from app.api.upbit_api import UpbitAPI
-        from app.utils.async_utils import AsyncHandler
-        from app.utils.logging_utils import get_logger_with_current_date
-        from app.strategy import create_strategy  # 올바른 함수 import
-
-        # 사용자 정보 가져오기
-        user = User.query.get(favorite.user_id)
-        if not user:
-            logger.error(f"사용자를 찾을 수 없음: {favorite.user_id}")
-            return None
-
-        # 업비트 API 키 확인
-        if not user.upbit_access_key or not user.upbit_secret_key:
-            logger.error(f"사용자 {favorite.user_id}의 업비트 API 키가 설정되지 않음")
-            return None
-
-        # 비동기 핸들러 생성
-        async_handler = AsyncHandler()
-
-        # 로거 생성
-        bot_logger = get_logger_with_current_date(f"{favorite.user_id}_{favorite.ticker}")
-
-        # API 객체 생성
-        api = UpbitAPI(user.upbit_access_key, user.upbit_secret_key, async_handler, bot_logger)
-
-        # 봇 설정 생성 - 딕셔너리 형태로 전달하되 ticker 필드 확실히 포함
-        settings = {
-            'ticker': favorite.ticker,  # ticker 필드 명시적 추가
-            'buy_amount': favorite.buy_amount,
-            'min_cash': favorite.min_cash,
-            'sell_portion': favorite.sell_portion,
-            'prevent_loss_sale': favorite.prevent_loss_sale,
-            'window': favorite.window,
-            'multiplier': favorite.multiplier,
-            'k': favorite.k,
-            'target_profit': favorite.target_profit,
-            'stop_loss': favorite.stop_loss,
-            'rsi_period': favorite.rsi_period,
-            'rsi_oversold': favorite.rsi_oversold,
-            'rsi_overbought': favorite.rsi_overbought,
-            'rsi_timeframe': favorite.rsi_timeframe,
-            'ensemble_volatility_weight': favorite.ensemble_volatility_weight,
-            'ensemble_bollinger_weight': favorite.ensemble_bollinger_weight,
-            'ensemble_rsi_weight': favorite.ensemble_rsi_weight,
-            'interval': favorite.interval,
-            'sleep_time': favorite.sleep_time,
-            'user_id': favorite.user_id,
-            'strategy': favorite.strategy,  # 전략 정보도 추가
-            'name': favorite.name,
-            'username': user.username
-        }
-
-        # 전략 객체 생성 - 올바른 함수명 사용
-        strategy = create_strategy(favorite.strategy, api, bot_logger)
-        if not strategy:
-            logger.error(f"전략 생성 실패: {favorite.strategy}")
-            return None
-
-        # 봇 생성
-        bot = UpbitTradingBot(settings, api, strategy, bot_logger, user.username)
-        logger.info(f"봇 생성 성공: {favorite.name} ({favorite.ticker}) - User: {favorite.user_id}")
-        return bot, settings
-
-    except Exception as e:
-        logger.error(f"봇 생성 중 오류: {e}")
-        return None
 
 
 # 자동매매 중지
@@ -1215,7 +1047,7 @@ def get_scheduler_status():
 
             for ticker, bot_info in user_bots.items():
                 job_id = bot_info.get('job_id')
-                formdata = bot_info.get('settings')  # 딕셔너리 형태의 settings
+                formdata = bot_info.get('settings')  # TradingSettingsForm 객체
                 # print(f"bot_info: {bot_info}, formdata: {formdata}")
 
                 job_info_from_scheduler = scheduler_manager.get_job_info(job_id) if job_id else None
@@ -1227,15 +1059,6 @@ def get_scheduler_status():
                         job = scheduler_manager.scheduler.get_job(job_id)
                     except:
                         job = None
-
-                # settings에서 값 안전하게 가져오기
-                def get_setting_value(key, default=None):
-                    if formdata and isinstance(formdata, dict):
-                        return formdata.get(key, default)
-                    elif formdata and hasattr(formdata, key):
-                        field = getattr(formdata, key)
-                        return field.data if hasattr(field, 'data') else field
-                    return default
 
                 bot_status = {
                     'ticker': ticker,
@@ -1249,10 +1072,10 @@ def get_scheduler_status():
                     'interval': bot_info.get('interval', 0),
                     'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
                     'username': bot_info.get('username', 'Unknown'),
-                    'interval_label': bot_info.get('interval_label', 'Unknown'),
-                    'buy_amount': get_setting_value('buy_amount', 0),
-                    'window': get_setting_value('window', 20),
-                    'multiplier': get_setting_value('multiplier', 2.0),
+                    'interval_label': get_selected_label(bot_info.get('interval_label')),
+                    'buy_amount': formdata.buy_amount.data if formdata else None,
+                    'window': formdata.window.data if formdata else None,
+                    'multiplier': formdata.multiplier.data if formdata else None,
                 }
 
                 user_bot_list.append(bot_status)

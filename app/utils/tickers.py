@@ -85,7 +85,7 @@ def update_tickers_from_upbit():
             if ticker[0] not in major_symbols:
                 MAJOR_TICKERS.append(ticker)
 
-        # print(f"티커 업데이트 완료: {len(MAJOR_TICKERS)}개")
+        print(f"티커 업데이트 완료: {len(MAJOR_TICKERS)}개")
         return True
 
     except ImportError:
