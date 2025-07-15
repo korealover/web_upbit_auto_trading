@@ -45,18 +45,18 @@
                                         <strong>차트 간격 : </strong>
                                         {{ bot_info.interval_label|default('N/A') }} /
                                         <strong>매수 금액(원) : </strong>
-                                        {{ "{:,.0f}".format(bot_info.settings.buy_amount.data) if bot_info.settings.buy_amount.data is not none else "N/A" }} 원
+                                        {{ "{:,.0f}".format(bot_info.settings.buy_amount) if bot_info.settings.buy_amount is not none else "N/A" }} 원
                                         <br>
                                         <strong>거래 간격(초) : </strong>
-                                        {{ bot_info.settings.sleep_time.data|default('N/A') }} /
+                                        {{ bot_info.settings.sleep_time|default('N/A') }} /
                                         <strong>매도 비율 : </strong>
-                                        {{ bot_info.settings.sell_portion.data|default('N/A') }}%
+                                        {{ bot_info.settings.sell_portion|default('N/A') }}%
                                         {% if bot_info.strategy == 'bollinger' %}
                                         <br>
                                         <strong>이동평균 기간 : </strong>
-                                        {{ bot_info.settings.window.data|default('N/A') }} /
+                                        {{ bot_info.settings.window|default('N/A') }} /
                                         <strong>볼린저 밴드 승수 : </strong>
-                                        {{ "{:,.1f}".format(bot_info.settings.multiplier.data) if bot_info.settings.multiplier.data is not none else "N/A" }}
+                                        {{ "{:,.1f}".format(bot_info.settings.multiplier) if bot_info.settings.multiplier is not none else "N/A" }}
                                         {% endif %}
                                     </small>
                                 </p>
