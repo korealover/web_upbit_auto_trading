@@ -308,7 +308,10 @@ class UpbitTradingBot:
                             return None
 
                     # 분할 매도 처리
-                    sell_portion = self._get_field_value(getattr(self.args, 'sell_portion', None), 1.0)
+                    sell_portion = self._get_field_value(
+                        self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None),
+                        1.0
+                    )
 
                     # 매도 전략 결정
                     if sell_portion < 1.0:
