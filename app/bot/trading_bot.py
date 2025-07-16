@@ -436,7 +436,10 @@ class UpbitTradingBot:
                         self.logger.warning(f"수익률 계산 실패: {str(e)}")
 
                 # 전략 이름 안전하게 가져오기
-                strategy_name = self._get_field_value(getattr(self.args, 'strategy', None), 'unknown')
+                strategy_name = self._get_field_value(
+                    self.args.get('strategy') if isinstance(self.args, dict) else getattr(self.args, 'strategy', None),
+                    'bollinger'  # 기본값을 'bollinger'로 변경
+                )
 
                 # TradeRecord 생성 및 저장
                 trade_record = TradeRecord(
