@@ -173,3 +173,4 @@ def initialize_scheduler(app):
 
 # Gunicorn에서 직접 임포트할 수 있도록 앱 인스턴스 생성
 app = create_app()
+
