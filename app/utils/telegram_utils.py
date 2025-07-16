@@ -20,7 +20,7 @@ def get_telegram_bot(token):
     )
     return Bot(token=token, request=request)
 
-
+# TelegramNotifier 클래스
 class TelegramNotifier:
     """텔레그램 알림 클래스 (최적화)"""
 

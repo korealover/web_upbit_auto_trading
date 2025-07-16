@@ -110,3 +110,4 @@ def initialize_tickers():
 # 모듈 로드 시 자동으로 티커 초기화
 if __name__ != "__main__":
     initialize_tickers()
+    
