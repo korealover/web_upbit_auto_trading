@@ -3,6 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from app import db, login_manager
 from datetime import datetime
 import pytz
+from app.utils.encryption import encryption_service
 
 def kst_now():
     """현재 한국 시간(KST)을 반환하는 함수"""
@@ -14,8 +15,8 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), unique=True, index=True)
     email = db.Column(db.String(120), unique=True, index=True)
     password_hash = db.Column(db.String(128))
-    upbit_access_key = db.Column(db.String(50))  # 업비트 API 접근 키
-    upbit_secret_key = db.Column(db.String(50))  # 업비트 API 비밀 키
+    upbit_access_key = db.Column(db.Text)  # 암호화된 업비트 API 접근 키 (길이 증가)
+    upbit_secret_key = db.Column(db.Text)  # 암호화된 업비트 API 비밀 키 (길이 증가)
     trade_records = db.relationship('TradeRecord', backref='user', lazy='dynamic')
     is_approved = db.Column(db.Boolean, default=False)  # 계정 승인 여부
     is_admin = db.Column(db.Boolean, default=False)  # 관리자 여부
@@ -28,6 +29,23 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def set_upbit_keys(self, access_key, secret_key):
+        """업비트 API 키 암호화 후 저장"""
+        try:
+            self.upbit_access_key = encryption_service.encrypt(access_key) if access_key else None
+            self.upbit_secret_key = encryption_service.encrypt(secret_key) if secret_key else None
+        except Exception as e:
+            raise ValueError(f"API 키 암호화 실패: {str(e)}")
+
+    def get_upbit_keys(self):
+        """업비트 API 키 복호화 후 반환"""
+        try:
+            access_key = encryption_service.decrypt(self.upbit_access_key) if self.upbit_access_key else None
+            secret_key = encryption_service.decrypt(self.upbit_secret_key) if self.upbit_secret_key else None
+            return access_key, secret_key
+        except Exception as e:
+            raise ValueError(f"API 키 복호화 실패: {str(e)}")
 
 
 @login_manager.user_loader
@@ -73,6 +91,7 @@ class TradingFavorite(db.Model):
     ensemble_volatility_weight = db.Column(db.Float, nullable=True)
     ensemble_bollinger_weight = db.Column(db.Float, nullable=True)
     ensemble_rsi_weight = db.Column(db.Float, nullable=True)
+    start_yn = db.Column(db.String(1), nullable=False, default='N')
     created_at = db.Column(db.DateTime, default=kst_now)
     updated_at = db.Column(db.DateTime, default=kst_now, onupdate=kst_now)
 
@@ -101,4 +120,5 @@ class TradingFavorite(db.Model):
             'ensemble_volatility_weight': self.ensemble_volatility_weight,
             'ensemble_bollinger_weight': self.ensemble_bollinger_weight,
             'ensemble_rsi_weight': self.ensemble_rsi_weight,
+            'start_yn': self.start_yn,
         }

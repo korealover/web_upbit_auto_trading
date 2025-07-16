@@ -670,3 +670,16 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+<!-- dashboard.html 템플릿에 추가 -->
+{% if api_keys_missing %}
+<div class="alert alert-warning" role="alert">
+    <h4 class="alert-heading">API 키가 설정되지 않았습니다!</h4>
+    <p>자동 거래를 시작하려면 먼저 업비트 API 키를 등록해야 합니다.</p>
+    <hr>
+    <p class="mb-0">
+        <a href="{{ url_for('main.profile') }}" class="btn btn-primary">
+            <i class="fas fa-key"></i> API 키 등록하기
+        </a>
+    </p>
+</div>
+{% endif %}

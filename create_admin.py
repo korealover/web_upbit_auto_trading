@@ -3,7 +3,7 @@ from app.models import User
 import os
 from config import Config
 import sys
-
+from app.utils.encryption import encryption_service
 
 def create_admin_user(password=None):
     """관리자 계정을 생성하거나 업데이트하는 함수"""
@@ -19,12 +19,16 @@ def create_admin_user(password=None):
                     print('오류: 새 관리자 계정 생성을 위해 비밀번호가 필요합니다.')
                     sys.exit(1)
 
+                # key 생성
+                access_key = encryption_service.encrypt(Config.UPBIT_ACCESS_KEY) if Config.UPBIT_ACCESS_KEY else None
+                secret_key = encryption_service.encrypt(Config.UPBIT_SECRET_KEY) if Config.UPBIT_SECRET_KEY else None
+
                 # 관리자 계정 생성
                 admin = User(
                     username='admin',
                     email='admin@example.com',  # 실제 관리자 이메일로 변경 필요
-                    upbit_access_key=Config.UPBIT_ACCESS_KEY,
-                    upbit_secret_key=Config.UPBIT_SECRET_KEY,
+                    upbit_access_key=access_key,
+                    upbit_secret_key=secret_key,
                     is_approved=True,
                     is_admin=True
                 )
