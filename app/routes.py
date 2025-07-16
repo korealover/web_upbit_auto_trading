@@ -73,12 +73,11 @@ def register():
         user = User(
             username=form.username.data,
             email=form.email.data,
-            upbit_access_key=form.upbit_access_key.data,
-            upbit_secret_key=form.upbit_secret_key.data,
             is_approved=False  # 기본적으로 승인되지 않은 상태
         )
 
         user.set_password(form.password.data)
+        user.set_upbit_keys(form.upbit_access_key.data, form.upbit_secret_key.data)
         db.session.add(user)
         db.session.commit()
 
@@ -110,14 +109,6 @@ def profile():
         current_user.username = form.username.data
         current_user.email = form.email.data
 
-        # API 키가 입력된 경우에만 업데이트
-        if form.upbit_access_key.data:
-            current_user.upbit_access_key = form.upbit_access_key.data
-        if form.upbit_secret_key.data:
-            current_user.upbit_secret_key = form.upbit_secret_key.data
-
-        db.session.commit()
-
         # API 객체 재생성 (API 키가 변경된 경우)
         if form.upbit_access_key.data or form.upbit_secret_key.data:
             user_id = current_user.id
@@ -129,6 +120,18 @@ def profile():
                 for ticker in list(scheduled_bots[user_id].keys()):
                     scheduled_bots[user_id][ticker]['running'] = False
                 scheduled_bots[user_id] = {}
+
+            # API 키 암호화 저장
+            access_key = form.upbit_access_key.data
+            secret_key = form.upbit_secret_key.data
+
+            try:
+                current_user.set_upbit_keys(access_key, secret_key)
+                db.session.commit()
+                flash('프로필이 성공적으로 업데이트되었습니다.', 'success')
+            except ValueError as e:
+                flash(f'API 키 저장 실패: {str(e)}', 'error')
+                return redirect(url_for('main.profile'))
 
         flash('프로필이 업데이트되었습니다.', 'success')
         return redirect(url_for('main.profile'))
@@ -144,345 +147,382 @@ def profile():
 @bp.route('/validate_api_keys', methods=['POST'])
 @login_required
 def validate_api_keys():
-    data = request.json
-    access_key = data.get('access_key')
-    secret_key = data.get('secret_key')
-
     try:
-        # 임시 API 객체 생성하여 잔고 조회 시도
-        from pyupbit import Upbit
-        temp_upbit = Upbit(access_key, secret_key)
-        balance = temp_upbit.get_balance("KRW")
+        upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+        is_valid, error_msg = upbit_api.validate_api_keys()
 
-        if balance is not None:
-            return jsonify({'valid': True, 'message': '업비트 API 키가 유효합니다.'})
+        if is_valid:
+            return jsonify({'success': True, 'message': 'API 키가 유효합니다.'})
         else:
-            return jsonify({'valid': False, 'message': 'API 키로 잔고를 조회할 수 없습니다.'})
-    except Exception as e:
-        return jsonify({'valid': False, 'message': f'API 키 검증 오류: {str(e)}'})
+            return jsonify({'success': False, 'error': error_msg})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
-# 대시보드
 @bp.route('/dashboard')
 @login_required
 def dashboard():
-    # 현재 사용자의 API 객체 확인
+    """대시보드 페이지"""
     user_id = current_user.id
-    if user_id not in upbit_apis:
-        # 사용자의 API 키로 새 API 객체 생성
-        upbit_apis[user_id] = UpbitAPI(
-            current_user.upbit_access_key,
-            current_user.upbit_secret_key,
-            async_handler,
-            setup_logger('web', 'INFO', 7)
-        )
-
-    # 현재 사용자의 API 객체 사용
-    api = upbit_apis[user_id]
-
-    # 잔고 정보 조회
-    balance_info = {}
     try:
-        # 사용자별 봇 정보 가져오기
-        user_bots = scheduled_bots.get(user_id, {})
+        # 사용자 정보 확인
+        user = User.query.get(current_user.id)
+        if not user:
+            flash('사용자 정보를 찾을 수 없습니다.')
+            return redirect(url_for('main.login'))
 
-        # 봇 정보 정규화 및 템플릿 호환성 개선
-        for ticker, bot_info in user_bots.items():
-            # print(f'user_id: {user_id}, ticker: {ticker}, bot_info: {bot_info}')
+        # API 키 존재 여부 확인
+        try:
+            access_key, secret_key = user.get_upbit_keys()
+            if not access_key or not secret_key:
+                flash('업비트 API 키가 설정되지 않았습니다. 프로필 페이지에서 API 키를 등록해주세요.', 'warning')
+                return render_template('dashboard.html',
+                                       user=user,
+                                       api_keys_missing=True,
+                                       active_bots=[],
+                                       balance_info=None)
+        except Exception as e:
+            logger.error(f"API 키 복호화 실패: {str(e)}")
+            flash('API 키 복호화에 실패했습니다. 프로필 페이지에서 API 키를 다시 설정해주세요.', 'error')
+            return render_template('dashboard.html',
+                                   user=user,
+                                   api_keys_missing=True,
+                                   active_bots=[],
+                                   balance_info=None)
+
+        # 기존 대시보드 로직 계속...
+        # API 키가 정상적으로 설정된 경우에만 UpbitAPI 객체 생성
+        try:
+            if user_id not in upbit_apis:
+                # UpbitAPI 클래스에서 자동으로 복호화 처리
+                api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+
+                # API 키 유효성 검증
+                is_valid, error_msg = api.validate_api_keys()
+                if not is_valid:
+                    logger.error("업비트 키 복호화 에러")
+                    return None
+
+                # 잔고 정보 조회
+            balance_info = {}
             try:
-                # 마지막 로그에서 신호 시간 추출
-                today = datetime.now().strftime('%Y%m%d')
-                ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
-                log_filename = f"{today}_{ticker_symbol}.log"
-                log_path = os.path.join('logs', log_filename)
+                # 사용자별 봇 정보 가져오기
+                user_bots = scheduled_bots.get(user_id, {})
 
-                if os.path.exists(log_path):
-                    last_lines = tail_file(log_path, 10)
-                    for line in reversed(last_lines):
-                        if '매수' in line or '매도' in line or '신호' in line:
-                            # 로그에서 시간 추출
-                            parts = line.split(' - ')
-                            if len(parts) >= 1:
-                                bot_info['last_signal_time'] = parts[0]
-                                break
-                    else:
-                        bot_info['last_signal_time'] = None
-                else:
-                    bot_info['last_signal_time'] = None
+                # 봇 정보 정규화 및 템플릿 호환성 개선
+                for ticker, bot_info in user_bots.items():
+                    # print(f'user_id: {user_id}, ticker: {ticker}, bot_info: {bot_info}')
+                    try:
+                        # 마지막 로그에서 신호 시간 추출
+                        today = datetime.now().strftime('%Y%m%d')
+                        ticker_symbol = ticker.split('-')[1] if '-' in ticker else ticker
+                        log_filename = f"{today}_{ticker_symbol}.log"
+                        log_path = os.path.join('logs', log_filename)
 
-                # 템플릿 호환성을 위한 설정 구조 개선
-                if 'interval_label' in bot_info:
-                    bot_info['interval_label'] = get_selected_label(bot_info['interval_label'])
-
-                # 실행 상태 확인
-                if 'running' in bot_info:
-                    bot_info['running'] = True if bot_info['running'] else False
-                else:
-                    bot_info['running'] = False
-
-                # settings 정규화 - Form 객체와 딕셔너리 모두 처리
-                settings = bot_info.get('settings', {})
-                normalized_settings = {}
-
-                def get_setting_value(setting_obj, default_value=None):
-                    """설정 값을 안전하게 추출"""
-                    if setting_obj is None:
-                        return default_value
-                    if hasattr(setting_obj, 'data'):
-                        return setting_obj.data
-                    return setting_obj
-
-                def safe_numeric_value(value, default=0):
-                    """숫자 값을 안전하게 변환"""
-                    if value is None:
-                        return default
-                    if isinstance(value, (int, float)):
-                        return value
-                    if isinstance(value, str):
-                        try:
-                            return float(value) if '.' in value else int(value)
-                        except (ValueError, TypeError):
-                            return default
-                    return default
-
-                # 필요한 설정 필드들을 정규화
-                setting_fields = {
-                    'buy_amount': 0,
-                    'min_cash': 0,
-                    'sell_portion': 100,
-                    'prevent_loss_sale': False,
-                    'sleep_time': 30,
-                    'ticker': ticker,
-                    'strategy': bot_info.get('strategy', ''),
-                    'interval': bot_info.get('interval', ''),
-                    'name': bot_info.get('name', ''),
-                    'window': 20,
-                    'multiplier': 2.0,
-                    'k': 0.5,
-                    'target_profit': 1.0,
-                    'stop_loss': 3.0,
-                    'rsi_period': 14,
-                    'rsi_oversold': 30,
-                    'rsi_overbought': 70,
-                    'rsi_timeframe': 'minute5'
-                }
-
-                for field_name, default_value in setting_fields.items():
-                    if isinstance(settings, dict):
-                        # 딕셔너리 형태의 settings (DB에서 복원된 경우)
-                        raw_value = settings.get(field_name, default_value)
-
-                        # 숫자 필드들은 안전하게 변환
-                        if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
-                                          'rsi_oversold', 'rsi_overbought']:
-                            raw_value = safe_numeric_value(raw_value, default_value)
-
-                        # 템플릿에서 직접 접근 가능하도록 간단한 구조로 변경
-                        normalized_settings[field_name] = raw_value
-                    else:
-                        # Form 객체 형태의 settings (웹에서 설정된 경우)
-                        if hasattr(settings, field_name):
-                            field_obj = getattr(settings, field_name)
-                            raw_value = get_setting_value(field_obj, default_value)
-
-                            # 숫자 필드들은 안전하게 변환
-                            if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
-                                              'rsi_oversold', 'rsi_overbought']:
-                                raw_value = safe_numeric_value(raw_value, default_value)
-
-                            normalized_settings[field_name] = raw_value
+                        if os.path.exists(log_path):
+                            last_lines = tail_file(log_path, 10)
+                            for line in reversed(last_lines):
+                                if '매수' in line or '매도' in line or '신호' in line:
+                                    # 로그에서 시간 추출
+                                    parts = line.split(' - ')
+                                    if len(parts) >= 1:
+                                        bot_info['last_signal_time'] = parts[0]
+                                        break
+                            else:
+                                bot_info['last_signal_time'] = None
                         else:
-                            normalized_settings[field_name] = default_value
+                            bot_info['last_signal_time'] = None
 
-                # bot_info에 정규화된 settings 적용
-                bot_info['settings'] = normalized_settings
+                        # 템플릿 호환성을 위한 설정 구조 개선
+                        if 'interval_label' in bot_info:
+                            bot_info['interval_label'] = get_selected_label(bot_info['interval_label'])
 
-                # 전략별 특수 필드 처리
-                strategy = bot_info.get('strategy', '')
-                if strategy == 'bollinger':
-                    # 볼린저 밴드 전략 관련 필드 확인
-                    if 'window' not in normalized_settings:
-                        normalized_settings['window'] = 20
-                    if 'multiplier' not in normalized_settings:
-                        normalized_settings['multiplier'] = 2.0
+                        # 실행 상태 확인
+                        if 'running' in bot_info:
+                            bot_info['running'] = True if bot_info['running'] else False
+                        else:
+                            bot_info['running'] = False
+
+                        # settings 정규화 - Form 객체와 딕셔너리 모두 처리
+                        settings = bot_info.get('settings', {})
+                        normalized_settings = {}
+
+                        def get_setting_value(setting_obj, default_value=None):
+                            """설정 값을 안전하게 추출"""
+                            if setting_obj is None:
+                                return default_value
+                            if hasattr(setting_obj, 'data'):
+                                return setting_obj.data
+                            return setting_obj
+
+                        def safe_numeric_value(value, default=0):
+                            """숫자 값을 안전하게 변환"""
+                            if value is None:
+                                return default
+                            if isinstance(value, (int, float)):
+                                return value
+                            if isinstance(value, str):
+                                try:
+                                    return float(value) if '.' in value else int(value)
+                                except (ValueError, TypeError):
+                                    return default
+                            return default
+
+                        # 필요한 설정 필드들을 정규화
+                        setting_fields = {
+                            'buy_amount': 0,
+                            'min_cash': 0,
+                            'sell_portion': 100,
+                            'prevent_loss_sale': False,
+                            'sleep_time': 30,
+                            'ticker': ticker,
+                            'strategy': bot_info.get('strategy', ''),
+                            'interval': bot_info.get('interval', ''),
+                            'name': bot_info.get('name', ''),
+                            'window': 20,
+                            'multiplier': 2.0,
+                            'k': 0.5,
+                            'target_profit': 1.0,
+                            'stop_loss': 3.0,
+                            'rsi_period': 14,
+                            'rsi_oversold': 30,
+                            'rsi_overbought': 70,
+                            'rsi_timeframe': 'minute5'
+                        }
+
+                        for field_name, default_value in setting_fields.items():
+                            if isinstance(settings, dict):
+                                # 딕셔너리 형태의 settings (DB에서 복원된 경우)
+                                raw_value = settings.get(field_name, default_value)
+
+                                # 숫자 필드들은 안전하게 변환
+                                if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
+                                                  'rsi_oversold', 'rsi_overbought']:
+                                    raw_value = safe_numeric_value(raw_value, default_value)
+
+                                # 템플릿에서 직접 접근 가능하도록 간단한 구조로 변경
+                                normalized_settings[field_name] = raw_value
+                            else:
+                                # Form 객체 형태의 settings (웹에서 설정된 경우)
+                                if hasattr(settings, field_name):
+                                    field_obj = getattr(settings, field_name)
+                                    raw_value = get_setting_value(field_obj, default_value)
+
+                                    # 숫자 필드들은 안전하게 변환
+                                    if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss',
+                                                      'rsi_period',
+                                                      'rsi_oversold', 'rsi_overbought']:
+                                        raw_value = safe_numeric_value(raw_value, default_value)
+
+                                    normalized_settings[field_name] = raw_value
+                                else:
+                                    normalized_settings[field_name] = default_value
+
+                        # bot_info에 정규화된 settings 적용
+                        bot_info['settings'] = normalized_settings
+
+                        # 전략별 특수 필드 처리
+                        strategy = bot_info.get('strategy', '')
+                        if strategy == 'bollinger':
+                            # 볼린저 밴드 전략 관련 필드 확인
+                            if 'window' not in normalized_settings:
+                                normalized_settings['window'] = 20
+                            if 'multiplier' not in normalized_settings:
+                                normalized_settings['multiplier'] = 2.0
+
+                    except Exception as e:
+                        logger.warning(f"봇 {ticker} 정보 처리 실패: {str(e)}")
+                        bot_info['last_signal_time'] = None
+                        bot_info['running'] = False
+                        # 기본 설정 구조 생성
+                        bot_info['settings'] = {
+                            'buy_amount': 0,
+                            'min_cash': 0,
+                            'sell_portion': 100,
+                            'prevent_loss_sale': False,
+                            'sleep_time': 30,
+                            'ticker': ticker,
+                            'strategy': '',
+                            'interval': '',
+                            'name': '',
+                            'window': 20,
+                            'multiplier': 2.0
+                        }
+
+                # 업비트 잔고 확인
+                balance_info['cash'] = api.get_balance_cash()
+                if balance_info['cash'] is None:
+                    balance_info['cash'] = 0
+
+                # 보유 코인 정보 조회 - pyupbit를 직접 사용
+                try:
+                    all_balances = api.upbit.get_balances()
+                    balance_info['coins'] = []
+                    total_balance = balance_info['cash']
+
+                    if all_balances:
+                        for balance in all_balances:
+                            if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
+                                ticker = f"KRW-{balance['currency']}"
+                                try:
+                                    # 현재 코인 가격
+                                    current_price = api.get_current_price(ticker)
+                                    coin_value = float(balance['balance']) * current_price
+                                    total_balance += coin_value
+
+                                    balance_info['coins'].append({
+                                        'ticker': ticker,
+                                        'balance': float(balance['balance']),
+                                        'value': coin_value,
+                                        'avg_buy_price': float(balance['avg_buy_price']),
+                                        'current_price': current_price
+                                    })
+                                except Exception as e:
+                                    logger.warning(f"코인 {ticker} 가격 조회 실패: {str(e)}")
+
+                    balance_info['total_balance'] = total_balance
+
+                except Exception as e:
+                    logger.warning(f"보유 코인 정보 조회 실패: {str(e)}")
+                    balance_info['total_balance'] = balance_info['cash']
+                    balance_info['coins'] = []
 
             except Exception as e:
-                logger.warning(f"봇 {ticker} 정보 처리 실패: {str(e)}")
-                bot_info['last_signal_time'] = None
-                bot_info['running'] = False
-                # 기본 설정 구조 생성
-                bot_info['settings'] = {
-                    'buy_amount': 0,
-                    'min_cash': 0,
-                    'sell_portion': 100,
-                    'prevent_loss_sale': False,
-                    'sleep_time': 30,
-                    'ticker': ticker,
-                    'strategy': '',
-                    'interval': '',
-                    'name': '',
-                    'window': 20,
-                    'multiplier': 2.0
+                logger.error(f"잔고 정보 조회 실패: {str(e)}")
+                balance_info['cash'] = 0
+                balance_info['total_balance'] = 0
+                balance_info['coins'] = []
+
+            # 오늘의 거래 통계 계산
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_records = TradeRecord.query.filter_by(
+                user_id=current_user.id
+            ).filter(
+                TradeRecord.timestamp >= today_start
+            ).all()
+
+            daily_stats = {}
+            if today_records:
+                # 총 거래 횟수
+                daily_stats['total_trades'] = len(today_records)
+
+                # 매수/매도 쌍으로 거래 완료된 것들의 성공 거래 계산
+                successful_trades = 0
+                total_profit = 0
+
+                # 거래 기록을 티커별로 그룹화
+                ticker_trades = {}
+                for record in today_records:
+                    if record.ticker not in ticker_trades:
+                        ticker_trades[record.ticker] = {'buy': [], 'sell': []}
+
+                    if record.trade_type == 'BUY':
+                        ticker_trades[record.ticker]['buy'].append(record)
+                    else:
+                        ticker_trades[record.ticker]['sell'].append(record)
+
+                # 각 티커별로 수익 계산
+                for ticker, trades in ticker_trades.items():
+                    buy_trades = sorted(trades['buy'], key=lambda x: x.timestamp)
+                    sell_trades = sorted(trades['sell'], key=lambda x: x.timestamp)
+
+                    # 간단한 FIFO 방식으로 매수-매도 쌍 매칭
+                    buy_index = 0
+                    for sell_trade in sell_trades:
+                        if buy_index < len(buy_trades):
+                            buy_trade = buy_trades[buy_index]
+
+                            # 수익률 계산
+                            profit_rate = ((float(sell_trade.price) - float(buy_trade.price)) / float(buy_trade.price)) * 100
+
+                            if profit_rate > 0:
+                                successful_trades += 1
+
+                            total_profit += profit_rate
+                            buy_index += 1
+
+                # 승률 계산 (완료된 거래 쌍 기준)
+                completed_trades = min(len([r for r in today_records if r.trade_type == 'BUY']),
+                                       len([r for r in today_records if r.trade_type == 'SELL']))
+
+                daily_stats['successful_trades'] = successful_trades
+                daily_stats['daily_return'] = total_profit / completed_trades if completed_trades > 0 else 0
+                daily_stats['win_rate'] = (successful_trades / completed_trades * 100) if completed_trades > 0 else 0
+            else:
+                daily_stats = {
+                    'total_trades': 0,
+                    'successful_trades': 0,
+                    'daily_return': 0,
+                    'win_rate': 0
                 }
 
-        # 업비트 잔고 확인
-        balance_info['cash'] = api.get_balance_cash()
-        if balance_info['cash'] is None:
-            balance_info['cash'] = 0
+            # 전략별 성과 계산
+            strategy_performance = {}
+            if today_records:
+                strategy_stats = {}
 
-        # 보유 코인 정보 조회 - pyupbit를 직접 사용
-        try:
-            all_balances = api.upbit.get_balances()
-            balance_info['coins'] = []
-            total_balance = balance_info['cash']
+                for record in today_records:
+                    strategy = record.strategy
+                    if strategy not in strategy_stats:
+                        strategy_stats[strategy] = {'trades': 0, 'profit': 0, 'buy_records': [], 'sell_records': []}
 
-            if all_balances:
-                for balance in all_balances:
-                    if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
-                        ticker = f"KRW-{balance['currency']}"
-                        try:
-                            # 현재 코인 가격
-                            current_price = api.get_current_price(ticker)
-                            coin_value = float(balance['balance']) * current_price
-                            total_balance += coin_value
+                    strategy_stats[strategy]['trades'] += 1
 
-                            balance_info['coins'].append({
-                                'ticker': ticker,
-                                'balance': float(balance['balance']),
-                                'value': coin_value,
-                                'avg_buy_price': float(balance['avg_buy_price']),
-                                'current_price': current_price
-                            })
-                        except Exception as e:
-                            logger.warning(f"코인 {ticker} 가격 조회 실패: {str(e)}")
+                    if record.trade_type == 'BUY':
+                        strategy_stats[strategy]['buy_records'].append(record)
+                    else:
+                        strategy_stats[strategy]['sell_records'].append(record)
 
-            balance_info['total_balance'] = total_balance
+                # 각 전략별 수익률 계산
+                for strategy, stats in strategy_stats.items():
+                    buy_records = sorted(stats['buy_records'], key=lambda x: x.timestamp)
+                    sell_records = sorted(stats['sell_records'], key=lambda x: x.timestamp)
+
+                    total_return = 0
+                    pair_count = 0
+
+                    # 매수-매도 쌍 매칭하여 수익률 계산
+                    for i in range(min(len(buy_records), len(sell_records))):
+                        buy_price = float(buy_records[i].price)
+                        sell_price = float(sell_records[i].price)
+                        return_rate = ((sell_price - buy_price) / buy_price) * 100
+                        total_return += return_rate
+                        pair_count += 1
+
+                    strategy_performance[strategy] = {
+                        'return': total_return / pair_count if pair_count > 0 else 0,
+                        'trades': stats['trades']
+                    }
+
+            # 거래 기록 조회 (최근 20개)
+            trade_records = TradeRecord.query.filter_by(
+                user_id=current_user.id
+            ).order_by(
+                TradeRecord.timestamp.desc()
+            ).limit(20).all()
+
+            return render_template('dashboard.html',
+                                   balance_info=balance_info,
+                                   scheduled_bots=user_bots,
+                                   trade_records=trade_records,
+                                   daily_stats=daily_stats,
+                                   strategy_performance=strategy_performance)
 
         except Exception as e:
-            logger.warning(f"보유 코인 정보 조회 실패: {str(e)}")
-            balance_info['total_balance'] = balance_info['cash']
-            balance_info['coins'] = []
+            logger.error(f"대시보드 로딩 중 오류: {str(e)}")
+            flash('대시보드 로딩 중 오류가 발생했습니다.', 'error')
+            return render_template('dashboard.html',
+                                   user=user,
+                                   api_keys_missing=True,
+                                   active_bots=[],
+                                   balance_info=None)
 
     except Exception as e:
-        logger.error(f"잔고 정보 조회 실패: {str(e)}")
-        balance_info['cash'] = 0
-        balance_info['total_balance'] = 0
-        balance_info['coins'] = []
+        logger.error(f"대시보드 접근 중 오류: {str(e)}")
+        flash('시스템 오류가 발생했습니다.', 'error')
+        return redirect(url_for('main.index'))
 
-    # 오늘의 거래 통계 계산
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_records = TradeRecord.query.filter_by(
-        user_id=current_user.id
-    ).filter(
-        TradeRecord.timestamp >= today_start
-    ).all()
-
-    daily_stats = {}
-    if today_records:
-        # 총 거래 횟수
-        daily_stats['total_trades'] = len(today_records)
-
-        # 매수/매도 쌍으로 거래 완료된 것들의 성공 거래 계산
-        successful_trades = 0
-        total_profit = 0
-
-        # 거래 기록을 티커별로 그룹화
-        ticker_trades = {}
-        for record in today_records:
-            if record.ticker not in ticker_trades:
-                ticker_trades[record.ticker] = {'buy': [], 'sell': []}
-
-            if record.trade_type == 'BUY':
-                ticker_trades[record.ticker]['buy'].append(record)
-            else:
-                ticker_trades[record.ticker]['sell'].append(record)
-
-        # 각 티커별로 수익 계산
-        for ticker, trades in ticker_trades.items():
-            buy_trades = sorted(trades['buy'], key=lambda x: x.timestamp)
-            sell_trades = sorted(trades['sell'], key=lambda x: x.timestamp)
-
-            # 간단한 FIFO 방식으로 매수-매도 쌍 매칭
-            buy_index = 0
-            for sell_trade in sell_trades:
-                if buy_index < len(buy_trades):
-                    buy_trade = buy_trades[buy_index]
-
-                    # 수익률 계산
-                    profit_rate = ((float(sell_trade.price) - float(buy_trade.price)) / float(buy_trade.price)) * 100
-
-                    if profit_rate > 0:
-                        successful_trades += 1
-
-                    total_profit += profit_rate
-                    buy_index += 1
-
-        # 승률 계산 (완료된 거래 쌍 기준)
-        completed_trades = min(len([r for r in today_records if r.trade_type == 'BUY']),
-                               len([r for r in today_records if r.trade_type == 'SELL']))
-
-        daily_stats['successful_trades'] = successful_trades
-        daily_stats['daily_return'] = total_profit / completed_trades if completed_trades > 0 else 0
-        daily_stats['win_rate'] = (successful_trades / completed_trades * 100) if completed_trades > 0 else 0
-    else:
-        daily_stats = {
-            'total_trades': 0,
-            'successful_trades': 0,
-            'daily_return': 0,
-            'win_rate': 0
-        }
-
-    # 전략별 성과 계산
-    strategy_performance = {}
-    if today_records:
-        strategy_stats = {}
-
-        for record in today_records:
-            strategy = record.strategy
-            if strategy not in strategy_stats:
-                strategy_stats[strategy] = {'trades': 0, 'profit': 0, 'buy_records': [], 'sell_records': []}
-
-            strategy_stats[strategy]['trades'] += 1
-
-            if record.trade_type == 'BUY':
-                strategy_stats[strategy]['buy_records'].append(record)
-            else:
-                strategy_stats[strategy]['sell_records'].append(record)
-
-        # 각 전략별 수익률 계산
-        for strategy, stats in strategy_stats.items():
-            buy_records = sorted(stats['buy_records'], key=lambda x: x.timestamp)
-            sell_records = sorted(stats['sell_records'], key=lambda x: x.timestamp)
-
-            total_return = 0
-            pair_count = 0
-
-            # 매수-매도 쌍 매칭하여 수익률 계산
-            for i in range(min(len(buy_records), len(sell_records))):
-                buy_price = float(buy_records[i].price)
-                sell_price = float(sell_records[i].price)
-                return_rate = ((sell_price - buy_price) / buy_price) * 100
-                total_return += return_rate
-                pair_count += 1
-
-            strategy_performance[strategy] = {
-                'return': total_return / pair_count if pair_count > 0 else 0,
-                'trades': stats['trades']
-            }
-
-    # 거래 기록 조회 (최근 20개)
-    trade_records = TradeRecord.query.filter_by(
-        user_id=current_user.id
-    ).order_by(
-        TradeRecord.timestamp.desc()
-    ).limit(20).all()
-
-    return render_template('dashboard.html',
-                           balance_info=balance_info,
-                           scheduled_bots=user_bots,
-                           trade_records=trade_records,
-                           daily_stats=daily_stats,
-                           strategy_performance=strategy_performance)
 
 # 자동매매 설정
 @bp.route('/settings', methods=['GET', 'POST'])
@@ -541,14 +581,15 @@ def start_bot(ticker, strategy_name, settings):
 
         # API 초기화
         if user_id not in upbit_apis:
-            upbit_apis[user_id] = UpbitAPI(
-                current_user.upbit_access_key,
-                current_user.upbit_secret_key,
-                async_handler,
-                get_logger_with_current_date(ticker, 'INFO', 7)
-            )
+            # UpbitAPI 클래스에서 자동으로 복호화 처리
+            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
 
-    upbit_api = upbit_apis[user_id]
+            # API 키 유효성 검증
+            is_valid, error_msg = upbit_api.validate_api_keys()
+            if not is_valid:
+                logger.error("업비트 키 복호화 에러")
+                return None
+
     strategy = create_strategy(strategy_name, upbit_api, logger)
 
     # settings에 user_id 추가
@@ -707,7 +748,7 @@ def create_trading_bot_from_favorite(favorite):
         bot_logger = get_logger_with_current_date(f"{favorite.user_id}_{favorite.ticker}")
 
         # API 객체 생성
-        api = UpbitAPI(user.upbit_access_key, user.upbit_secret_key, async_handler, bot_logger)
+        api = UpbitAPI(user.id, async_handler, bot_logger)
 
         # 봇 설정 생성 - 딕셔너리 형태로 전달하되 ticker 필드 확실히 포함
         settings = {
@@ -1136,6 +1177,37 @@ def get_ticker_trade_records(ticker):
 def favorites():
     favorites = TradingFavorite.query.filter_by(user_id=current_user.id).order_by(TradingFavorite.created_at.desc()).all()
     return render_template('favorites.html', title='즐겨찾기', favorites=favorites)
+
+
+@bp.route('/toggle_auto_restart/<int:favorite_id>', methods=['POST'])
+@login_required
+def toggle_auto_restart(favorite_id):
+    """자동 재시작 토글"""
+    favorite = TradingFavorite.query.filter_by(id=favorite_id, user_id=current_user.id).first()
+    if not favorite:
+        return jsonify({'success': False, 'message': '즐겨찾기를 찾을 수 없습니다.'}), 404
+
+    try:
+        # start_yn 값 토글
+        new_status = 'N' if favorite.start_yn == 'Y' else 'Y'
+        favorite.start_yn = new_status
+        favorite.updated_at = datetime.now()
+
+        db.session.commit()
+
+        status_text = 'Y' if new_status == 'Y' else 'N'
+        message = f'자동 재시작이 {"활성화" if new_status == "Y" else "비활성화"}되었습니다.'
+
+        return jsonify({
+            'success': True,
+            'message': message,
+            'status': status_text,
+            'new_status': new_status
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
 
 
 # 즐겨찾기 저장

@@ -1,18 +1,59 @@
 import pyupbit
 from app.utils.caching import cache_with_timeout, invalidate_cache
+from app.models import User
 from config import Config
 
 
 class UpbitAPI:
     """업비트 API 래퍼 클래스"""
 
-    def __init__(self, access_key, secret_key, async_handler, logger):
-        """초기화"""
-        self.upbit = pyupbit.Upbit(access_key, secret_key)
+    def __init__(self, user_id, async_handler, logger):
+        """
+        초기화 - User 객체를 통해 암호화된 키를 자동 복호화
+
+        Args:
+            user_id: 사용자 ID
+            async_handler: 비동기 핸들러
+            logger: 로거 객체
+        """
+        self.user_id = user_id
         self.async_handler = async_handler
         self.logger = logger
         self.api_call_count = 0
         self.last_reset_time = 0
+
+        # 사용자 정보 및 API 키 복호화
+        self.user = User.query.get(user_id)
+        if not self.user:
+            raise ValueError(f"사용자를 찾을 수 없습니다: {user_id}")
+
+        try:
+            self.access_key, self.secret_key = self.user.get_upbit_keys()
+            if not self.access_key or not self.secret_key:
+                raise ValueError("업비트 API 키가 설정되지 않았습니다.")
+
+            # 복호화된 키로 업비트 API 초기화
+            self.upbit = pyupbit.Upbit(self.access_key, self.secret_key)
+            self.logger.info(f"사용자 {self.user.username}의 업비트 API 초기화 완료")
+
+        except Exception as e:
+            self.logger.error(f"업비트 API 초기화 실패: {str(e)}")
+            raise ValueError(f"업비트 API 초기화 실패: {str(e)}")
+
+    @classmethod
+    def create_from_user(cls, user, async_handler, logger):
+        """
+        User 객체로부터 UpbitAPI 인스턴스 생성
+
+        Args:
+            user: User 모델 인스턴스
+            async_handler: 비동기 핸들러
+            logger: 로거 객체
+
+        Returns:
+            UpbitAPI: 초기화된 UpbitAPI 인스턴스
+        """
+        return cls(user.id, async_handler, logger)
 
     def _log_api_call(self):
         """API 호출 모니터링"""
@@ -25,6 +66,47 @@ class UpbitAPI:
             self.logger.info(f"API 호출 횟수 (지난 1시간): {self.api_call_count}")
             self.api_call_count = 0
             self.last_reset_time = current_time
+
+    def refresh_api_keys(self):
+        """
+        API 키 새로고침 (사용자가 키를 업데이트한 경우)
+        """
+        try:
+            # 사용자 정보 새로고침
+            self.user = User.query.get(self.user_id)
+            self.access_key, self.secret_key = self.user.get_upbit_keys()
+
+            if not self.access_key or not self.secret_key:
+                raise ValueError("업비트 API 키가 설정되지 않았습니다.")
+
+            # 새로운 키로 업비트 API 재초기화
+            self.upbit = pyupbit.Upbit(self.access_key, self.secret_key)
+            self.logger.info(f"사용자 {self.user.username}의 업비트 API 키 새로고침 완료")
+
+        except Exception as e:
+            self.logger.error(f"업비트 API 키 새로고침 실패: {str(e)}")
+            raise ValueError(f"업비트 API 키 새로고침 실패: {str(e)}")
+
+    def validate_api_keys(self):
+        """
+        API 키 유효성 검증
+
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        try:
+            # 간단한 API 호출로 키 유효성 검증
+            balance = self.upbit.get_balance("KRW")
+            if balance is None:
+                return False, "API 키가 유효하지 않습니다."
+
+            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공")
+            return True, None
+
+        except Exception as e:
+            error_msg = f"API 키 유효성 검증 실패: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg
 
     def fetch_data(self, fetch_func, max_retries=5, delay=0.5, backoff_factor=2):
         """데이터 가져오기 - 지수 백오프 추가"""

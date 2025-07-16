@@ -86,80 +86,87 @@ def initialize_scheduler(app):
             app.logger.info("트레이딩 스케줄러가 시작되었습니다.")
 
         # DB에서 trading_favorite 데이터 가져오기 (user_id, ticker 조합별로 최신 것만)
-        favorites = TradingFavorite.query.order_by(TradingFavorite.updated_at.desc()).all()
+        favorites = TradingFavorite.query.filter_by(start_yn='Y').order_by(TradingFavorite.id.asc()).all()
+        if favorites:
+            # user_id와 ticker 조합별로 중복 제거 (최신 것만 유지)
+            unique_favorites = {}
+            for favorite in favorites:
+                key = (favorite.user_id, favorite.ticker)
+                if key not in unique_favorites:
+                    unique_favorites[key] = favorite
 
-        # user_id와 ticker 조합별로 중복 제거 (최신 것만 유지)
-        unique_favorites = {}
-        for favorite in favorites:
-            key = (favorite.user_id, favorite.ticker)
-            if key not in unique_favorites:
-                unique_favorites[key] = favorite
+            favorites = list(unique_favorites.values())
+            restored_count = 0
 
-        favorites = list(unique_favorites.values())
-        restored_count = 0
+            for favorite in favorites:
+                try:
+                    # 봇 생성
+                    bot, settings = create_trading_bot_from_favorite(favorite)
+                    if bot is None:
+                        app.logger.error(f"봇 생성 실패: {favorite.name} ({favorite.ticker})")
+                        continue
 
-        for favorite in favorites:
-            try:
-                # 봇 생성
-                bot, settings = create_trading_bot_from_favorite(favorite)
-                if bot is None:
-                    app.logger.error(f"봇 생성 실패: {favorite.name} ({favorite.ticker})")
-                    continue
+                    # 작업 ID 생성
+                    job_id = f"Trading_bot_{favorite.user_id}_{favorite.ticker}_{favorite.strategy}_{uuid.uuid4().hex[:8]}"
 
-                # 작업 ID 생성
-                job_id = f"Trading_bot_{favorite.user_id}_{favorite.ticker}_{favorite.strategy}_{uuid.uuid4().hex[:8]}"
+                    # 스케줄러용 래퍼 함수 생성
+                    def create_scheduled_wrapper(user_id, ticker, bot_instance):
+                        def wrapper():
+                            scheduled_trading_cycle(user_id, ticker, bot=bot_instance)
 
-                # 스케줄러용 래퍼 함수 생성
-                def create_scheduled_wrapper(user_id, ticker, bot_instance):
-                    def wrapper():
-                        scheduled_trading_cycle(user_id, ticker, bot=bot_instance)
+                        return wrapper
 
-                    return wrapper
+                    trading_func = create_scheduled_wrapper(favorite.user_id, favorite.ticker, bot)
 
-                trading_func = create_scheduled_wrapper(favorite.user_id, favorite.ticker, bot)
+                    # 스케줄러에 작업 추가
+                    success = scheduler_manager.add_trading_job(
+                        job_id=job_id,
+                        trading_func=trading_func,
+                        interval_seconds=favorite.sleep_time,
+                        user_id=favorite.user_id,
+                        ticker=favorite.ticker,
+                        strategy=favorite.strategy
+                    )
 
-                # 스케줄러에 작업 추가
-                success = scheduler_manager.add_trading_job(
-                    job_id=job_id,
-                    trading_func=trading_func,
-                    interval_seconds=favorite.sleep_time,
-                    user_id=favorite.user_id,
-                    ticker=favorite.ticker,
-                    strategy=favorite.strategy
-                )
+                    if success:
+                        # scheduled_bots 딕셔너리에 사용자 ID 키가 없으면 생성
+                        if favorite.user_id not in scheduled_bots:
+                            scheduled_bots[favorite.user_id] = {}
+                        else:
+                            if favorite.ticker in scheduled_bots[favorite.user_id]:
+                                old_job_id = scheduled_bots[favorite.user_id][favorite.ticker]['job_id']
+                                scheduler_manager.remove_job(old_job_id)
+                                app.logger.info(f"기존 스케줄 작업 중지: {favorite.user_id} / {favorite.ticker} / {old_job_id}")
+                                time.sleep(1)
 
-                if success:
-                    # scheduled_bots 딕셔너리에 사용자 ID 키가 없으면 생성
-                    if favorite.user_id not in scheduled_bots:
-                        scheduled_bots[favorite.user_id] = {}
+                        with scheduler_manager.lock:
+                            scheduled_bots[favorite.user_id][favorite.ticker] = {
+                                'job_id': job_id,
+                                'bot': bot,
+                                'strategy': favorite.strategy,
+                                'settings': settings,
+                                'interval': favorite.sleep_time,
+                                'start_time': datetime.now(),
+                                'username': settings['username'],
+                                'cycle_count': 0,
+                                'last_run': None,
+                                'running': True,  # 실행 상태 추가
+                                'interval_label': get_interval_label(favorite.interval)  # 수정된 부분: sleep_time 직접 전달
+                            }
+                        restored_count += 1
+                        app.logger.info(f"트레이딩 작업 복원: {favorite.name} ({favorite.ticker})")
 
-                    with scheduler_manager.lock:
-                        scheduled_bots[favorite.user_id][favorite.ticker] = {
-                            'job_id': job_id,
-                            'bot': bot,
-                            'strategy': favorite.strategy,
-                            'settings': settings,
-                            'interval': favorite.sleep_time,
-                            'start_time': datetime.now(),
-                            'username': settings['username'],
-                            'cycle_count': 0,
-                            'last_run': None,
-                            'running': True,  # 실행 상태 추가
-                            'interval_label': get_interval_label(favorite.interval)  # 수정된 부분: sleep_time 직접 전달
-                        }
-                    restored_count += 1
-                    app.logger.info(f"트레이딩 작업 복원: {favorite.name} ({favorite.ticker})")
+                    else:
+                        app.logger.error(f"트레이딩 작업 복원 실패: {favorite.name} ({favorite.ticker})")
 
-                else:
-                    app.logger.error(f"트레이딩 작업 복원 실패: {favorite.name} ({favorite.ticker})")
+                except Exception as e:
+                    app.logger.error(f"즐겨찾기 복원 중 오류 ({favorite.name}): {e}")
 
-            except Exception as e:
-                app.logger.error(f"즐겨찾기 복원 중 오류 ({favorite.name}): {e}")
-                
-            time.sleep(3) # 3초씩 여유를 두고 재실행
-            
-        app.logger.info(f"총 {restored_count}개의 트레이딩 작업이 복원되었습니다.")
+                time.sleep(3) # 3초씩 여유를 두고 재실행
 
+            app.logger.info(f"총 {restored_count}개의 트레이딩 작업이 복원되었습니다.")
+        else:
+            app.logger.info("즐겨찾기 데이터가 없습니다.")
     except Exception as e:
         app.logger.error(f"스케줄러 초기화 실패: {e}")
 
