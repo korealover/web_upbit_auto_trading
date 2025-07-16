@@ -407,24 +407,24 @@ class UpbitTradingBot:
     def record_trade(self, trade_type, ticker, price, volume, amount, profit_loss=None):
         """거래 기록 저장"""
         try:
-            # Flask 애플리케이션 컨텍스트를 정확하게 가져오기
-            # 현재 앱 인스턴스 가져오기 또는 새로 생성
+            # 전역 앱 인스턴스 사용 (create_app 재호출 방지)
             try:
                 from flask import current_app
                 app = current_app._get_current_object()
             except RuntimeError:
-                # 현재 앱 컨텍스트가 없는 경우에만 새로 생성
-                from app import create_app
-                app = create_app()
+                # 현재 앱 컨텍스트가 없는 경우 전역 앱 인스턴스 사용
+                from app import app
+                if not app:
+                    self.logger.warning("앱 인스턴스를 찾을 수 없습니다. 거래 기록 저장을 건너뜁니다.")
+                    return
 
             with app.app_context():
                 from app.models import TradeRecord, db
-                from app.models import kst_now  # 한국 시간 함수 import
+                from app.models import kst_now
 
                 # 매도인 경우 수익/손실률 계산
                 if trade_type == 'SELL':
                     try:
-                        # 평균 매수가 가져오기
                         avg_buy_price = self.api.get_buy_avg(ticker)
                         if avg_buy_price and avg_buy_price > 0:
                             profit_loss = ((price - avg_buy_price) / avg_buy_price) * 100
@@ -445,7 +445,7 @@ class UpbitTradingBot:
                     amount=amount,
                     profit_loss=profit_loss,
                     strategy=strategy_name,
-                    timestamp=kst_now()  # UTC 대신 한국 시간 사용
+                    timestamp=kst_now()
                 )
 
                 db.session.add(trade_record)
