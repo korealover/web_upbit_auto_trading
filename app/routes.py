@@ -1219,9 +1219,13 @@ def save_favorite():
     favorite_form = FavoriteForm(request.form)
 
     if favorite_form.name.data:
+        # 체크박스 값을 Y/N으로 변환
+        start_yn = 'Y' if favorite_form.start_yn.data else 'N'
+
         favorite = TradingFavorite(
             user_id=current_user.id,
-            name=favorite_form.name.data
+            name=favorite_form.name.data,
+            start_yn=start_yn
         )
         # settings_form의 데이터로 favorite 객체 채우기
         for field in settings_form:

@@ -123,4 +123,5 @@ class TradingSettingsForm(FlaskForm):
 
 class FavoriteForm(FlaskForm):
     name = StringField('즐겨찾기 이름', validators=[DataRequired(message="이름을 입력해주세요.")])
+    start_yn = BooleanField('서비스 재시작 시 자동거래 시작', default=False)
     submit = SubmitField('저장')

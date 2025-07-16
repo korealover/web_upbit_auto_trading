@@ -235,6 +235,13 @@
                             </div>
                         {% endif %}
                     </div>
+
+                    <!-- 자동 거래 시작 체크박스 -->
+                    <div class="form-check mb-3">
+                        {{ favorite_form.start_yn(class="form-check-input", id="start_yn_checkbox") }}
+                        {{ favorite_form.start_yn.label(class="form-check-label") }}
+                        <small class="form-text text-muted d-block">체크하면 서비스 재시작 시 자동거래를 시작합니다.</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
@@ -244,6 +251,7 @@
         </div>
     </div>
 </div>
+
 
 {% endblock %}
 
