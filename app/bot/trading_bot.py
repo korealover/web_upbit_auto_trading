@@ -24,8 +24,6 @@ except ImportError:
         return decorator
 
 from config import Config
-from app.models import TradeRecord
-from app import db
 import datetime
 import time
 import threading
@@ -87,19 +85,16 @@ class UpbitTradingBot:
             self.logger.error(f"텔레그램 거래 알림 전송 중 오류: {str(e)}")
 
     def _get_field_value(self, field, default=None):
-        """WTForms 필드 또는 딕셔너리 값에서 안전하게 값 추출"""
-        try:
-            if field is None:
-                return default
-            elif hasattr(field, 'data'):
-                return field.data
-            elif isinstance(field, dict):
-                return field.get('data', default)
-            else:
-                return field if field is not None else default
-        except Exception as e:
-            self.logger.warning(f"필드 값 추출 중 오류: {e}")
+        """폼 필드나 딕셔너리 값을 안전하게 추출"""
+        if field is None:
             return default
+
+        # WTForms 필드인 경우
+        if hasattr(field, 'data'):
+            return field.data
+
+        # 일반 값인 경우
+        return field
 
     def get_ticker(self):
         """ticker 값을 안전하게 가져오기"""
@@ -115,8 +110,8 @@ class UpbitTradingBot:
         try:
             # 스레드 모니터링 등록 (사용 가능한 경우만)
             if THREAD_MONITOR_AVAILABLE:
-                ticker_value = self._get_field_value(getattr(self.args, 'ticker', None))
-                strategy_value = self._get_field_value(getattr(self.args, 'strategy', None))
+                ticker_value = self._get_field_value(self.args.get('ticker') if isinstance(self.args, dict) else getattr(self.args, 'ticker', None))
+                strategy_value = self._get_field_value(self.args.get('strategy') if isinstance(self.args, dict) else getattr(self.args, 'strategy', None))
 
                 thread_monitor.register_thread(
                     user_id=self.username,
@@ -124,17 +119,26 @@ class UpbitTradingBot:
                     strategy=strategy_value
                 )
 
-            # 필드 값들을 안전하게 추출 - 딕셔너리 형태 args 고려
-            if isinstance(self.args, dict):
-                ticker = self.args.get('ticker', None)
-                buy_amount = self.args.get('buy_amount', None)
-                min_cash = self.args.get('min_cash', None)
-                prevent_loss_sale = self.args.get('prevent_loss_sale', 'N')
-            else:
-                ticker = self._get_field_value(getattr(self.args, 'ticker', None))
-                buy_amount = self._get_field_value(getattr(self.args, 'buy_amount', None))
-                min_cash = self._get_field_value(getattr(self.args, 'min_cash', None))
-                prevent_loss_sale = self._get_field_value(getattr(self.args, 'prevent_loss_sale', None), 'N')
+            # 필드 값들을 안전하게 추출 - 통합된 방식
+            ticker = self._get_field_value(
+                self.args.get('ticker') if isinstance(self.args, dict) else getattr(self.args, 'ticker', None)
+            )
+            buy_amount = self._get_field_value(
+                self.args.get('buy_amount') if isinstance(self.args, dict) else getattr(self.args, 'buy_amount', None)
+            )
+            min_cash = self._get_field_value(
+                self.args.get('min_cash') if isinstance(self.args, dict) else getattr(self.args, 'min_cash', None)
+            )
+            prevent_loss_sale = self._get_field_value(
+                self.args.get('prevent_loss_sale') if isinstance(self.args, dict) else getattr(self.args, 'prevent_loss_sale', None),
+                'N'
+            )
+
+            # 전략 이름 안전하게 가져오기 - 개선된 부분
+            strategy_name = self._get_field_value(
+                self.args.get('strategy') if isinstance(self.args, dict) else getattr(self.args, 'strategy', None),
+                'bollinger'  # 기본값을 'bollinger'로 변경
+            )
 
             if not ticker:
                 self.logger.error("티커 정보를 가져올 수 없습니다.")
@@ -142,23 +146,18 @@ class UpbitTradingBot:
                 self.logger.error(f"디버그 - args 내용: {self.args}")
                 return None
 
-            # 전략에 따라 분기
-            if isinstance(self.args, dict):
-                strategy_name = self.args.get('strategy', None)
-            else:
-                strategy_name = self._get_field_value(getattr(self.args, 'strategy', None))
-
             if strategy_name == 'volatility':
                 # 변동성 돌파 전략 사용
                 self.logger.info(f"변동성 돌파 전략으로 거래 분석 시작: {ticker}")
-                if isinstance(self.args, dict):
-                    k_value = self.args.get('k', None)
-                    target_profit = self.args.get('target_profit', None)
-                    stop_loss = self.args.get('stop_loss', None)
-                else:
-                    k_value = self._get_field_value(getattr(self.args, 'k', None))
-                    target_profit = self._get_field_value(getattr(self.args, 'target_profit', None))
-                    stop_loss = self._get_field_value(getattr(self.args, 'stop_loss', None))
+                k_value = self._get_field_value(
+                    self.args.get('k') if isinstance(self.args, dict) else getattr(self.args, 'k', None)
+                )
+                target_profit = self._get_field_value(
+                    self.args.get('target_profit') if isinstance(self.args, dict) else getattr(self.args, 'target_profit', None)
+                )
+                stop_loss = self._get_field_value(
+                    self.args.get('stop_loss') if isinstance(self.args, dict) else getattr(self.args, 'stop_loss', None)
+                )
                 signal = self.strategy.generate_volatility_signal(ticker, k_value, target_profit, stop_loss)
 
             elif strategy_name == 'adaptive':
@@ -174,28 +173,32 @@ class UpbitTradingBot:
             elif strategy_name == 'rsi':
                 # RSI 전략 사용
                 self.logger.info(f"RSI 전략으로 거래 분석 시작: {ticker}")
-                if isinstance(self.args, dict):
-                    rsi_period = self.args.get('rsi_period', None)
-                    rsi_oversold = self.args.get('rsi_oversold', None)
-                    rsi_overbought = self.args.get('rsi_overbought', None)
-                    rsi_timeframe = self.args.get('rsi_timeframe', None)
-                else:
-                    rsi_period = self._get_field_value(getattr(self.args, 'rsi_period', None))
-                    rsi_oversold = self._get_field_value(getattr(self.args, 'rsi_oversold', None))
-                    rsi_overbought = self._get_field_value(getattr(self.args, 'rsi_overbought', None))
-                    rsi_timeframe = self._get_field_value(getattr(self.args, 'rsi_timeframe', None))
+                rsi_period = self._get_field_value(
+                    self.args.get('rsi_period') if isinstance(self.args, dict) else getattr(self.args, 'rsi_period', None)
+                )
+                rsi_oversold = self._get_field_value(
+                    self.args.get('rsi_oversold') if isinstance(self.args, dict) else getattr(self.args, 'rsi_oversold', None)
+                )
+                rsi_overbought = self._get_field_value(
+                    self.args.get('rsi_overbought') if isinstance(self.args, dict) else getattr(self.args, 'rsi_overbought', None)
+                )
+                rsi_timeframe = self._get_field_value(
+                    self.args.get('rsi_timeframe') if isinstance(self.args, dict) else getattr(self.args, 'rsi_timeframe', None)
+                )
                 signal = self.strategy.generate_signal(ticker, rsi_period, rsi_oversold, rsi_overbought, rsi_timeframe)
+
 
             else:
                 # 볼린저 밴드 전략 사용 (기본값)
-                if isinstance(self.args, dict):
-                    interval = self.args.get('interval', None)
-                    window = self.args.get('window', None)
-                    multiplier = self.args.get('multiplier', None)
-                else:
-                    interval = self._get_field_value(getattr(self.args, 'interval', None))
-                    window = self._get_field_value(getattr(self.args, 'window', None))
-                    multiplier = self._get_field_value(getattr(self.args, 'multiplier', None))
+                interval = self._get_field_value(
+                    self.args.get('interval') if isinstance(self.args, dict) else getattr(self.args, 'interval', None)
+                )
+                window = self._get_field_value(
+                    self.args.get('window') if isinstance(self.args, dict) else getattr(self.args, 'window', None)
+                )
+                multiplier = self._get_field_value(
+                    self.args.get('multiplier') if isinstance(self.args, dict) else getattr(self.args, 'multiplier', None)
+                )
 
                 self.logger.info(f"볼린저 밴드 전략으로 거래 분석 시작: {ticker}, 간격: {interval}")
 
@@ -405,14 +408,13 @@ class UpbitTradingBot:
         """거래 기록 저장"""
         try:
             # Flask 애플리케이션 컨텍스트를 정확하게 가져오기
-            from app import create_app
-
             # 현재 앱 인스턴스 가져오기 또는 새로 생성
             try:
                 from flask import current_app
                 app = current_app._get_current_object()
             except RuntimeError:
-                # 현재 앱 컨텍스트가 없는 경우 새로 생성
+                # 현재 앱 컨텍스트가 없는 경우에만 새로 생성
+                from app import create_app
                 app = create_app()
 
             with app.app_context():
