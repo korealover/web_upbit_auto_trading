@@ -238,6 +238,10 @@ def dashboard():
                         if 'interval_label' in bot_info:
                             bot_info['interval_label'] = get_selected_label(bot_info['interval_label'])
 
+                        # 장기투자 여부
+                        if 'long_term_investment' in bot_info:
+                            bot_info['long_term_investment'] = bot_info['long_term_investment']
+
                         # 실행 상태 확인
                         if 'running' in bot_info:
                             bot_info['running'] = True if bot_info['running'] else False
@@ -274,7 +278,8 @@ def dashboard():
                             'buy_amount': 0,
                             'min_cash': 0,
                             'sell_portion': 100,
-                            'prevent_loss_sale': False,
+                            'prevent_loss_sale': 'Y',
+                            'long_term_investment': 'N',
                             'sleep_time': 30,
                             'ticker': ticker,
                             'strategy': bot_info.get('strategy', ''),
@@ -340,7 +345,8 @@ def dashboard():
                             'buy_amount': 0,
                             'min_cash': 0,
                             'sell_portion': 100,
-                            'prevent_loss_sale': False,
+                            'prevent_loss_sale': 'Y',
+                            'long_term_investment': 'N',
                             'sleep_time': 30,
                             'ticker': ticker,
                             'strategy': '',
@@ -611,7 +617,15 @@ def start_bot(ticker, strategy_name, settings):
     elif isinstance(settings, dict) and 'sleep_time' in settings:
         sleep_time = settings['sleep_time']
     else:
-        sleep_time = 30  # 기본값
+        sleep_time = 60  # 기본값
+
+    # 장기 투자 여부
+    if hasattr(settings, 'long_term_investment'):
+        long_term_investment = settings.long_term_investment.data if hasattr(settings.long_term_investment, 'data') else settings.long_term_investment
+    elif isinstance(settings, dict) and 'long_term_investment' in settings:
+        long_term_investment = settings['long_term_investment']
+    else:
+        long_term_investment = 'N'  # 기본값
 
     # 고유한 작업 ID 생성
     job_id = f"Trading_bot_{user_id}_{ticker}_{strategy_name}_{uuid.uuid4().hex[:8]}"
@@ -639,7 +653,8 @@ def start_bot(ticker, strategy_name, settings):
                 'cycle_count': 0,
                 'last_run': None,
                 'running': True,  # 실행 상태 추가
-                'interval_label': get_selected_label(settings['interval'])  # 수정된 부분: sleep_time 직접 전달
+                'interval_label': get_selected_label(settings['interval']),  # 수정된 부분: sleep_time 직접 전달
+                'long_term_investment': long_term_investment
             }
 
         logger.info(f"APScheduler 봇 시작 성공: {ticker} (Job ID: {job_id})")
@@ -757,6 +772,7 @@ def create_trading_bot_from_favorite(favorite):
             'min_cash': favorite.min_cash,
             'sell_portion': favorite.sell_portion,
             'prevent_loss_sale': favorite.prevent_loss_sale,
+            'long_term_investment': favorite.long_term_investment,
             'window': favorite.window,
             'multiplier': favorite.multiplier,
             'k': favorite.k,
@@ -1330,6 +1346,7 @@ def get_scheduler_status():
                     'buy_amount': get_setting_value('buy_amount', 0),
                     'window': get_setting_value('window', 20),
                     'multiplier': get_setting_value('multiplier', 2.0),
+                    'long_term_investment': bot_info.get('long_term_investment', 'N'),
                 }
 
                 user_bot_list.append(bot_status)

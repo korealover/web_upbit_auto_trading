@@ -63,6 +63,11 @@
                             {{ form.prevent_loss_sale(class="form-select") }}
                             <small class="text-muted">매수 평단가 이하 매도 금지</small>
                         </div>
+                        <div class="col-md-3">
+                            {{ form.long_term_investment.label(class="form-label") }}
+                            {{ form.long_term_investment(class="form-select") }}
+                            <small class="text-muted">장기 투자(보유)를 위해 매도 금지</small>
+                        </div>
                     </div>
 
 

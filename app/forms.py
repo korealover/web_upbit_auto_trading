@@ -96,6 +96,7 @@ class TradingSettingsForm(FlaskForm):
         (0.6, '60%'), (0.7, '70%'), (0.8, '80%'), (0.9, '90%'), (0.1, '100%')
     ], default=0.5)
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
+    long_term_investment = SelectField('장기 투자', choices=[('Y', '예'), ('N', '아니오')], default='N')
 
 
     # 볼린저 밴드 전략 설정

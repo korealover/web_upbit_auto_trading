@@ -151,7 +151,8 @@ def initialize_scheduler(app):
                                 'cycle_count': 0,
                                 'last_run': None,
                                 'running': True,  # 실행 상태 추가
-                                'interval_label': get_interval_label(favorite.interval)  # 수정된 부분: sleep_time 직접 전달
+                                'interval_label': get_interval_label(favorite.interval),  # 수정된 부분: sleep_time 직접 전달
+                                'long_term_investment': favorite.long_term_investment
                             }
                         restored_count += 1
                         app.logger.info(f"트레이딩 작업 복원: {favorite.name} ({favorite.ticker})")

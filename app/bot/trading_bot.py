@@ -91,10 +91,19 @@ class UpbitTradingBot:
 
         # WTForms 필드인 경우
         if hasattr(field, 'data'):
-            return field.data
+            value = field.data
+        else:
+            # 일반 값인 경우
+            value = field
 
-        # 일반 값인 경우
-        return field
+        # 문자열인 경우 정수로 변환 시도
+        if isinstance(value, str) and value.isdigit():
+            try:
+                return int(value)
+            except ValueError:
+                return default
+
+        return value
 
     def get_ticker(self):
         """ticker 값을 안전하게 가져오기"""
@@ -129,8 +138,14 @@ class UpbitTradingBot:
             min_cash = self._get_field_value(
                 self.args.get('min_cash') if isinstance(self.args, dict) else getattr(self.args, 'min_cash', None)
             )
+            # 매수 평단가 이하 매도 금지
             prevent_loss_sale = self._get_field_value(
                 self.args.get('prevent_loss_sale') if isinstance(self.args, dict) else getattr(self.args, 'prevent_loss_sale', None),
+                'Y'
+            )
+            # 장기 투자
+            long_term_investment= self._get_field_value(
+                self.args.get('long_term_investment') if isinstance(self.args, dict) else getattr(self.args, 'long_term_investment', None),
                 'N'
             )
 
@@ -186,7 +201,6 @@ class UpbitTradingBot:
                     self.args.get('rsi_timeframe') if isinstance(self.args, dict) else getattr(self.args, 'rsi_timeframe', None)
                 )
                 signal = self.strategy.generate_signal(ticker, rsi_period, rsi_oversold, rsi_overbought, rsi_timeframe)
-
 
             else:
                 # 볼린저 밴드 전략 사용 (기본값)
@@ -289,6 +303,10 @@ class UpbitTradingBot:
                     current_price = self.api.get_current_price(ticker)
                     if not current_price:
                         self.logger.error("현재가를 조회할 수 없어 매도를 건너뜁니다.")
+                        return None
+
+                    if long_term_investment == 'Y':
+                        self.logger.info(f"장기 보유 코인이므로 매도를 건너뜁니다.")
                         return None
 
                     avg_buy_price = self.api.get_buy_avg(ticker)  # 평단가를 미리 조회
@@ -472,12 +490,18 @@ class UpbitTradingBot:
 
         # 간격 설정 (기본값: args에서 가져오기)
         if interval_seconds is None:
-            interval_seconds = self._get_field_value(getattr(self.args, 'sleep_time', None), 30)
+            interval_seconds = self._get_field_value(getattr(self.args, 'sleep_time', None), 60)
+
+        # interval_seconds를 정수로 변환
+        try:
+            interval_seconds = int(interval_seconds)
+        except (ValueError, TypeError):
+            interval_seconds = 60  # 기본값
 
         # 작업 ID 생성
         ticker = self._get_field_value(getattr(self.args, 'ticker', None))
         strategy = self._get_field_value(getattr(self.args, 'strategy', None))
-        self.job_id = f"{self.username}_{ticker}_{strategy}_{int(datetime.now().timestamp())}"
+        self.job_id = f"Trading_bot_{self.user_id}_{ticker}_{strategy}_{int(datetime.now().timestamp())}"
 
         # 스케줄러에 작업 추가
         success = scheduler_manager.add_trading_job(
