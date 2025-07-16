@@ -77,16 +77,32 @@ class TradingSettingsForm(FlaskForm):
     # ('ensemble', '앙상블 전략 (다중 전략 결합)')
 
     # 공통 설정
-    buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
-    min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=50000)
-    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
-    sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
+    # buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
+    buy_amount = SelectField('매수 금액 (원)', choices=[
+        (5000, '5,000원'), (10000, '10,000원'), (20000, '20,000원'), (30000, '30,000원'), (40000, '40,000원'),
+        (50000, '50,000원'), (60000, '60,000원'), (70000, '70,000원'), (80000, '80,000원'), (90000, '90,000원'), (100000, '100,000원')
+    ], default=10000)
+    # min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=50000)
+    min_cash = SelectField('최소 보유 현금량', choices=[
+        (50000, '50,000원'), (100000, '100,000원'), (200000, '200,000원'), (300000, '300,000원'), (400000, '400,000원')
+        , (500000, '500,000원'), (600000, '600,000원'), (700000, '700,000원'), (800000, '800,000원'), (900000, '900,000원'), (1000000, '1,000,000원')
+    ], default=50000)
+    # sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
+    sleep_time = SelectField('거래 간격 (초)', choices=[
+        (30, '30초'), (60, '60초'), (100, '100초'), (120, '2분'), (180, '3분'), (300, '5분')
+    ], default=60)
+    sell_portion = SelectField('매도 비율', choices=[
+        (0.1, '10%'), (0.2, '20%'), (0.3, '30%'), (0.4, '40%'), (0.5, '50%'),
+        (0.6, '60%'), (0.7, '70%'), (0.8, '80%'), (0.9, '90%'), (0.1, '100%')
+    ], default=0.5)
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
 
 
     # 볼린저 밴드 전략 설정
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
-    multiplier = FloatField('볼린저 밴드 승수', validators=[NumberRange(min=0.1)], default=2.0)
+    multiplier = SelectField('볼린저 밴드 승수', choices=[
+        (1.0, '1.0'), (2.0, '2.0(기본)'), (3.0, '3.0'), (4.0, '4.0'), (5.0, '5.0')
+    ], default=2.0)
 
     # 변동성 돌파 전략 설정
     k = FloatField('변동성 계수 (k)', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)

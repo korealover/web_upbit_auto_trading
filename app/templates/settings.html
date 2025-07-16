@@ -38,22 +38,22 @@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             {{ form.buy_amount.label(class="form-label") }}
-                            {{ form.buy_amount(class="form-control") }}
+                            {{ form.buy_amount(class="form-select") }}
                             <small class="text-muted">최소 5,000원 이상</small>
                         </div>
                         <div class="col-md-3">
                             {{ form.min_cash.label(class="form-label") }}
-                            {{ form.min_cash(class="form-control") }}
+                            {{ form.min_cash(class="form-select") }}
                             <small class="text-muted">안전 자금</small>
                         </div>
                         <div class="col-md-3">
                             {{ form.sleep_time.label(class="form-label") }}
-                            {{ form.sleep_time(class="form-control") }}
+                            {{ form.sleep_time(class="form-select") }}
                             <small class="text-muted">신호 확인 간격</small>
                         </div>
                         <div class="col-md-3">
                             {{ form.sell_portion.label(class="form-label") }}
-                            {{ form.sell_portion(class="form-control") }}
+                            {{ form.sell_portion(class="form-select") }}
                             <small class="text-muted">매도 비율</small>
                         </div>
                     </div>
@@ -81,7 +81,7 @@
                             </div>
                             <div class="col-md-6">
                                 {{ form.multiplier.label(class="form-label") }}
-                                {{ form.multiplier(class="form-control") }}
+                                {{ form.multiplier(class="form-select") }}
                                 <small class="text-muted">밴드 폭 조절</small>
                             </div>
                         </div>
