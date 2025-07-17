@@ -77,18 +77,12 @@ class TradingSettingsForm(FlaskForm):
     # ('ensemble', '앙상블 전략 (다중 전략 결합)')
 
     # 공통 설정
-    # 기존 SelectField 대신 IntegerField + JavaScript 슬라이더로 변경
+    # 기존 SelectField를 IntegerField와 FloatField로 변경
     buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=100000)], default=10000)
-    min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=10000000)], default=50000)
+    min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=1000000)], default=50000)
+    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=30, max=300)], default=60)
+    sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
-    # sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
-    sleep_time = SelectField('거래 간격 (초)', choices=[
-        (30, '30초'), (60, '60초'), (100, '100초'), (120, '2분'), (180, '3분'), (300, '5분')
-    ], default=60)
-    sell_portion = SelectField('매도 비율', choices=[
-        (0.1, '10%'), (0.2, '20%'), (0.3, '30%'), (0.4, '40%'), (0.5, '50%'),
-        (0.6, '60%'), (0.7, '70%'), (0.8, '80%'), (0.9, '90%'), (1.0, '100%')
-    ], default=0.5)
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
     long_term_investment = SelectField('장기 투자', choices=[('Y', '예'), ('N', '아니오')], default='N')
 
