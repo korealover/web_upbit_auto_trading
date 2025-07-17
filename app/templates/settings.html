@@ -33,30 +33,49 @@
                         </div>
                     </div>
 
-                    <!-- 공통 설정 -->
+                    <!-- 공통 설정 부분을 모바일 친화적으로 수정 -->
                     <h6 class="mt-4 mb-3">공통 설정</h6>
                     <div class="row mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.buy_amount.label(class="form-label") }}
-                            {{ form.buy_amount(class="form-select") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="buy_amount_slider"
+                                       min="5000" max="100000" step="5000"
+                                       value="{{ form.buy_amount.data or 10000 }}">
+                                <div class="slider-value-display">
+                                    <span id="buy_amount_display">{{ "{:,}".format(form.buy_amount.data or 10000) }}원</span>
+                                </div>
+                            </div>
+                            {{ form.buy_amount(class="form-control d-none", id="buy_amount_input") }}
                             <small class="text-muted">최소 5,000원 이상</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.min_cash.label(class="form-label") }}
-                            {{ form.min_cash(class="form-select") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="min_cash_slider"
+                                       min="0" max="1000000" step="10000"
+                                       value="{{ form.min_cash.data or 50000 }}">
+                                <div class="slider-value-display">
+                                    <span id="min_cash_display">{{ "{:,}".format(form.min_cash.data or 50000) }}원</span>
+                                </div>
+                            </div>
+                            {{ form.min_cash(class="form-control d-none", id="min_cash_input") }}
                             <small class="text-muted">안전 자금</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.sleep_time.label(class="form-label") }}
                             {{ form.sleep_time(class="form-select") }}
                             <small class="text-muted">신호 확인 간격</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.sell_portion.label(class="form-label") }}
                             {{ form.sell_portion(class="form-select") }}
                             <small class="text-muted">매도 비율</small>
                         </div>
                     </div>
+
                     <div class="row mb-3">
                         <div class="col-md-3">
                             {{ form.prevent_loss_sale.label(class="form-label") }}
@@ -341,6 +360,36 @@
             }
         }
 
+        // 모바일 슬라이더 기능 추가
+        function setupMobileSlider(sliderId, inputId, displayId, formatter) {
+            const slider = document.getElementById(sliderId);
+            const input = document.getElementById(inputId);
+            const display = document.getElementById(displayId);
+
+            if (slider && input && display) {
+                // 슬라이더 값 변경 시 input과 display 업데이트
+                slider.addEventListener('input', function() {
+                    const value = parseInt(this.value);
+                    input.value = value;
+                    display.textContent = formatter(value);
+                });
+
+                // 초기값 설정
+                slider.value = input.value || slider.min;
+                display.textContent = formatter(parseInt(slider.value));
+            }
+        }
+
+        // 금액 포맷터
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+        }
+
+        // 슬라이더 초기화
+        setupMobileSlider('buy_amount_slider', 'buy_amount_input', 'buy_amount_display', formatCurrency);
+        setupMobileSlider('min_cash_slider', 'min_cash_input', 'min_cash_display', formatCurrency);
+
+
         weightInputs.forEach(input => {
             if (input) {
                 input.addEventListener('input', validateWeights);
@@ -348,4 +397,41 @@
         });
     });
 </script>
+<style>
+    @media (max-width: 768px) {
+        .mobile-slider-container {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 5px 0;
+        }
+
+        .mobile-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .slider-value-display {
+            text-align: center;
+            font-weight: bold;
+            color: #0d6efd;
+            font-size: 1.1em;
+        }
+
+        .form-range {
+            height: 1.5rem;
+        }
+
+        .form-range::-webkit-slider-thumb {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+
+        .form-range::-moz-range-thumb {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+    }
+</style>
+
 {% endblock %}

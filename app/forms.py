@@ -77,16 +77,10 @@ class TradingSettingsForm(FlaskForm):
     # ('ensemble', '앙상블 전략 (다중 전략 결합)')
 
     # 공통 설정
-    # buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
-    buy_amount = SelectField('매수 금액 (원)', choices=[
-        (5000.0, '5,000원'), (10000.0, '10,000원'), (20000.0, '20,000원'), (30000.0, '30,000원'), (40000.0, '40,000원'),
-        (50000.0, '50,000원'), (60000.0, '60,000원'), (70000.0, '70,000원'), (80000.0, '80,000원'), (90000.0, '90,000원'), (100000.0, '100,000원')
-    ], default=10000.0)
-    # min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=50000)
-    min_cash = SelectField('최소 보유 현금량', choices=[
-        (0.0, '0원'), (500.0, '500원'), (5000.0, '5,000원'), (10000.0, '10,000원'), (30000.0, '30,000원'), (50000.0, '50,000원'), (100000.0, '100,000원'), (200000.0, '200,000원'), (300000.0, '300,000원'), (400000.0, '400,000원')
-        , (500000.0, '500,000원'), (600000.0, '600,000원'), (700000.0, '700,000원'), (800000.0, '800,000원'), (900000.0, '900,000원'), (1000000.0, '1,000,000원')
-    ], default=50000.0)
+    # 기존 SelectField 대신 IntegerField + JavaScript 슬라이더로 변경
+    buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=100000)], default=10000)
+    min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=10000000)], default=50000)
+
     # sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
     sleep_time = SelectField('거래 간격 (초)', choices=[
         (30, '30초'), (60, '60초'), (100, '100초'), (120, '2분'), (180, '3분'), (300, '5분')
