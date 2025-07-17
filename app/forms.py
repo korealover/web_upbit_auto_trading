@@ -93,7 +93,7 @@ class TradingSettingsForm(FlaskForm):
     ], default=60)
     sell_portion = SelectField('매도 비율', choices=[
         (0.1, '10%'), (0.2, '20%'), (0.3, '30%'), (0.4, '40%'), (0.5, '50%'),
-        (0.6, '60%'), (0.7, '70%'), (0.8, '80%'), (0.9, '90%'), (0.1, '100%')
+        (0.6, '60%'), (0.7, '70%'), (0.8, '80%'), (0.9, '90%'), (1.0, '100%')
     ], default=0.5)
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
     long_term_investment = SelectField('장기 투자', choices=[('Y', '예'), ('N', '아니오')], default='N')

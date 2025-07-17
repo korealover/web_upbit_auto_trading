@@ -53,7 +53,7 @@
                                         <strong>거래 간격(초) : </strong>
                                         {{ bot_info.settings.sleep_time|default('N/A') }} /
                                         <strong>매도 비율 : </strong>
-                                        {{ bot_info.settings.sell_portion|default('N/A') }}%
+                                        {{ (bot_info.settings.sell_portion * 100) |default('N/A') }}%
                                         {% if bot_info.strategy == 'bollinger' %}
                                         <br>
                                         <strong>이동평균 기간 : </strong>
