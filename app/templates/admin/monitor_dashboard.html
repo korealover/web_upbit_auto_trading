@@ -620,6 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </small>
                                         </div>
                                     </div>
+                                    ${bot.long_term_investment === 'Y' ? '<span class="badge bg-warning text-dark ms-2">장기투자</span>' : ''}
                                     <span class="badge bg-${bot.running ? 'success' : 'danger'} bot-status-badge">
                                         <i class="fas fa-${bot.running ? 'play' : 'stop'} me-1"></i>
                                         ${statusText}

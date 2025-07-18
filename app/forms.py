@@ -77,16 +77,21 @@ class TradingSettingsForm(FlaskForm):
     # ('ensemble', '앙상블 전략 (다중 전략 결합)')
 
     # 공통 설정
-    buy_amount = FloatField('매수 금액 (원)', validators=[NumberRange(min=5000)], default=10000)
-    min_cash = FloatField('최소 보유 현금량', validators=[NumberRange(min=0)], default=50000)
-    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10)], default=60)
+    # 기존 SelectField를 IntegerField와 FloatField로 변경
+    buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=500000)], default=10000)
+    min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=10000000)], default=50000)
+    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=30, max=300)], default=60)
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
+
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
+    long_term_investment = SelectField('장기 투자', choices=[('Y', '예'), ('N', '아니오')], default='N')
 
 
     # 볼린저 밴드 전략 설정
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
-    multiplier = FloatField('볼린저 밴드 승수', validators=[NumberRange(min=0.1)], default=2.0)
+    multiplier = SelectField('볼린저 밴드 승수', choices=[
+        (1.0, '1.0'), (2.0, '2.0(기본)'), (3.0, '3.0'), (4.0, '4.0'), (5.0, '5.0')
+    ], default=2.0)
 
     # 변동성 돌파 전략 설정
     k = FloatField('변동성 계수 (k)', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
@@ -123,4 +128,5 @@ class TradingSettingsForm(FlaskForm):
 
 class FavoriteForm(FlaskForm):
     name = StringField('즐겨찾기 이름', validators=[DataRequired(message="이름을 입력해주세요.")])
+    start_yn = BooleanField('서비스 재시작 시 자동거래 시작', default=False)
     submit = SubmitField('저장')

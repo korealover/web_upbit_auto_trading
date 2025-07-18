@@ -99,6 +99,12 @@ class TradingSchedulerManager:
                 if job_id in self.active_jobs:
                     self.remove_job(job_id)
 
+                # interval_seconds를 정수로 변환
+                try:
+                    interval_seconds = int(interval_seconds)
+                except (ValueError, TypeError):
+                    interval_seconds = 30  # 기본값
+
                 # 새 작업 추가
                 job = self.scheduler.add_job(
                     func=trading_func,

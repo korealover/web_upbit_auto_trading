@@ -10,6 +10,14 @@ class BollingerBandsStrategy:
         """볼린저 밴드 계산"""
         self.logger.debug(f"볼린저 밴드 계산 시작 (window={window}, multiplier={multiplier})")
 
+        # 입력 파라미터 검증 및 타입 변환
+        try:
+            window = int(window)
+            multiplier = float(multiplier)
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"파라미터 타입 변환 오류: window={window}, multiplier={multiplier}, 오류: {e}")
+            raise ValueError(f"Invalid parameter types: window must be int, multiplier must be float")
+
         # 이동평균 및 표준편차 계산
         sma = prices.rolling(window).mean()
         rolling_std = prices.rolling(window).std()

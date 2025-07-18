@@ -33,35 +33,78 @@
                         </div>
                     </div>
 
-                    <!-- 공통 설정 -->
+                    <!-- 공통 설정 부분을 모바일 친화적으로 수정 -->
                     <h6 class="mt-4 mb-3">공통 설정</h6>
                     <div class="row mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.buy_amount.label(class="form-label") }}
-                            {{ form.buy_amount(class="form-control") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="buy_amount_slider"
+                                       min="5000" max="500000" step="5000"
+                                       value="{{ form.buy_amount.data or 10000 }}">
+                                <div class="slider-value-display">
+                                    <span id="buy_amount_display">{{ "{:,}".format(form.buy_amount.data or 10000) }}원</span>
+                                </div>
+                            </div>
+                            {{ form.buy_amount(class="form-control d-none", id="buy_amount_input") }}
                             <small class="text-muted">최소 5,000원 이상</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.min_cash.label(class="form-label") }}
-                            {{ form.min_cash(class="form-control") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="min_cash_slider"
+                                       min="0" max="10000000" step="10000"
+                                       value="{{ form.min_cash.data or 50000 }}">
+                                <div class="slider-value-display">
+                                    <span id="min_cash_display">{{ "{:,}".format(form.min_cash.data or 50000) }}원</span>
+                                </div>
+                            </div>
+                            {{ form.min_cash(class="form-control d-none", id="min_cash_input") }}
                             <small class="text-muted">안전 자금</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.sleep_time.label(class="form-label") }}
-                            {{ form.sleep_time(class="form-control") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="sleep_time_slider"
+                                       min="30" max="300" step="30"
+                                       value="{{ form.sleep_time.data or 60 }}">
+                                <div class="slider-value-display">
+                                    <span id="sleep_time_display">{{ form.sleep_time.data or 60 }}초</span>
+                                </div>
+                            </div>
+                            {{ form.sleep_time(class="form-control d-none", id="sleep_time_input") }}
                             <small class="text-muted">신호 확인 간격</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.sell_portion.label(class="form-label") }}
-                            {{ form.sell_portion(class="form-control") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="sell_portion_slider"
+                                       min="0.1" max="1.0" step="0.1"
+                                       value="{{ form.sell_portion.data or 0.5 }}">
+                                <div class="slider-value-display">
+                                    <span id="sell_portion_display">{{ "{:.0%}".format(form.sell_portion.data or 0.5) }}</span>
+                                </div>
+                            </div>
+                            {{ form.sell_portion(class="form-control d-none", id="sell_portion_input") }}
                             <small class="text-muted">매도 비율</small>
                         </div>
                     </div>
+
+
                     <div class="row mb-3">
                         <div class="col-md-3">
                             {{ form.prevent_loss_sale.label(class="form-label") }}
                             {{ form.prevent_loss_sale(class="form-select") }}
                             <small class="text-muted">매수 평단가 이하 매도 금지</small>
+                        </div>
+                        <div class="col-md-3">
+                            {{ form.long_term_investment.label(class="form-label") }}
+                            {{ form.long_term_investment(class="form-select") }}
+                            <small class="text-muted">장기 투자(보유)를 위해 매도 금지</small>
                         </div>
                     </div>
 
@@ -81,7 +124,7 @@
                             </div>
                             <div class="col-md-6">
                                 {{ form.multiplier.label(class="form-label") }}
-                                {{ form.multiplier(class="form-control") }}
+                                {{ form.multiplier(class="form-select") }}
                                 <small class="text-muted">밴드 폭 조절</small>
                             </div>
                         </div>
@@ -235,6 +278,13 @@
                             </div>
                         {% endif %}
                     </div>
+
+                    <!-- 자동 거래 시작 체크박스 -->
+                    <div class="form-check mb-3">
+                        {{ favorite_form.start_yn(class="form-check-input", id="start_yn_checkbox") }}
+                        {{ favorite_form.start_yn.label(class="form-check-label") }}
+                        <small class="form-text text-muted d-block">체크하면 서비스 재시작 시 자동거래를 시작합니다.</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
@@ -245,6 +295,7 @@
     </div>
 </div>
 
+
 {% endblock %}
 
 {% block scripts %}
@@ -253,16 +304,14 @@
         const strategySelect = document.getElementById('strategy');
         const strategySettings = document.querySelectorAll('.strategy-settings');
         const favoriteForm = document.getElementById('favoriteForm');
+
         if(favoriteForm) {
             favoriteForm.addEventListener('submit', function(e) {
-                e.preventDefault(); // 기본 제출 동작 중단
-
+                e.preventDefault();
                 const mainForm = document.getElementById('settingsForm');
                 const mainFormData = new FormData(mainForm);
 
-                // 메인 폼 데이터를 즐겨찾기 폼 데이터에 추가
                 for (let [key, value] of mainFormData.entries()) {
-                    // 이미 존재하는 필드(예: csrf_token)는 덮어쓰지 않음
                     if (!favoriteForm.querySelector(`[name="${key}"]`)) {
                         const hiddenInput = document.createElement('input');
                         hiddenInput.type = 'hidden';
@@ -271,10 +320,51 @@
                         favoriteForm.appendChild(hiddenInput);
                     }
                 }
-                // 이제 즐겨찾기 폼을 제출
                 this.submit();
             });
         }
+
+        // 모바일 슬라이더 기능 추가
+        function setupMobileSlider(sliderId, inputId, displayId, formatter) {
+            const slider = document.getElementById(sliderId);
+            const input = document.getElementById(inputId);
+            const display = document.getElementById(displayId);
+
+            if (slider && input && display) {
+                // 슬라이더 값 변경 시 input과 display 업데이트
+                slider.addEventListener('input', function() {
+                    const value = parseFloat(this.value);
+                    input.value = value;
+                    display.textContent = formatter(value);
+                });
+
+                // 초기값 설정
+                slider.value = input.value || slider.min;
+                display.textContent = formatter(parseFloat(slider.value));
+            }
+        }
+
+        // 포맷터 함수들
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+        }
+
+        function formatSeconds(seconds) {
+            if (seconds >= 60) {
+                return Math.floor(seconds / 60) + '분';
+            }
+            return seconds + '초';
+        }
+
+        function formatPercentage(value) {
+            return Math.round(value * 100) + '%';
+        }
+
+        // 모든 슬라이더 초기화
+        setupMobileSlider('buy_amount_slider', 'buy_amount_input', 'buy_amount_display', formatCurrency);
+        setupMobileSlider('min_cash_slider', 'min_cash_input', 'min_cash_display', formatCurrency);
+        setupMobileSlider('sleep_time_slider', 'sleep_time_input', 'sleep_time_display', formatSeconds);
+        setupMobileSlider('sell_portion_slider', 'sell_portion_input', 'sell_portion_display', formatPercentage);
 
         function toggleSettings() {
             // 모든 설정 숨기기
@@ -335,4 +425,87 @@
         });
     });
 </script>
+
+<style>
+    @media (max-width: 768px) {
+        .mobile-slider-container {
+            padding: 15px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            margin: 8px 0;
+            border: 1px solid #dee2e6;
+        }
+
+        .mobile-slider {
+            width: 100%;
+            margin: 10px 0;
+            height: 8px;
+            background: linear-gradient(to right, #e9ecef 0%, #0d6efd 100%);
+            border-radius: 5px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .mobile-slider::-webkit-slider-thumb {
+            width: 24px;
+            height: 24px;
+            background: #0d6efd;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }
+
+        .mobile-slider::-webkit-slider-thumb:hover {
+            background: #0b5ed7;
+            transform: scale(1.1);
+        }
+
+        .mobile-slider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            background: #0d6efd;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        .slider-value-display {
+            text-align: center;
+            font-weight: bold;
+            color: #0d6efd;
+            font-size: 1.2em;
+            margin-top: 5px;
+            padding: 5px;
+            background: rgba(13, 110, 253, 0.1);
+            border-radius: 6px;
+        }
+
+        .form-range {
+            height: 8px;
+        }
+
+        /* 애니메이션 효과 */
+        .mobile-slider-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        /* 데스크톱에서는 기본 스타일 유지 */
+        @media (min-width: 769px) {
+            .mobile-slider-container {
+                background: transparent;
+                border: none;
+                padding: 0;
+            }
+
+            .mobile-slider-container:hover {
+                transform: none;
+                box-shadow: none;
+            }
+        }
+    }
+</style>
 {% endblock %}
