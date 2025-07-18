@@ -2,6 +2,8 @@ import time
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import platform
 from datetime import datetime, timedelta
 import asyncio
 import pyupbit
@@ -13,9 +15,47 @@ import json
 import sys
 from io import BytesIO
 
+
 # matplotlib 한글 폰트 설정
-plt.rcParams['font.family'] = 'DejaVu Sans'
-plt.rcParams['axes.unicode_minus'] = False
+def setup_korean_font():
+    """한글 폰트 설정"""
+    try:
+        system = platform.system()
+
+        if system == 'Windows':
+            # Windows의 경우 맑은 고딕 사용
+            font_candidates = ['Malgun Gothic', 'Microsoft YaHei', 'SimHei']
+        elif system == 'Darwin':  # macOS
+            # macOS의 경우 애플고딕 사용
+            font_candidates = ['AppleGothic', 'Apple SD Gothic Neo', 'Helvetica']
+        else:  # Linux
+            # Linux의 경우 나눔고딕 사용
+            font_candidates = ['NanumGothic', 'Nanum Gothic', 'DejaVu Sans']
+
+        # 시스템에서 사용 가능한 폰트 찾기
+        available_fonts = [f.name for f in fm.fontManager.ttflist]
+
+        # 한글 폰트 후보 중에서 사용 가능한 것 찾기
+        for font in font_candidates:
+            if font in available_fonts:
+                plt.rcParams['font.family'] = font
+                plt.rcParams['axes.unicode_minus'] = False
+                print(f"한글 폰트 설정 완료: {font}")
+                return
+
+        # 한글 폰트를 찾지 못한 경우 기본 설정
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['axes.unicode_minus'] = False
+        print("한글 폰트를 찾지 못했습니다. 기본 폰트를 사용합니다.")
+
+    except Exception as e:
+        print(f"폰트 설정 중 오류 발생: {str(e)}")
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['axes.unicode_minus'] = False
+
+
+# 한글 폰트 설정 실행
+setup_korean_font()
 
 # 로깅 설정
 os.makedirs("logs", exist_ok=True)
