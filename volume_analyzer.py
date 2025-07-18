@@ -250,7 +250,7 @@ class VolumeAnalyzer:
             logger.warning(f"{ticker} 거래량 데이터 조회 실패: {str(e)}")
             return None
 
-    async def analyze_top_volume_coins(self, top_n=5):
+    async def analyze_top_volume_coins(self, top_n=10):
         """거래량 상위 코인 분석"""
         logger.info("거래량 상위 코인 분석 시작...")
 
@@ -295,7 +295,7 @@ class VolumeAnalyzer:
 
             # 1. 거래대금 차트
             bars1 = ax1.bar(coin_names, volumes_krw, color='skyblue', alpha=0.7)
-            ax1.set_title('거래량 상위 5개 코인 - 24시간 거래대금', fontsize=14, fontweight='bold')
+            ax1.set_title('거래량 상위 10개 코인 - 24시간 거래대금', fontsize=14, fontweight='bold')
             ax1.set_ylabel('거래대금 (억원)', fontsize=12)
             ax1.grid(axis='y', alpha=0.3)
 
@@ -376,7 +376,7 @@ class VolumeAnalyzer:
 
             # 추가 분석 정보
             message += """📈 *분석 포인트*
-• 거래대금 기준 상위 5개 코인
+• 거래대금 기준 상위 10개 코인
 • 거래량 급증 코인 식별
 • 가격 변동률과 거래량 상관관계 분석
 • 실시간 시장 동향 파악
@@ -394,7 +394,7 @@ class VolumeAnalyzer:
                 await asyncio.sleep(1)  # API 제한 고려
                 await self.telegram_bot.send_photo(
                     chart_bytes,
-                    caption="거래량 상위 5개 코인 차트"
+                    caption="거래량 상위 10개 코인 차트"
                 )
 
             logger.info("거래량 분석 보고서 전송 완료")
@@ -408,8 +408,8 @@ class VolumeAnalyzer:
         try:
             logger.info("거래량 분석 시작")
 
-            # 상위 5개 코인 분석
-            top_coins = await self.analyze_top_volume_coins(5)
+            # 상위 10개 코인 분석
+            top_coins = await self.analyze_top_volume_coins(10)
 
             if not top_coins:
                 logger.error("분석할 데이터가 없습니다")
