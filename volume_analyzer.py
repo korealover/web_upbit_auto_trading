@@ -393,7 +393,7 @@ class VolumeAnalyzer:
         logger.info("정기 거래량 분석 스케줄러 시작")
 
         # 시작 메시지 전송
-        await self.telegram_bot.send_message("🚀 *거래량 분석기 스케줄러가 시작되었습니다*\n📅 분석 시간: 매일 09:00, 15:00, 21:00")
+        await self.telegram_bot.send_message("🚀 *거래량 분석기 스케줄러가 시작되었습니다*\n📅 분석 시간: 매일 08:00, 12:00, 17:00, 21:00")
 
         while True:
             try:
