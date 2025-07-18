@@ -58,7 +58,7 @@ start() {
     sleep 3
     if is_running; then
         log "거래량 분석기 스케줄러가 성공적으로 시작되었습니다. PID: $(cat "$PID_FILE")"
-        log "분석 시간: 매일 09:00, 15:00, 21:00"
+        log "분석 시간: 매일 08:00, 12:00, 17:00, 21:00"
         return 0
     else
         log "거래량 분석기 스케줄러 시작에 실패했습니다."
