@@ -343,7 +343,7 @@ class VolumeAnalyzer:
             # 보고서 메시지 생성
             report_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            message = f"""📊 *거래량 상위 5개 코인 분석 보고서*
+            message = f"""📊 *거래량 상위 10개 코인 분석 보고서*
 📅 {report_time}
 
 """
