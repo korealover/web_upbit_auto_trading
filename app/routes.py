@@ -552,13 +552,24 @@ def settings():
 
     # (기존) 설정 저장 및 봇 실행 로직 (POST 요청 시)
     if form.validate_on_submit() and request.method == 'POST' and not favorite_id:
-        # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
-        ticker = form.ticker.data
-        strategy_name = form.strategy.data
+        try:
+            # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
+            ticker = form.ticker.data
+            strategy_name = form.strategy.data
+            # 매수/매도 거래 시작
+            start_bot(ticker, strategy_name, form)
+            # 거래 설정 완료 후 자동으로 즐겨찾기에 저장
+            auto_save_result = auto_save_favorite_from_settings(request.form)
+            if auto_save_result['success']:
+                flash(f'거래 설정이 완료되고 "{auto_save_result["name"]}"으로 즐겨찾기에 자동 저장되었습니다.', 'success')
+            else:
+                flash('거래 설정은 완료되었지만 즐겨찾기 자동 저장에 실패했습니다.', 'warning')
 
-        start_bot(ticker, strategy_name, form)
-        flash('거래 설정이 적용되었습니다.', 'success')
-        return redirect(url_for('main.dashboard'))
+            # flash('거래 설정이 적용되었습니다.', 'success')
+            return redirect(url_for('main.dashboard'))
+        except Exception as e:
+            logger.error(f"Settings 처리 중 오류: {e}")
+            flash('설정 저장 중 오류가 발생했습니다.', 'danger')
 
     return render_template('settings.html', title='거래 설정', form=form, favorite_form=favorite_form)
 
@@ -1227,6 +1238,115 @@ def toggle_auto_restart(favorite_id):
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
 
 
+def auto_save_favorite_from_settings(form_data):
+    """settings에서 자동으로 즐겨찾기 저장"""
+    try:
+        from app.models import TradingFavorite, db
+        from datetime import datetime
+
+        # 자동 생성된 이름 (타임스탬프 포함)
+        ticker = form_data.get('ticker', 'UNKNOWN')
+        timestamp = datetime.now().strftime('%m%d_%H%M')
+        auto_name = f"자동저장_{ticker}_{timestamp}"
+
+        # 중복 이름 확인
+        existing = TradingFavorite.query.filter_by(
+            user_id=current_user.id,
+            name=auto_name
+        ).first()
+
+        if existing:
+            auto_name += f"_{datetime.now().strftime('%S')}"  # 초까지 추가
+
+        # 즐겨찾기 객체 생성 (save_favorite 로직 활용)
+        favorite_data = {
+            'name': auto_name,
+            'ticker': form_data.get('ticker'),
+            'strategy': form_data.get('strategy'),
+            'interval': form_data.get('interval'),
+            'buy_amount': form_data.get('buy_amount'),
+            'min_cash': form_data.get('min_cash'),
+            'sleep_time': form_data.get('sleep_time'),
+            'sell_portion': form_data.get('sell_portion'),
+            'prevent_loss_sale': form_data.get('prevent_loss_sale'),
+            'long_term_investment': form_data.get('long_term_investment'),
+            'window': form_data.get('window'),
+            'multiplier': form_data.get('multiplier'),
+            'k': form_data.get('k'),
+            'target_profit': form_data.get('target_profit'),
+            'stop_loss': form_data.get('stop_loss'),
+            'rsi_period': form_data.get('rsi_period'),
+            'rsi_oversold': form_data.get('rsi_oversold'),
+            'rsi_overbought': form_data.get('rsi_overbought'),
+            'rsi_timeframe': form_data.get('rsi_timeframe'),
+            'ensemble_volatility_weight': form_data.get('ensemble_volatility_weight'),
+            'ensemble_bollinger_weight': form_data.get('ensemble_bollinger_weight'),
+            'ensemble_rsi_weight': form_data.get('ensemble_rsi_weight'),
+            'start_yn': 'N'
+        }
+
+        # save_favorite의 핵심 로직 재사용
+        result = save_favorite_data(favorite_data)
+        print(f'resurlt => {result}')
+        return result
+
+    except Exception as e:
+        logger.error(f"자동 즐겨찾기 저장 오류: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+def save_favorite_data(favorite_data):
+    """즐겨찾기 데이터 저장 (공통 함수)"""
+    global db
+    try:
+        from app.models import TradingFavorite, db
+
+        favorite = TradingFavorite(
+            user_id=current_user.id,
+            name=favorite_data['name'],
+            ticker=favorite_data['ticker'],
+            strategy=favorite_data['strategy'],
+            interval=favorite_data['interval'],
+            buy_amount=float(favorite_data['buy_amount']),
+            min_cash=float(favorite_data['min_cash']),
+            sleep_time=int(favorite_data['sleep_time']),
+            sell_portion=float(favorite_data['sell_portion']),
+            prevent_loss_sale=favorite_data['prevent_loss_sale'],
+            long_term_investment=favorite_data['long_term_investment'],
+            window=int(favorite_data['window']),
+            multiplier=float(favorite_data['multiplier']),
+            k=float(favorite_data['k']),
+            target_profit=float(favorite_data['target_profit']),
+            stop_loss=float(favorite_data['stop_loss']),
+            rsi_period=int(favorite_data['rsi_period']),
+            rsi_oversold=float(favorite_data['rsi_oversold']),
+            rsi_overbought=float(favorite_data['rsi_overbought']),
+            rsi_timeframe=favorite_data['rsi_timeframe'],
+            ensemble_volatility_weight=float(favorite_data['ensemble_volatility_weight']),
+            ensemble_bollinger_weight=float(favorite_data['ensemble_bollinger_weight']),
+            ensemble_rsi_weight=float(favorite_data['ensemble_rsi_weight']),
+            start_yn=favorite_data['start_yn'],
+            created_at=datetime.now()
+        )
+        # print(favorite.)
+
+        db.session.add(favorite)
+        db.session.commit()
+
+        return {
+            'success': True,
+            'name': favorite_data['name'],
+            'message': '즐겨찾기가 저장되었습니다.'
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+# 즐겨찾기 저장
 # 즐겨찾기 저장
 @bp.route('/save_favorite', methods=['POST'])
 @login_required
