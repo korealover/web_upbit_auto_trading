@@ -1428,6 +1428,10 @@ def get_scheduler_status():
         # scheduled_bots의 모든 사용자 정보 순회
         for user_id, user_bots in scheduled_bots.items():
             user_bot_list = []
+            user_total_investment = 0
+            user_total_current_value = 0
+            user_portfolio_info = {}
+
             # print(f"scheduled_bots[{user_id}] = {user_bots}")
 
             for ticker, bot_info in user_bots.items():
@@ -1454,6 +1458,81 @@ def get_scheduler_status():
                         return field.data if hasattr(field, 'data') else field
                     return default
 
+                # 사용자별 투자 정보 계산
+                buy_amount = float(get_setting_value('buy_amount', 0))
+                # user_total_investment += buy_amount
+
+                # 현재가 및 포트폴리오 정보 가져오기 (업비트 API 사용)
+                try:
+                    user = User.query.filter_by(id=user_id).first()
+                    if user:
+                        # User 모델에서 암호화된 API 키 복호화
+                        access_key, secret_key = user.get_upbit_keys()
+
+                        if access_key and secret_key:
+                            # UpbitAPI 클래스를 user_id로 초기화하는 방식 사용
+                            upbit_api = UpbitAPI.create_from_user(user, async_handler, logger)
+
+                            # 현재가 조회 - 단일 ticker로 호출하여 float 값 반환
+                            current_price = upbit_api.get_current_price(ticker)
+                            current_price = float(current_price) if current_price else 0
+
+                            # 매수가 평균 조회
+                            buy_avg_price = upbit_api.get_buy_avg(ticker)
+                            buy_avg_price = float(buy_avg_price) if buy_avg_price else 0
+
+                            # 보유 코인 정보 조회 - get_balances 메서드 사용 (iterable 반환)
+                            balances = upbit_api.upbit.get_balances()
+                            coin_currency = ticker.split('-')[1]  # KRW-BTC -> BTC
+
+                            coin_balance = 0
+                            avg_buy_price = 0
+                            if balances:
+                                for balance in balances:
+                                    if balance['currency'] == coin_currency:
+                                        coin_balance = float(balance['balance'])
+                                        avg_buy_price = float(balance['avg_buy_price'])
+                                        break
+
+                            # 현재 보유 가치 계산 (현재 투자된 ticker들의 평가금액)
+                            current_value = coin_balance * current_price
+                            user_total_current_value += current_value
+
+                            buy_avg_value = buy_avg_price * coin_balance
+                            user_total_investment += buy_avg_value
+
+                            # 수익률 계산
+                            profit_rate = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price > 0 else 0
+
+                            # 포트폴리오 정보 저장
+                            user_portfolio_info[ticker] = {
+                                'coin_balance': coin_balance,
+                                'avg_buy_price': avg_buy_price,
+                                'current_price': current_price,
+                                'current_value': current_value,
+                                'profit_rate': profit_rate
+                            }
+                        else:
+                            # API 키가 없는 경우 기본값 설정
+                            user_portfolio_info[ticker] = {
+                                'coin_balance': 0,
+                                'avg_buy_price': 0,
+                                'current_price': 0,
+                                'current_value': 0,
+                                'profit_rate': 0
+                            }
+
+                except Exception as e:
+                    logger.error(f"투자 정보 조회 중 오류 (사용자: {user_id}, 티커: {ticker}): {str(e)}")
+                    # 오류 발생 시 기본값 설정
+                    user_portfolio_info[ticker] = {
+                        'coin_balance': 0,
+                        'avg_buy_price': 0,
+                        'current_price': 0,
+                        'current_value': 0,
+                        'profit_rate': 0
+                    }
+
                 bot_status = {
                     'ticker': ticker,
                     'strategy': bot_info.get('strategy', 'Unknown'),
@@ -1471,6 +1550,14 @@ def get_scheduler_status():
                     'window': get_setting_value('window', 20),
                     'multiplier': get_setting_value('multiplier', 2.0),
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
+                    # 투자 정보 추가
+                    'portfolio_info': user_portfolio_info.get(ticker, {
+                        'coin_balance': 0,
+                        'avg_buy_price': 0,
+                        'current_price': 0,
+                        'current_value': 0,
+                        'profit_rate': 0
+                    })
                 }
 
                 user_bot_list.append(bot_status)
@@ -1479,13 +1566,52 @@ def get_scheduler_status():
             user = User.query.filter_by(id=user_id).first()
             user_name = user.username if user else None
 
+            # 현금 보유량 조회 (get_balance_cash 메서드 직접 사용 - float 반환)
+            krw_balance = 0
+            try:
+                if user:
+                    # User 모델에서 암호화된 API 키 복호화
+                    access_key, secret_key = user.get_upbit_keys()
+
+                    if access_key and secret_key:
+                        upbit_api = UpbitAPI.create_from_user(user, async_handler, logger)
+                        # get_balance_cash는 float 값을 직접 반환
+                        krw_balance = upbit_api.get_balance_cash()
+                        krw_balance = float(krw_balance) if krw_balance else 0
+
+            except Exception as e:
+                logger.error(f"현금 보유량 조회 중 오류 (사용자: {user_id}): {str(e)}")
+
+            # 계산 수정: 요구사항에 따른 정확한 계산
+            # 총 투자금액: 전체 투자 및 보유금액의 합 (투자한 금액 + 보유 현금)
+            total_investment_amount = user_total_investment + krw_balance
+
+            # 보유현금: 전체 투자 금액에서 투자한 금액을 뺀 값 (이미 krw_balance로 계산됨)
+            cash_balance = krw_balance
+
+            # 손익: 현재 평가금액 - 투자금액
+            profit_loss = user_total_current_value - user_total_investment
+
+            # 수익률: 손익에 대한 백분율
+            total_profit_rate = 0
+            if user_total_investment > 0:
+                total_profit_rate = (profit_loss / user_total_investment * 100)
+
             # 사용자별 봇 정보 추가
             if user_bot_list:  # 봇이 있는 사용자만 추가
                 user_info = {
                     'user_id': user_id,
-                    'user_name' : user_name,
+                    'user_name': user_name,
                     'bot_count': len(user_bot_list),
-                    'bots': user_bot_list
+                    'bots': user_bot_list,
+                    # 투자 정보 수정
+                    'investment_info': {
+                        'total_investment': total_investment_amount,  # 총 투자금액: 전체 투자 + 보유금액의 합
+                        'current_value': user_total_current_value,  # 현재 평가금액: 현재 투자된 ticker들의 합
+                        'krw_balance': cash_balance,  # 보유현금: 전체 투자 금액에서 투자한 금액을 뺀 값
+                        'profit_loss': profit_loss,  # 손익: 현재 평가금액 - 투자금액
+                        'total_profit_rate': total_profit_rate  # 수익률: 손익에 대한 백분율
+                    }
                 }
                 status['all_user_bots'].append(user_info)
 
