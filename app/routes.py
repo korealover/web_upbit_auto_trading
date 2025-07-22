@@ -1248,7 +1248,7 @@ def auto_save_favorite_from_settings(form_data):
         from datetime import datetime
 
         # 자동 생성된 이름 (타임스탬프 포함)
-        print(f'favorite_start_yn: {form_data.get('favorite_start_yn')}')
+        favorite_name = form_data.get('favorite_name', '').strip()
         if form_data.get('favorite_start_yn') == 'true':
             start_yn = 'Y'
         else:
