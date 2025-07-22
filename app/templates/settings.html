@@ -540,14 +540,7 @@
             favoriteNameSection.style.display = 'none';
             document.getElementById('quickFavoriteName').value = '';
             document.getElementById('quickStartYn').checked = false;
-
-            // 추가된 hidden 필드들 제거
-            const hiddenFields = settingsForm.querySelectorAll('input[name="save_to_favorites"], input[name="favorite_name"], input[name="favorite_start_yn"]');
-            hiddenFields.forEach(field => field.remove());
-
         });
-
-
     });
 </script>
 
