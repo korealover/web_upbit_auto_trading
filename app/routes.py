@@ -559,13 +559,16 @@ def settings():
             # 매수/매도 거래 시작
             start_bot(ticker, strategy_name, form)
             # 거래 설정 완료 후 자동으로 즐겨찾기에 저장
-            auto_save_result = auto_save_favorite_from_settings(request.form)
-            if auto_save_result['success']:
-                flash(f'거래 설정이 완료되고 "{auto_save_result["name"]}"으로 즐겨찾기에 자동 저장되었습니다.', 'success')
+            # 즐겨찾기 저장 요청이 있는 경우
+            save_to_favorites = request.form.get('save_to_favorites')
+            if save_to_favorites == 'true':
+                auto_save_result = auto_save_favorite_from_settings(request.form)
+                if auto_save_result['success']:
+                    flash(f'거래 설정이 완료되고 "{auto_save_result["name"]}"으로 즐겨찾기에 저장되었습니다.', 'success')
+                else:
+                    flash('거래 설정은 완료되었지만 즐겨찾기 저장에 실패했습니다.', 'warning')
             else:
-                flash('거래 설정은 완료되었지만 즐겨찾기 자동 저장에 실패했습니다.', 'warning')
-
-            # flash('거래 설정이 적용되었습니다.', 'success')
+                flash('거래 설정이 적용되었습니다.', 'success')
             return redirect(url_for('main.dashboard'))
         except Exception as e:
             logger.error(f"Settings 처리 중 오류: {e}")
@@ -1245,22 +1248,24 @@ def auto_save_favorite_from_settings(form_data):
         from datetime import datetime
 
         # 자동 생성된 이름 (타임스탬프 포함)
-        ticker = form_data.get('ticker', 'UNKNOWN')
-        timestamp = datetime.now().strftime('%m%d_%H%M')
-        auto_name = f"자동저장_{ticker}_{timestamp}"
+        print(f'favorite_start_yn: {form_data.get('favorite_start_yn')}')
+        if form_data.get('favorite_start_yn') == 'true':
+            start_yn = 'Y'
+        else:
+            start_yn = 'N'
 
         # 중복 이름 확인
         existing = TradingFavorite.query.filter_by(
             user_id=current_user.id,
-            name=auto_name
+            name=favorite_name
         ).first()
 
         if existing:
-            auto_name += f"_{datetime.now().strftime('%S')}"  # 초까지 추가
+            favorite_name += f"_{datetime.now().strftime('%S')}"  # 초까지 추가
 
         # 즐겨찾기 객체 생성 (save_favorite 로직 활용)
         favorite_data = {
-            'name': auto_name,
+            'name': favorite_name,
             'ticker': form_data.get('ticker'),
             'strategy': form_data.get('strategy'),
             'interval': form_data.get('interval'),
@@ -1282,12 +1287,11 @@ def auto_save_favorite_from_settings(form_data):
             'ensemble_volatility_weight': form_data.get('ensemble_volatility_weight'),
             'ensemble_bollinger_weight': form_data.get('ensemble_bollinger_weight'),
             'ensemble_rsi_weight': form_data.get('ensemble_rsi_weight'),
-            'start_yn': 'N'
+            'start_yn': start_yn
         }
 
         # save_favorite의 핵심 로직 재사용
         result = save_favorite_data(favorite_data)
-        print(f'resurlt => {result}')
         return result
 
     except Exception as e:

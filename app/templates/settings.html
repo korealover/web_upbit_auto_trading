@@ -287,14 +287,51 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
                     <button type="submit" class="btn btn-primary">저장</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- 설정 저장 확인 팝업 (기존 즐겨찾기 팝업과는 별개) -->
+<div class="modal fade" id="settingsSaveConfirmModal" tabindex="-1" aria-labelledby="settingsSaveConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="settingsSaveConfirmModalLabel">설정 저장</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>설정을 저장하시겠습니까?</p>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="saveToFavorites">
+                    <label class="form-check-label" for="saveToFavorites">
+                        <i class="fas fa-bookmark"></i> 즐겨찾기에도 저장
+                    </label>
+                    <small class="form-text text-muted d-block">체크하면 현재 설정을 즐겨찾기로도 저장합니다.</small>
+                </div>
+                <div id="favoriteNameSection" style="display: none;">
+                    <div class="mb-3">
+                        <label for="quickFavoriteName" class="form-label">즐겨찾기 이름</label>
+                        <input type="text" class="form-control" id="quickFavoriteName" placeholder="예: 오후 RSI 전략">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="quickStartYn">
+                        <label class="form-check-label" for="quickStartYn">
+                            서비스 재시작 시 자동거래 시작
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="confirmSettingsSave">저장</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
@@ -423,6 +460,94 @@
                 input.addEventListener('input', validateWeights);
             }
         });
+
+
+        //즐겨찾기 추가 여부
+        const settingsForm = document.getElementById('settingsForm');
+        const saveToFavoritesCheckbox = document.getElementById('saveToFavorites');
+        const favoriteNameSection = document.getElementById('favoriteNameSection');
+        const confirmModal = new bootstrap.Modal(document.getElementById('settingsSaveConfirmModal'));
+        const dateString = new Date().toLocaleDateString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).replace(/\D/g, '');
+
+
+        // 즐겨찾기 저장 체크박스 변경 시 이름 입력 섹션 표시/숨김
+        saveToFavoritesCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                favoriteNameSection.style.display = 'block';
+                // 현재 전략과 티커를 기반으로 기본 이름 생성
+                const ticker = document.querySelector('select[name="ticker"]').value;
+                const strategy = document.querySelector('select[name="strategy"]').value;
+                const defaultName = `${ticker}_${strategy}_${dateString}`;
+                document.getElementById('quickFavoriteName').value = defaultName;
+            } else {
+                favoriteNameSection.style.display = 'none';
+            }
+        });
+
+        // 설정 폼 제출 가로채기
+        settingsForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // 기본 제출 방지
+            confirmModal.show(); // 확인 팝업 표시
+        });
+
+        // 확인 버튼 클릭 시
+        document.getElementById('confirmSettingsSave').addEventListener('click', function() {
+            const shouldSaveToFavorites = saveToFavoritesCheckbox.checked;
+
+            if (shouldSaveToFavorites) {
+                const favoriteName = document.getElementById('quickFavoriteName').value.trim();
+                const startYn = document.getElementById('quickStartYn').checked;
+
+                if (!favoriteName) {
+                    alert('즐겨찾기 이름을 입력해주세요.');
+                    return;
+                }
+
+                // 즐겨찾기 저장을 위한 숨겨진 필드 추가
+                const favoriteNameField = document.createElement('input');
+                favoriteNameField.type = 'hidden';
+                favoriteNameField.name = 'save_to_favorites';
+                favoriteNameField.value = 'true';
+                settingsForm.appendChild(favoriteNameField);
+
+                const favoriteNameValueField = document.createElement('input');
+                favoriteNameValueField.type = 'hidden';
+                favoriteNameValueField.name = 'favorite_name';
+                favoriteNameValueField.value = favoriteName;
+                settingsForm.appendChild(favoriteNameValueField);
+
+                const favoriteStartYnField = document.createElement('input');
+                favoriteStartYnField.type = 'hidden';
+                favoriteStartYnField.name = 'favorite_start_yn';
+                favoriteStartYnField.value = startYn ? 'true' : 'false';
+                settingsForm.appendChild(favoriteStartYnField);
+            }
+
+            // 팝업 닫기
+            confirmModal.hide();
+
+            // 실제 폼 제출
+            HTMLFormElement.prototype.submit.call(settingsForm);
+        });
+
+        // 팝업이 닫힐 때 체크박스 초기화
+        document.getElementById('settingsSaveConfirmModal').addEventListener('hidden.bs.modal', function() {
+            saveToFavoritesCheckbox.checked = false;
+            favoriteNameSection.style.display = 'none';
+            document.getElementById('quickFavoriteName').value = '';
+            document.getElementById('quickStartYn').checked = false;
+
+            // 추가된 hidden 필드들 제거
+            const hiddenFields = settingsForm.querySelectorAll('input[name="save_to_favorites"], input[name="favorite_name"], input[name="favorite_start_yn"]');
+            hiddenFields.forEach(field => field.remove());
+
+        });
+
+
     });
 </script>
 
@@ -506,6 +631,25 @@
                 box-shadow: none;
             }
         }
+    }
+    /* 즐겨찾기 여부 팝업 */
+    #favoriteNameSection {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+    }
+
+    .form-check-label i {
+        color: #007bff;
+    }
+
+    #settingsSaveConfirmModal .modal-body {
+        font-size: 16px;
+    }
+
+    #favoriteNameSection .form-text {
+        margin-top: 5px;
     }
 </style>
 {% endblock %}
