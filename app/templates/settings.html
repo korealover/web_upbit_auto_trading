@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -127,6 +128,46 @@
                                 {{ form.multiplier(class="form-select") }}
                                 <small class="text-muted">밴드 폭 조절</small>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 비대칭 볼린저 밴드 전략 설정 -->
+                    <div id="bollinger_asymmetric-settings" class="strategy-settings" style="display: none;">
+                        <h6 class="mt-4 mb-3">⚖️ 비대칭 볼린저 밴드 전략 설정</h6>
+                        <div class="alert alert-warning">
+                            <small><strong>설명:</strong> 매수와 매도에 서로 다른 승수를 사용하는 볼린저 밴드 전략</small>
+                            <br>
+                            <small>• <strong>매수:</strong> 가격이 3.0σ 하단밴드 아래로 떨어지면 매수 신호</small>
+                            <br>
+                            <small>• <strong>매도:</strong> 가격이 2.0σ 상단밴드 위로 올라가면 매도 신호</small>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                {{ form.window.label(class="form-label") }}
+                                {{ form.window(class="form-control") }}
+                                <small class="text-muted">이동평균 계산 기간</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.buy_multiplier.label(class="form-label") }}
+                                {{ form.buy_multiplier(class="form-select") }}
+                                <small class="text-muted">매수 신호용 승수 (하단밴드)</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.sell_multiplier.label(class="form-label") }}
+                                {{ form.sell_multiplier(class="form-select") }}
+                                <small class="text-muted">매도 신호용 승수 (상단밴드)</small>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <small><strong>💡 전략 특징:</strong></small>
+                            <ul class="list-unstyled mt-2 mb-0">
+                                <li>• 더 넓은 매수 기준으로 저점에서 매수 기회 증가</li>
+                                <li>• 더 좁은 매도 기준으로 빠른 수익 실현</li>
+                                <li>• 변동성이 큰 시장에서 효과적</li>
+                                <li>• 기본 설정: 매수 3.0σ / 매도 2.0σ</li>
+                            </ul>
                         </div>
                     </div>
 

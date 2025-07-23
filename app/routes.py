@@ -287,6 +287,8 @@ def dashboard():
                             'name': bot_info.get('name', ''),
                             'window': 20,
                             'multiplier': 2.0,
+                            'buy_multiplier': 3.0,
+                            'sell_multiplier': 2.0,
                             'k': 0.5,
                             'target_profit': 1.0,
                             'stop_loss': 3.0,
@@ -302,7 +304,7 @@ def dashboard():
                                 raw_value = settings.get(field_name, default_value)
 
                                 # 숫자 필드들은 안전하게 변환
-                                if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
+                                if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
                                                   'rsi_oversold', 'rsi_overbought']:
                                     raw_value = safe_numeric_value(raw_value, default_value)
 
@@ -315,7 +317,7 @@ def dashboard():
                                     raw_value = get_setting_value(field_obj, default_value)
 
                                     # 숫자 필드들은 안전하게 변환
-                                    if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss',
+                                    if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss',
                                                       'rsi_period',
                                                       'rsi_oversold', 'rsi_overbought']:
                                         raw_value = safe_numeric_value(raw_value, default_value)
@@ -335,6 +337,10 @@ def dashboard():
                                 normalized_settings['window'] = 20
                             if 'multiplier' not in normalized_settings:
                                 normalized_settings['multiplier'] = 2.0
+                            if 'buy_multiplier' not in normalized_settings:
+                                normalized_settings['buy_multiplier'] = 3.0
+                            if 'sell_multiplier' not in normalized_settings:
+                                normalized_settings['sell_multiplier'] = 2.0
 
                     except Exception as e:
                         logger.warning(f"봇 {ticker} 정보 처리 실패: {str(e)}")
@@ -353,7 +359,9 @@ def dashboard():
                             'interval': '',
                             'name': '',
                             'window': 20,
-                            'multiplier': 2.0
+                            'multiplier': 2.0,
+                            'buy_multiplier': 2.0,
+                            'sell_multiplier': 2.0
                         }
 
                 # 업비트 잔고 확인
@@ -789,6 +797,8 @@ def create_trading_bot_from_favorite(favorite):
             'long_term_investment': favorite.long_term_investment,
             'window': favorite.window,
             'multiplier': favorite.multiplier,
+            'buy_multiplier': favorite.buy_multiplier,
+            'sell_multiplier': favorite.sell_multiplier,
             'k': favorite.k,
             'target_profit': favorite.target_profit,
             'stop_loss': favorite.stop_loss,
@@ -1277,6 +1287,8 @@ def auto_save_favorite_from_settings(form_data):
             'long_term_investment': form_data.get('long_term_investment'),
             'window': form_data.get('window'),
             'multiplier': form_data.get('multiplier'),
+            'buy_multiplier': form_data.get('buy_multiplier'),
+            'sell_multiplier': form_data.get('sell_multiplier'),
             'k': form_data.get('k'),
             'target_profit': form_data.get('target_profit'),
             'stop_loss': form_data.get('stop_loss'),
@@ -1319,6 +1331,9 @@ def save_favorite_data(favorite_data):
             long_term_investment=favorite_data['long_term_investment'],
             window=int(favorite_data['window']),
             multiplier=float(favorite_data['multiplier']),
+            # 비대칭 볼린저 밴드 필드 추가
+            buy_multiplier=float(favorite_data['buy_multiplier']) if favorite_data.get('buy_multiplier') else None,
+            sell_multiplier=float(favorite_data['sell_multiplier']) if favorite_data.get('sell_multiplier') else None,
             k=float(favorite_data['k']),
             target_profit=float(favorite_data['target_profit']),
             stop_loss=float(favorite_data['stop_loss']),
@@ -1538,6 +1553,8 @@ def get_scheduler_status():
                     'buy_amount': get_setting_value('buy_amount', 0),
                     'window': get_setting_value('window', 20),
                     'multiplier': get_setting_value('multiplier', 2.0),
+                    'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
+                    'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
                     # 투자 정보 추가
                     'portfolio_info': user_portfolio_info.get(ticker, {

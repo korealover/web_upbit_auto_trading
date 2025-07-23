@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -40,6 +41,8 @@
                                     🔥 앙상블 전략
                                     {% elif bot_info.strategy == 'volatility' %}
                                     🚀 변동성 돌파
+                                    {% elif bot_info.strategy == 'bollinger_asymmetric' %}
+                                    📊 비대칭 볼린저 밴드
                                     {% else %}
                                     📊 볼린저 밴드
                                     {% endif %}
@@ -54,12 +57,21 @@
                                         {{ bot_info.settings.sleep_time|default('N/A') }} /
                                         <strong>매도 비율 : </strong>
                                         {{ (bot_info.settings.sell_portion * 100) |default('N/A') }}%
+                                        
                                         {% if bot_info.strategy == 'bollinger' %}
                                         <br>
                                         <strong>이동평균 기간 : </strong>
                                         {{ bot_info.settings.window|default('N/A') }} /
                                         <strong>볼린저 밴드 승수 : </strong>
                                         {{ "{:,.1f}".format(bot_info.settings.multiplier) if bot_info.settings.multiplier is not none else "N/A" }}
+                                        {% elif bot_info.strategy == 'bollinger_asymmetric' %}
+                                        <br>
+                                        <strong>이동평균 기간 : </strong>
+                                        {{ bot_info.settings.window|default('N/A') }} /
+                                        <strong>매수 승수 : </strong>
+                                        {{ "{:,.1f}".format(bot_info.settings.buy_multiplier) if bot_info.settings.buy_multiplier is not none else "N/A" }} /
+                                        <strong>매도 승수 : </strong>
+                                        {{ "{:,.1f}".format(bot_info.settings.sell_multiplier) if bot_info.settings.sell_multiplier is not none else "N/A" }}
                                         {% endif %}
                                     </small>
                                 </p>
@@ -221,6 +233,7 @@
                         <option value="ensemble">🔥 앙상블</option>
                         <option value="volatility">🚀 변동성</option>
                         <option value="bollinger">📊 볼린저</option>
+                        <option value="bollinger_asymmetric">📊 비대칭 볼린저</option>
                     </select>
                     <button id="refresh-trades-btn" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-sync-alt"></i> 새로고침
@@ -552,6 +565,7 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'ensemble': return '🔥';
             case 'volatility': return '🚀';
             case 'bollinger': return '📊';
+            case 'bollinger_asymmetric': return '📊';
             default: return '📊';
         }
     }
