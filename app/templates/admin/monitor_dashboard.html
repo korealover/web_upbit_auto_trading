@@ -247,19 +247,19 @@ function updateUserBots(userBots) {
                     <div class="row text-center">
                         <div class="col-md-2">
                             <div class="investment-summary-item">
-                                <small class="text-muted d-block">총 투자금액</small>
+                                <small class="text-muted d-block">총 운용자산</small>
                                 <strong class="text-primary">₩${formatNumber(investmentInfo.total_investment || 0)}</strong>
                             </div>
                         </div>
                         <div class="col-md-2">
                             <div class="investment-summary-item">
-                                <small class="text-muted d-block">현재 평가금액</small>
+                                <small class="text-muted d-block">현재 투자자산</small>
                                 <strong class="text-info">₩${formatNumber(investmentInfo.current_value || 0)}</strong>
                             </div>
                         </div>
                         <div class="col-md-2">
                             <div class="investment-summary-item">
-                                <small class="text-muted d-block">보유 현금</small>
+                                <small class="text-muted d-block">보유 KRW</small>
                                 <strong class="text-secondary">₩${formatNumber(investmentInfo.krw_balance || 0)}</strong>
                             </div>
                         </div>
@@ -283,7 +283,7 @@ function updateUserBots(userBots) {
                         </div>
                         <div class="col-md-2">
                             <div class="investment-summary-item">
-                                <small class="text-muted d-block">총 자산</small>
+                                <small class="text-muted d-block">총 보유자산</small>
                                 <strong class="text-dark">₩${formatNumber((investmentInfo.current_value || 0) + (investmentInfo.krw_balance || 0))}</strong>
                             </div>
                         </div>
@@ -982,6 +982,33 @@ function showError(message) {
     .investment-summary-item strong {
         font-size: 0.8rem;
     }
+}
+
+.text-purple {
+    color: #6f42c1 !important;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+}
+
+.card-header {
+    border-radius: 10px 10px 0 0 !important;
+    border: none;
+}
+
+.bg-light {
+    background-color: #f8f9fa !important;
+    border: 1px solid #e9ecef;
+}
+
+.rounded-circle {
+    width: 35px;
+    height: 35px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 </style>
 

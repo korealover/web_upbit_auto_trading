@@ -1458,10 +1458,6 @@ def get_scheduler_status():
                         return field.data if hasattr(field, 'data') else field
                     return default
 
-                # 사용자별 투자 정보 계산
-                buy_amount = float(get_setting_value('buy_amount', 0))
-                # user_total_investment += buy_amount
-
                 # 현재가 및 포트폴리오 정보 가져오기 (업비트 API 사용)
                 try:
                     user = User.query.filter_by(id=user_id).first()
@@ -1476,10 +1472,6 @@ def get_scheduler_status():
                             # 현재가 조회 - 단일 ticker로 호출하여 float 값 반환
                             current_price = upbit_api.get_current_price(ticker)
                             current_price = float(current_price) if current_price else 0
-
-                            # 매수가 평균 조회
-                            buy_avg_price = upbit_api.get_buy_avg(ticker)
-                            buy_avg_price = float(buy_avg_price) if buy_avg_price else 0
 
                             # 보유 코인 정보 조회 - get_balances 메서드 사용 (iterable 반환)
                             balances = upbit_api.upbit.get_balances()
@@ -1496,10 +1488,7 @@ def get_scheduler_status():
 
                             # 현재 보유 가치 계산 (현재 투자된 ticker들의 평가금액)
                             current_value = coin_balance * current_price
-                            user_total_current_value += current_value
-
-                            buy_avg_value = buy_avg_price * coin_balance
-                            user_total_investment += buy_avg_value
+                            # user_total_current_value += current_value
 
                             # 수익률 계산
                             profit_rate = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price > 0 else 0
@@ -1578,12 +1567,19 @@ def get_scheduler_status():
                         # get_balance_cash는 float 값을 직접 반환
                         krw_balance = upbit_api.get_balance_cash()
                         krw_balance = float(krw_balance) if krw_balance else 0
+                        balances = upbit_api.upbit.get_balances()
+
+                        if balances:
+                            for balance in balances:
+                                if balance['currency'] != 'KRW':
+                                    user_total_current_value += float(balance['balance']) * float(upbit_api.get_current_price(f'KRW-{balance['currency']}'))
+                                    user_total_investment += float(balance['balance']) * float(balance['avg_buy_price'])
 
             except Exception as e:
                 logger.error(f"현금 보유량 조회 중 오류 (사용자: {user_id}): {str(e)}")
 
             # 계산 수정: 요구사항에 따른 정확한 계산
-            # 총 투자금액: 전체 투자 및 보유금액의 합 (투자한 금액 + 보유 현금)
+            # 총 금액: 전체 투자 및 보유금액의 합 (투자한 금액 + 보유 현금)
             total_investment_amount = user_total_investment + krw_balance
 
             # 보유현금: 전체 투자 금액에서 투자한 금액을 뺀 값 (이미 krw_balance로 계산됨)
