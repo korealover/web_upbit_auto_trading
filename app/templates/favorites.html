@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block head %}
@@ -99,7 +100,21 @@
                     </div>
                     <div class="col-4">
                         <small class="text-muted">전략</small>
-                        <div class="mt-1"><span class="badge bg-danger">{{ favorite.strategy }}</span></div>
+                        <div class="mt-1">
+                            {% if favorite.strategy == 'bollinger_asymmetric' %}
+                                <span class="badge bg-info">비대칭 볼린저</span>
+                            {% elif favorite.strategy == 'bollinger' %}
+                                <span class="badge bg-danger">볼린저</span>
+                            {% elif favorite.strategy == 'rsi' %}
+                                <span class="badge bg-warning text-dark">RSI</span>
+                            {% elif favorite.strategy == 'volatility' %}
+                                <span class="badge bg-success">변동성</span>
+                            {% elif favorite.strategy == 'ensemble' %}
+                                <span class="badge bg-dark">앙상블</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ favorite.strategy }}</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="col-4">
                         <small class="text-muted">차트 간격</small>
@@ -138,20 +153,28 @@
                 </div>
 
                 <!-- 전략별 상세 정보 -->
-                {% if favorite.strategy in ['bollinger', 'volatility', 'rsi', 'ensemble'] %}
+                {% if favorite.strategy in ['bollinger', 'bollinger_asymmetric', 'volatility', 'rsi', 'ensemble'] %}
                 <div class="alert alert-light mt-3 p-2 strategy-details-box">
                     <div class="row small text-center">
                         {% if favorite.strategy == 'bollinger' %}
                         <div class="col-6"><span class="param-label text-muted">기간</span> <strong class="d-block">{{ favorite.window }}</strong></div>
                         <div class="col-6"><span class="param-label text-muted">승수</span> <strong class="d-block">{{ favorite.multiplier }}</strong></div>
+
+                        {% elif favorite.strategy == 'bollinger_asymmetric' %}
+                        <div class="col-4"><span class="param-label text-muted">기간</span> <strong class="d-block">{{ favorite.window }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">매수승수</span> <strong class="d-block text-primary">{{ favorite.buy_multiplier }}</strong></div>
+                        <div class="col-4"><span class="param-label text-muted">매도승수</span> <strong class="d-block text-danger">{{ favorite.sell_multiplier }}</strong></div>
+
                         {% elif favorite.strategy == 'volatility' %}
                         <div class="col-4"><span class="param-label text-muted">K</span> <strong class="d-block">{{ favorite.k }}</strong></div>
                         <div class="col-4"><span class="param-label text-muted">목표</span> <strong class="d-block">{{ favorite.target_profit }}%</strong></div>
                         <div class="col-4"><span class="param-label text-muted">손절</span> <strong class="d-block">{{ favorite.stop_loss }}%</strong></div>
+
                         {% elif favorite.strategy == 'rsi' %}
                         <div class="col-4"><span class="param-label text-muted">기간</span> <strong class="d-block">{{ favorite.rsi_period }}</strong></div>
                         <div class="col-4"><span class="param-label text-muted">과매도</span> <strong class="d-block">{{ favorite.rsi_oversold }}</strong></div>
                         <div class="col-4"><span class="param-label text-muted">과매수</span> <strong class="d-block">{{ favorite.rsi_overbought }}</strong></div>
+
                         {% elif favorite.strategy == 'ensemble' %}
                         <div class="col-4"><span class="param-label text-muted">변동성</span> <strong class="d-block">{{ favorite.ensemble_volatility_weight }}</strong></div>
                         <div class="col-4"><span class="param-label text-muted">볼린저</span> <strong class="d-block">{{ favorite.ensemble_bollinger_weight }}</strong></div>
