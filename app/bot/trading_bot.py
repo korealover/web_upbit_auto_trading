@@ -213,6 +213,12 @@ class UpbitTradingBot:
                 multiplier = self._get_field_value(
                     self.args.get('multiplier') if isinstance(self.args, dict) else getattr(self.args, 'multiplier', None)
                 )
+                buy_multiplier = self._get_field_value(
+                    self.args.get('buy_multiplier') if isinstance(self.args, dict) else getattr(self.args, 'buy_multiplier', None)
+                )
+                sell_multiplier = self._get_field_value(
+                    self.args.get('sell_multiplier') if isinstance(self.args, dict) else getattr(self.args, 'sell_multiplier', None)
+                )
 
                 self.logger.info(f"볼린저 밴드 전략으로 거래 분석 시작: {ticker}, 간격: {interval}")
 
@@ -227,8 +233,12 @@ class UpbitTradingBot:
                 prices = prices_data['close']
                 # print(ticker, prices, window, multiplier)
 
-                # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
-                signal = self.strategy.generate_signal(ticker, prices, window, multiplier)
+                if strategy_name == 'bollinger_asymmetric':
+                    # 매매 신호 생성 (비대칭 볼린저 밴드 전략에 맞는 매개변수 전달)
+                    signal = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier)
+                else:
+                    # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
+                    signal = self.strategy.generate_signal(ticker, prices, window, multiplier)
 
                 # 잔고 조회
                 balance_cash = self.api.get_balance_cash()
