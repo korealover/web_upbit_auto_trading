@@ -80,10 +80,29 @@ def initialize_scheduler(app):
         from app.utils.scheduler_manager import scheduler_manager
         from app.models import TradingFavorite
         from app.routes import scheduled_trading_cycle, create_trading_bot_from_favorite
+        from app.utils.logging_utils import invalidate_logger_cache
 
         if not scheduler_manager.is_started():
             scheduler_manager.start()
             app.logger.info("트레이딩 스케줄러가 시작되었습니다.")
+
+        # 일일 로거 캐시 초기화 작업 추가
+        def daily_logger_reset():
+            """매일 자정에 로거 캐시 초기화"""
+            try:
+                invalidate_logger_cache()
+                app.logger.info("로거 캐시가 초기화되었습니다.")
+            except Exception as e:
+                app.logger.error(f"로거 캐시 초기화 중 오류: {e}")
+
+        # 매일 자정에 실행되는 작업 추가
+        from apscheduler.triggers.cron import CronTrigger
+        scheduler_manager.scheduler.add_job(
+            func=daily_logger_reset,
+            trigger=CronTrigger(hour=0, minute=0),
+            id='daily_logger_reset',
+            replace_existing=True
+        )
 
         # DB에서 trading_favorite 데이터 가져오기 (user_id, ticker 조합별로 최신 것만)
         favorites = TradingFavorite.query.filter_by(start_yn='Y').order_by(TradingFavorite.id.asc()).all()

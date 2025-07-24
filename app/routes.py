@@ -940,29 +940,39 @@ def get_selected_label(value):
 
 # ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
 # 이 부분들은 websocket_handlers.py에서 처리됩니다.
+# WebSocketLogger 클래스 부분 수정
 class WebSocketLogger:
-    """WebSocket을 통해 실시간 로그를 전송하는 로거"""
     def __init__(self, ticker, user_id):
         self.ticker = ticker
-        self.user_id = str(user_id)
-        self.file_logger = get_logger_with_current_date(ticker, 'INFO', 7)
+        self.user_id = user_id
+        self.current_date = datetime.now().strftime('%Y%m%d')
+        self._update_file_logger()
+
+    def _update_file_logger(self):
+        """파일 로거 업데이트 (날짜 변경 감지)"""
+        from app.utils.logging_utils import get_logger_with_current_date
+        self.file_logger = get_logger_with_current_date(self.ticker)
+
+    def _check_date_change(self):
+        """날짜 변경 확인 및 로거 업데이트"""
+        today = datetime.now().strftime('%Y%m%d')
+        if self.current_date != today:
+            self.current_date = today
+            self._update_file_logger()
 
     def _emit_log(self, level, message):
-        """WebSocket으로 로그 전송"""
-        log_entry = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'level': level,
-            'message': message,
-            'raw_timestamp': datetime.now().isoformat(),
-            'ticker': self.ticker,
-            'user_id': self.user_id
-        }
+        # 날짜 변경 확인
+        self._check_date_change()
 
-        # 파일에도 로그 기록
-        getattr(self.file_logger, level.lower(), self.file_logger.info)(message)
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        formatted_message = f"[{timestamp}] [{level.upper()}] {message}"
 
-        # WebSocket 구독자들에게 전송
-        self._send_to_subscribers(log_entry)
+        # 파일에 로그 기록
+        if hasattr(self.file_logger, level.lower()):
+            getattr(self.file_logger, level.lower())(message)
+
+        # WebSocket을 통해 실시간 전송
+        self._send_to_subscribers(formatted_message)
 
     def _send_to_subscribers(self, log_entry):
         """구독자들에게 로그 전송"""
