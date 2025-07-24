@@ -38,7 +38,7 @@ class AsyncHandler:
                     return result
 
                 if logger:
-                    logger.debug(f"데이터 가져오기 재시도 중... ({i + 1}/{max_retries})")
+                    logger.debug(f"데이터 가져오기 재시도 중... ({i + 1}/{max_retries}) - 결과: {result}")
 
                 # 지수 백오프 적용
                 current_delay = delay * (backoff_factor ** i)
@@ -46,11 +46,19 @@ class AsyncHandler:
 
             except Exception as e:
                 if logger:
-                    logger.error(f"데이터 가져오기 실패: {str(e)}")
+                    # 디버깅을 위한 상세 정보
+                    import traceback
+                    error_details = {
+                        'exception_type': type(e).__name__,
+                        'exception_str': str(e),
+                        'exception_repr': repr(e),
+                        'traceback': traceback.format_exc()
+                    }
+                    logger.error(f"데이터 가져오기 실패 상세: {error_details}")
 
                 # 오류 유형에 따라 대기 시간 조정
                 if "Too many API requests" in str(e):
-                    await asyncio.sleep(delay * 5 * (backoff_factor ** i))  # 요청 제한 시 더 오래 대기
+                    await asyncio.sleep(delay * 5 * (backoff_factor ** i))
                 else:
                     await asyncio.sleep(delay * (backoff_factor ** i))
 

@@ -688,7 +688,15 @@ def start_bot(ticker, strategy_name, settings):
 
 # 스케줄러 호출
 def scheduled_trading_cycle(user_id, ticker, bot=None, websocket_logger=None):
-    """스케줄러에서 호출되는 트레이딩 사이클 """
+    """스케줄된 트레이딩 사이클 실행 - 에러 처리 강화"""
+    cycle_count = 1
+    if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
+        scheduled_bots[user_id][ticker]['cycle_count'] += 1
+        cycle_count = scheduled_bots[user_id][ticker]['cycle_count']
+        scheduled_bots[user_id][ticker]['last_run'] = datetime.now()
+
+    logger.info(f"트레이딩 사이클 시작: {user_id}/{ticker} (#{cycle_count})")
+
     try:
         # 봇 정보 확인 - 전달받은 bot이 있으면 우선 사용
         if bot is not None:
