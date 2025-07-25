@@ -5,10 +5,12 @@ from datetime import datetime
 import pytz
 from app.utils.encryption import encryption_service
 
+
 def kst_now():
     """현재 한국 시간(KST)을 반환하는 함수"""
     kst = pytz.timezone('Asia/Seoul')
     return datetime.now(kst).replace(tzinfo=None)  # tzinfo 제거하여 naive datetime 반환
+
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -52,6 +54,7 @@ class User(UserMixin, db.Model):
 def load_user(id):
     return User.query.get(int(id))
 
+
 class TradeRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -67,6 +70,7 @@ class TradeRecord(db.Model):
     def __repr__(self):
         return f'<TradeRecord {self.ticker} {self.trade_type} {self.timestamp}>'
 
+
 class TradingFavorite(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -80,18 +84,31 @@ class TradingFavorite(db.Model):
     sell_portion = db.Column(db.Float, nullable=False)
     prevent_loss_sale = db.Column(db.String(1), nullable=False, default='N')
     long_term_investment = db.Column(db.String(1), nullable=False, default='N')
+
+    # 기존 볼린저 밴드 전략 설정
     window = db.Column(db.Integer, nullable=True)
     multiplier = db.Column(db.Float, nullable=True)
+
+    # 비대칭 볼린저 밴드 전략 설정 (새로 추가)
+    buy_multiplier = db.Column(db.Float, nullable=True)  # 매수용 승수
+    sell_multiplier = db.Column(db.Float, nullable=True)  # 매도용 승수
+
+    # 변동성 돌파 전략 설정
     k = db.Column(db.Float, nullable=True)
     target_profit = db.Column(db.Float, nullable=True)
     stop_loss = db.Column(db.Float, nullable=True)
+
+    # RSI 전략 설정
     rsi_period = db.Column(db.Integer, nullable=True)
     rsi_oversold = db.Column(db.Float, nullable=True)
     rsi_overbought = db.Column(db.Float, nullable=True)
     rsi_timeframe = db.Column(db.String(10), nullable=True)
+
+    # 앙상블 전략 설정
     ensemble_volatility_weight = db.Column(db.Float, nullable=True)
     ensemble_bollinger_weight = db.Column(db.Float, nullable=True)
     ensemble_rsi_weight = db.Column(db.Float, nullable=True)
+
     start_yn = db.Column(db.String(1), nullable=False, default='N')
     created_at = db.Column(db.DateTime, default=kst_now)
     updated_at = db.Column(db.DateTime, default=kst_now, onupdate=kst_now)
@@ -112,6 +129,9 @@ class TradingFavorite(db.Model):
             'long_term_investment': self.long_term_investment,
             'window': self.window,
             'multiplier': self.multiplier,
+            # 비대칭 볼린저 밴드 필드 추가
+            'buy_multiplier': self.buy_multiplier,
+            'sell_multiplier': self.sell_multiplier,
             'k': self.k,
             'target_profit': self.target_profit,
             'stop_loss': self.stop_loss,

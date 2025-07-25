@@ -287,6 +287,8 @@ def dashboard():
                             'name': bot_info.get('name', ''),
                             'window': 20,
                             'multiplier': 2.0,
+                            'buy_multiplier': 3.0,
+                            'sell_multiplier': 2.0,
                             'k': 0.5,
                             'target_profit': 1.0,
                             'stop_loss': 3.0,
@@ -302,7 +304,7 @@ def dashboard():
                                 raw_value = settings.get(field_name, default_value)
 
                                 # 숫자 필드들은 안전하게 변환
-                                if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
+                                if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
                                                   'rsi_oversold', 'rsi_overbought']:
                                     raw_value = safe_numeric_value(raw_value, default_value)
 
@@ -315,7 +317,7 @@ def dashboard():
                                     raw_value = get_setting_value(field_obj, default_value)
 
                                     # 숫자 필드들은 안전하게 변환
-                                    if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'k', 'target_profit', 'stop_loss',
+                                    if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss',
                                                       'rsi_period',
                                                       'rsi_oversold', 'rsi_overbought']:
                                         raw_value = safe_numeric_value(raw_value, default_value)
@@ -335,6 +337,10 @@ def dashboard():
                                 normalized_settings['window'] = 20
                             if 'multiplier' not in normalized_settings:
                                 normalized_settings['multiplier'] = 2.0
+                            if 'buy_multiplier' not in normalized_settings:
+                                normalized_settings['buy_multiplier'] = 3.0
+                            if 'sell_multiplier' not in normalized_settings:
+                                normalized_settings['sell_multiplier'] = 2.0
 
                     except Exception as e:
                         logger.warning(f"봇 {ticker} 정보 처리 실패: {str(e)}")
@@ -353,7 +359,9 @@ def dashboard():
                             'interval': '',
                             'name': '',
                             'window': 20,
-                            'multiplier': 2.0
+                            'multiplier': 2.0,
+                            'buy_multiplier': 2.0,
+                            'sell_multiplier': 2.0
                         }
 
                 # 업비트 잔고 확인
@@ -552,13 +560,27 @@ def settings():
 
     # (기존) 설정 저장 및 봇 실행 로직 (POST 요청 시)
     if form.validate_on_submit() and request.method == 'POST' and not favorite_id:
-        # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
-        ticker = form.ticker.data
-        strategy_name = form.strategy.data
-
-        start_bot(ticker, strategy_name, form)
-        flash('거래 설정이 적용되었습니다.', 'success')
-        return redirect(url_for('main.dashboard'))
+        try:
+            # 여기에 기존의 설정 저장 또는 봇 실행 로직이 위치합니다.
+            ticker = form.ticker.data
+            strategy_name = form.strategy.data
+            # 매수/매도 거래 시작
+            start_bot(ticker, strategy_name, form)
+            # 거래 설정 완료 후 자동으로 즐겨찾기에 저장
+            # 즐겨찾기 저장 요청이 있는 경우
+            save_to_favorites = request.form.get('save_to_favorites')
+            if save_to_favorites == 'true':
+                auto_save_result = auto_save_favorite_from_settings(request.form)
+                if auto_save_result['success']:
+                    flash(f'거래 설정이 완료되고 "{auto_save_result["name"]}"으로 즐겨찾기에 저장되었습니다.', 'success')
+                else:
+                    flash('거래 설정은 완료되었지만 즐겨찾기 저장에 실패했습니다.', 'warning')
+            else:
+                flash('거래 설정이 적용되었습니다.', 'success')
+            return redirect(url_for('main.dashboard'))
+        except Exception as e:
+            logger.error(f"Settings 처리 중 오류: {e}")
+            flash('설정 저장 중 오류가 발생했습니다.', 'danger')
 
     return render_template('settings.html', title='거래 설정', form=form, favorite_form=favorite_form)
 
@@ -666,7 +688,15 @@ def start_bot(ticker, strategy_name, settings):
 
 # 스케줄러 호출
 def scheduled_trading_cycle(user_id, ticker, bot=None, websocket_logger=None):
-    """스케줄러에서 호출되는 트레이딩 사이클 """
+    """스케줄된 트레이딩 사이클 실행 - 에러 처리 강화"""
+    cycle_count = 1
+    if user_id in scheduled_bots and ticker in scheduled_bots[user_id]:
+        scheduled_bots[user_id][ticker]['cycle_count'] += 1
+        cycle_count = scheduled_bots[user_id][ticker]['cycle_count']
+        scheduled_bots[user_id][ticker]['last_run'] = datetime.now()
+
+    logger.info(f"트레이딩 사이클 시작: {user_id}/{ticker} (#{cycle_count})")
+
     try:
         # 봇 정보 확인 - 전달받은 bot이 있으면 우선 사용
         if bot is not None:
@@ -775,6 +805,8 @@ def create_trading_bot_from_favorite(favorite):
             'long_term_investment': favorite.long_term_investment,
             'window': favorite.window,
             'multiplier': favorite.multiplier,
+            'buy_multiplier': favorite.buy_multiplier,
+            'sell_multiplier': favorite.sell_multiplier,
             'k': favorite.k,
             'target_profit': favorite.target_profit,
             'stop_loss': favorite.stop_loss,
@@ -916,29 +948,39 @@ def get_selected_label(value):
 
 # ===== WebSocket 이벤트 핸들러를 별도 파일로 이동 =====
 # 이 부분들은 websocket_handlers.py에서 처리됩니다.
+# WebSocketLogger 클래스 부분 수정
 class WebSocketLogger:
-    """WebSocket을 통해 실시간 로그를 전송하는 로거"""
     def __init__(self, ticker, user_id):
         self.ticker = ticker
-        self.user_id = str(user_id)
-        self.file_logger = get_logger_with_current_date(ticker, 'INFO', 7)
+        self.user_id = user_id
+        self.current_date = datetime.now().strftime('%Y%m%d')
+        self._update_file_logger()
+
+    def _update_file_logger(self):
+        """파일 로거 업데이트 (날짜 변경 감지)"""
+        from app.utils.logging_utils import get_logger_with_current_date
+        self.file_logger = get_logger_with_current_date(self.ticker)
+
+    def _check_date_change(self):
+        """날짜 변경 확인 및 로거 업데이트"""
+        today = datetime.now().strftime('%Y%m%d')
+        if self.current_date != today:
+            self.current_date = today
+            self._update_file_logger()
 
     def _emit_log(self, level, message):
-        """WebSocket으로 로그 전송"""
-        log_entry = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'level': level,
-            'message': message,
-            'raw_timestamp': datetime.now().isoformat(),
-            'ticker': self.ticker,
-            'user_id': self.user_id
-        }
+        # 날짜 변경 확인
+        self._check_date_change()
 
-        # 파일에도 로그 기록
-        getattr(self.file_logger, level.lower(), self.file_logger.info)(message)
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        formatted_message = f"[{timestamp}] [{level.upper()}] {message}"
 
-        # WebSocket 구독자들에게 전송
-        self._send_to_subscribers(log_entry)
+        # 파일에 로그 기록
+        if hasattr(self.file_logger, level.lower()):
+            getattr(self.file_logger, level.lower())(message)
+
+        # WebSocket을 통해 실시간 전송
+        self._send_to_subscribers(formatted_message)
 
     def _send_to_subscribers(self, log_entry):
         """구독자들에게 로그 전송"""
@@ -1227,6 +1269,121 @@ def toggle_auto_restart(favorite_id):
         return jsonify({'success': False, 'message': f'오류가 발생했습니다: {str(e)}'}), 500
 
 
+def auto_save_favorite_from_settings(form_data):
+    """settings에서 자동으로 즐겨찾기 저장"""
+    try:
+        from app.models import TradingFavorite, db
+        from datetime import datetime
+
+        # 자동 생성된 이름 (타임스탬프 포함)
+        favorite_name = form_data.get('favorite_name', '').strip()
+        if form_data.get('favorite_start_yn') == 'true':
+            start_yn = 'Y'
+        else:
+            start_yn = 'N'
+
+        # 중복 이름 확인
+        existing = TradingFavorite.query.filter_by(
+            user_id=current_user.id,
+            name=favorite_name
+        ).first()
+
+        if existing:
+            favorite_name += f"_{datetime.now().strftime('%S')}"  # 초까지 추가
+
+        # 즐겨찾기 객체 생성 (save_favorite 로직 활용)
+        favorite_data = {
+            'name': favorite_name,
+            'ticker': form_data.get('ticker'),
+            'strategy': form_data.get('strategy'),
+            'interval': form_data.get('interval'),
+            'buy_amount': form_data.get('buy_amount'),
+            'min_cash': form_data.get('min_cash'),
+            'sleep_time': form_data.get('sleep_time'),
+            'sell_portion': form_data.get('sell_portion'),
+            'prevent_loss_sale': form_data.get('prevent_loss_sale'),
+            'long_term_investment': form_data.get('long_term_investment'),
+            'window': form_data.get('window'),
+            'multiplier': form_data.get('multiplier'),
+            'buy_multiplier': form_data.get('buy_multiplier'),
+            'sell_multiplier': form_data.get('sell_multiplier'),
+            'k': form_data.get('k'),
+            'target_profit': form_data.get('target_profit'),
+            'stop_loss': form_data.get('stop_loss'),
+            'rsi_period': form_data.get('rsi_period'),
+            'rsi_oversold': form_data.get('rsi_oversold'),
+            'rsi_overbought': form_data.get('rsi_overbought'),
+            'rsi_timeframe': form_data.get('rsi_timeframe'),
+            'ensemble_volatility_weight': form_data.get('ensemble_volatility_weight'),
+            'ensemble_bollinger_weight': form_data.get('ensemble_bollinger_weight'),
+            'ensemble_rsi_weight': form_data.get('ensemble_rsi_weight'),
+            'start_yn': start_yn
+        }
+
+        # save_favorite의 핵심 로직 재사용
+        result = save_favorite_data(favorite_data)
+        return result
+
+    except Exception as e:
+        logger.error(f"자동 즐겨찾기 저장 오류: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+def save_favorite_data(favorite_data):
+    """즐겨찾기 데이터 저장 (공통 함수)"""
+    global db
+    try:
+        from app.models import TradingFavorite, db
+
+        favorite = TradingFavorite(
+            user_id=current_user.id,
+            name=favorite_data['name'],
+            ticker=favorite_data['ticker'],
+            strategy=favorite_data['strategy'],
+            interval=favorite_data['interval'],
+            buy_amount=float(favorite_data['buy_amount']),
+            min_cash=float(favorite_data['min_cash']),
+            sleep_time=int(favorite_data['sleep_time']),
+            sell_portion=float(favorite_data['sell_portion']),
+            prevent_loss_sale=favorite_data['prevent_loss_sale'],
+            long_term_investment=favorite_data['long_term_investment'],
+            window=int(favorite_data['window']),
+            multiplier=float(favorite_data['multiplier']),
+            # 비대칭 볼린저 밴드 필드 추가
+            buy_multiplier=float(favorite_data['buy_multiplier']) if favorite_data.get('buy_multiplier') else None,
+            sell_multiplier=float(favorite_data['sell_multiplier']) if favorite_data.get('sell_multiplier') else None,
+            k=float(favorite_data['k']),
+            target_profit=float(favorite_data['target_profit']),
+            stop_loss=float(favorite_data['stop_loss']),
+            rsi_period=int(favorite_data['rsi_period']),
+            rsi_oversold=float(favorite_data['rsi_oversold']),
+            rsi_overbought=float(favorite_data['rsi_overbought']),
+            rsi_timeframe=favorite_data['rsi_timeframe'],
+            ensemble_volatility_weight=float(favorite_data['ensemble_volatility_weight']),
+            ensemble_bollinger_weight=float(favorite_data['ensemble_bollinger_weight']),
+            ensemble_rsi_weight=float(favorite_data['ensemble_rsi_weight']),
+            start_yn=favorite_data['start_yn'],
+            created_at=datetime.now()
+        )
+        # print(favorite.)
+
+        db.session.add(favorite)
+        db.session.commit()
+
+        return {
+            'success': True,
+            'name': favorite_data['name'],
+            'message': '즐겨찾기가 저장되었습니다.'
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+# 즐겨찾기 저장
 # 즐겨찾기 저장
 @bp.route('/save_favorite', methods=['POST'])
 @login_required
@@ -1304,6 +1461,10 @@ def get_scheduler_status():
         # scheduled_bots의 모든 사용자 정보 순회
         for user_id, user_bots in scheduled_bots.items():
             user_bot_list = []
+            user_total_investment = 0
+            user_total_current_value = 0
+            user_portfolio_info = {}
+
             # print(f"scheduled_bots[{user_id}] = {user_bots}")
 
             for ticker, bot_info in user_bots.items():
@@ -1330,6 +1491,70 @@ def get_scheduler_status():
                         return field.data if hasattr(field, 'data') else field
                     return default
 
+                # 현재가 및 포트폴리오 정보 가져오기 (업비트 API 사용)
+                try:
+                    user = User.query.filter_by(id=user_id).first()
+                    if user:
+                        # User 모델에서 암호화된 API 키 복호화
+                        access_key, secret_key = user.get_upbit_keys()
+
+                        if access_key and secret_key:
+                            # UpbitAPI 클래스를 user_id로 초기화하는 방식 사용
+                            upbit_api = UpbitAPI.create_from_user(user, async_handler, logger)
+
+                            # 현재가 조회 - 단일 ticker로 호출하여 float 값 반환
+                            current_price = upbit_api.get_current_price(ticker)
+                            current_price = float(current_price) if current_price else 0
+
+                            # 보유 코인 정보 조회 - get_balances 메서드 사용 (iterable 반환)
+                            balances = upbit_api.upbit.get_balances()
+                            coin_currency = ticker.split('-')[1]  # KRW-BTC -> BTC
+
+                            coin_balance = 0
+                            avg_buy_price = 0
+                            if balances:
+                                for balance in balances:
+                                    if balance['currency'] == coin_currency:
+                                        coin_balance = float(balance['balance'])
+                                        avg_buy_price = float(balance['avg_buy_price'])
+                                        break
+
+                            # 현재 보유 가치 계산 (현재 투자된 ticker들의 평가금액)
+                            current_value = coin_balance * current_price
+                            # user_total_current_value += current_value
+
+                            # 수익률 계산
+                            profit_rate = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price > 0 else 0
+
+                            # 포트폴리오 정보 저장
+                            user_portfolio_info[ticker] = {
+                                'coin_balance': coin_balance,
+                                'avg_buy_price': avg_buy_price,
+                                'current_price': current_price,
+                                'current_value': current_value,
+                                'profit_rate': profit_rate
+                            }
+                        else:
+                            # API 키가 없는 경우 기본값 설정
+                            user_portfolio_info[ticker] = {
+                                'coin_balance': 0,
+                                'avg_buy_price': 0,
+                                'current_price': 0,
+                                'current_value': 0,
+                                'profit_rate': 0
+                            }
+
+                except Exception as e:
+                    logger.error(f"투자 정보 조회 중 오류 (사용자: {user_id}, 티커: {ticker}): {str(e)}")
+                    # 오류 발생 시 기본값 설정
+                    user_portfolio_info[ticker] = {
+                        'coin_balance': 0,
+                        'avg_buy_price': 0,
+                        'current_price': 0,
+                        'current_value': 0,
+                        'profit_rate': 0
+                    }
+
                 bot_status = {
                     'ticker': ticker,
                     'strategy': bot_info.get('strategy', 'Unknown'),
@@ -1346,7 +1571,17 @@ def get_scheduler_status():
                     'buy_amount': get_setting_value('buy_amount', 0),
                     'window': get_setting_value('window', 20),
                     'multiplier': get_setting_value('multiplier', 2.0),
+                    'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
+                    'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
+                    # 투자 정보 추가
+                    'portfolio_info': user_portfolio_info.get(ticker, {
+                        'coin_balance': 0,
+                        'avg_buy_price': 0,
+                        'current_price': 0,
+                        'current_value': 0,
+                        'profit_rate': 0
+                    })
                 }
 
                 user_bot_list.append(bot_status)
@@ -1355,13 +1590,59 @@ def get_scheduler_status():
             user = User.query.filter_by(id=user_id).first()
             user_name = user.username if user else None
 
+            # 현금 보유량 조회 (get_balance_cash 메서드 직접 사용 - float 반환)
+            krw_balance = 0
+            try:
+                if user:
+                    # User 모델에서 암호화된 API 키 복호화
+                    access_key, secret_key = user.get_upbit_keys()
+
+                    if access_key and secret_key:
+                        upbit_api = UpbitAPI.create_from_user(user, async_handler, logger)
+                        # get_balance_cash는 float 값을 직접 반환
+                        krw_balance = upbit_api.get_balance_cash()
+                        krw_balance = float(krw_balance) if krw_balance else 0
+                        balances = upbit_api.upbit.get_balances()
+
+                        if balances:
+                            for balance in balances:
+                                if balance['currency'] != 'KRW':
+                                    user_total_current_value += float(balance['balance']) * float(upbit_api.get_current_price(f'KRW-{balance['currency']}'))
+                                    user_total_investment += float(balance['balance']) * float(balance['avg_buy_price'])
+
+            except Exception as e:
+                logger.error(f"현금 보유량 조회 중 오류 (사용자: {user_id}): {str(e)}")
+
+            # 계산 수정: 요구사항에 따른 정확한 계산
+            # 총 금액: 전체 투자 및 보유금액의 합 (투자한 금액 + 보유 현금)
+            total_investment_amount = user_total_investment + krw_balance
+
+            # 보유현금: 전체 투자 금액에서 투자한 금액을 뺀 값 (이미 krw_balance로 계산됨)
+            cash_balance = krw_balance
+
+            # 손익: 현재 평가금액 - 투자금액
+            profit_loss = user_total_current_value - user_total_investment
+
+            # 수익률: 손익에 대한 백분율
+            total_profit_rate = 0
+            if user_total_investment > 0:
+                total_profit_rate = (profit_loss / user_total_investment * 100)
+
             # 사용자별 봇 정보 추가
             if user_bot_list:  # 봇이 있는 사용자만 추가
                 user_info = {
                     'user_id': user_id,
-                    'user_name' : user_name,
+                    'user_name': user_name,
                     'bot_count': len(user_bot_list),
-                    'bots': user_bot_list
+                    'bots': user_bot_list,
+                    # 투자 정보 수정
+                    'investment_info': {
+                        'total_investment': total_investment_amount,  # 총 투자금액: 전체 투자 + 보유금액의 합
+                        'current_value': user_total_current_value,  # 현재 평가금액: 현재 투자된 ticker들의 합
+                        'krw_balance': cash_balance,  # 보유현금: 전체 투자 금액에서 투자한 금액을 뺀 값
+                        'profit_loss': profit_loss,  # 손익: 현재 평가금액 - 투자금액
+                        'total_profit_rate': total_profit_rate  # 수익률: 손익에 대한 백분율
+                    }
                 }
                 status['all_user_bots'].append(user_info)
 

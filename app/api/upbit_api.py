@@ -2,6 +2,7 @@ import pyupbit
 from app.utils.caching import cache_with_timeout, invalidate_cache
 from app.models import User
 from config import Config
+import time
 
 
 class UpbitAPI:
@@ -120,12 +121,101 @@ class UpbitAPI:
         self._log_api_call()
         return result
 
+
+    def validate_ticker(self, ticker):
+        """ticker 유효성 검증 - 캐싱 추가"""
+        try:
+            import pyupbit
+
+            # 캐시된 티커 목록이 있는지 확인 (1시간마다 갱신)
+            cache_key = 'valid_tickers'
+            current_time = time.time()
+
+            if not hasattr(self, '_ticker_cache') or not hasattr(self, '_ticker_cache_time'):
+                self._ticker_cache = None
+                self._ticker_cache_time = 0
+
+            # 캐시가 없거나 1시간이 지났으면 새로 조회
+            if (self._ticker_cache is None or
+                    current_time - self._ticker_cache_time > 3600):
+                self.logger.info("티커 목록 새로고침 중...")
+                all_tickers = pyupbit.get_tickers(fiat="KRW")
+                self._ticker_cache = set(all_tickers) if all_tickers else set()
+                self._ticker_cache_time = current_time
+                self.logger.info(f"총 {len(self._ticker_cache)}개의 유효한 KRW 티커 로드됨")
+
+            if ticker not in self._ticker_cache:
+                self.logger.warning(f"유효하지 않은 ticker: {ticker}")
+                self.logger.info(f"사용 가능한 ticker 예시: {list(self._ticker_cache)[:10]}")
+                return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"ticker 검증 실패: {e}")
+            return False
+
     @cache_with_timeout(seconds=Config.CACHE_DURATION_PRICE)
     def get_current_price(self, ticker):
-        """현재가 조회"""
-        price = self.fetch_data(lambda: pyupbit.get_current_price(ticker))
-        self.logger.debug(f"{ticker} 현재가: {price}")
-        return price
+        """현재 가격 조회 - 티커 검증 추가"""
+        try:
+            # 먼저 ticker 형식 검증
+            if not ticker or not isinstance(ticker, str):
+                self.logger.error(f"잘못된 ticker 형식: {ticker}")
+                return None
+
+            # ticker 형식 정규화 (KRW- 접두사 확인)
+            if not ticker.startswith('KRW-'):
+                ticker = f'KRW-{ticker}'
+
+            # 티커 유효성 검증
+            if not self.validate_ticker(ticker):
+                self.logger.error(f"유효하지 않은 ticker로 거래 중단: {ticker}")
+                return None
+
+            def safe_get_price():
+                try:
+                    import pyupbit
+                    result = pyupbit.get_current_price(ticker)
+
+                    # 결과 검증
+                    if result is None:
+                        self.logger.warning(f"가격 정보 없음: {ticker}")
+                        return None
+
+                    # 숫자인지 확인
+                    if isinstance(result, (int, float)) and result > 0:
+                        return float(result)
+
+                    # 딕셔너리나 리스트 형태의 응답 처리
+                    if isinstance(result, dict):
+                        if 'trade_price' in result:
+                            return float(result['trade_price'])
+                        elif ticker in result:
+                            return float(result[ticker])
+
+                    if isinstance(result, list) and len(result) > 0:
+                        if isinstance(result[0], dict) and 'trade_price' in result[0]:
+                            return float(result[0]['trade_price'])
+
+                    self.logger.warning(f"예상하지 못한 응답 형식: {ticker} -> {type(result)}: {result}")
+                    return None
+
+                except Exception as e:
+                    self.logger.error(f"가격 조회 실패 ({ticker}): {e}")
+                    return None
+
+            # fetch_data를 통해 안전하게 호출
+            price = self.fetch_data(safe_get_price)
+
+            if price is None:
+                self.logger.error(f"최종 가격 조회 실패: {ticker}")
+
+            return price
+
+        except Exception as e:
+            self.logger.error(f"get_current_price 전체 오류 ({ticker}): {e}")
+            return None
 
     @cache_with_timeout(seconds=Config.CACHE_DURATION_BALANCE)
     def get_balance_cash(self):

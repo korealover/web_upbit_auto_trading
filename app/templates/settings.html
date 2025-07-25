@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -55,7 +56,7 @@
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
                                        id="min_cash_slider"
-                                       min="0" max="10000000" step="10000"
+                                       min="0" max="2000000" step="10000"
                                        value="{{ form.min_cash.data or 50000 }}">
                                 <div class="slider-value-display">
                                     <span id="min_cash_display">{{ "{:,}".format(form.min_cash.data or 50000) }}원</span>
@@ -69,7 +70,7 @@
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
                                        id="sleep_time_slider"
-                                       min="30" max="300" step="30"
+                                       min="10" max="300" step="30"
                                        value="{{ form.sleep_time.data or 60 }}">
                                 <div class="slider-value-display">
                                     <span id="sleep_time_display">{{ form.sleep_time.data or 60 }}초</span>
@@ -127,6 +128,46 @@
                                 {{ form.multiplier(class="form-select") }}
                                 <small class="text-muted">밴드 폭 조절</small>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 비대칭 볼린저 밴드 전략 설정 -->
+                    <div id="bollinger_asymmetric-settings" class="strategy-settings" style="display: none;">
+                        <h6 class="mt-4 mb-3">⚖️ 비대칭 볼린저 밴드 전략 설정</h6>
+                        <div class="alert alert-warning">
+                            <small><strong>설명:</strong> 매수와 매도에 서로 다른 승수를 사용하는 볼린저 밴드 전략</small>
+                            <br>
+                            <small>• <strong>매수:</strong> 가격이 3.0σ 하단밴드 아래로 떨어지면 매수 신호</small>
+                            <br>
+                            <small>• <strong>매도:</strong> 가격이 2.0σ 상단밴드 위로 올라가면 매도 신호</small>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                {{ form.window.label(class="form-label") }}
+                                {{ form.window(class="form-control") }}
+                                <small class="text-muted">이동평균 계산 기간</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.buy_multiplier.label(class="form-label") }}
+                                {{ form.buy_multiplier(class="form-select") }}
+                                <small class="text-muted">매수 신호용 승수 (하단밴드)</small>
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.sell_multiplier.label(class="form-label") }}
+                                {{ form.sell_multiplier(class="form-select") }}
+                                <small class="text-muted">매도 신호용 승수 (상단밴드)</small>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <small><strong>💡 전략 특징:</strong></small>
+                            <ul class="list-unstyled mt-2 mb-0">
+                                <li>• 더 넓은 매수 기준으로 저점에서 매수 기회 증가</li>
+                                <li>• 더 좁은 매도 기준으로 빠른 수익 실현</li>
+                                <li>• 변동성이 큰 시장에서 효과적</li>
+                                <li>• 기본 설정: 매수 3.0σ / 매도 2.0σ</li>
+                            </ul>
                         </div>
                     </div>
 
@@ -287,14 +328,51 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
                     <button type="submit" class="btn btn-primary">저장</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- 설정 저장 확인 팝업 (기존 즐겨찾기 팝업과는 별개) -->
+<div class="modal fade" id="settingsSaveConfirmModal" tabindex="-1" aria-labelledby="settingsSaveConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="settingsSaveConfirmModalLabel">설정 저장</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>설정을 저장하시겠습니까?</p>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="saveToFavorites">
+                    <label class="form-check-label" for="saveToFavorites">
+                        <i class="fas fa-bookmark"></i> 즐겨찾기에도 저장
+                    </label>
+                    <small class="form-text text-muted d-block">체크하면 현재 설정을 즐겨찾기로도 저장합니다.</small>
+                </div>
+                <div id="favoriteNameSection" style="display: none;">
+                    <div class="mb-3">
+                        <label for="quickFavoriteName" class="form-label">즐겨찾기 이름</label>
+                        <input type="text" class="form-control" id="quickFavoriteName" placeholder="예: 오후 RSI 전략">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="quickStartYn">
+                        <label class="form-check-label" for="quickStartYn">
+                            서비스 재시작 시 자동거래 시작
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="confirmSettingsSave">저장</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
@@ -423,6 +501,87 @@
                 input.addEventListener('input', validateWeights);
             }
         });
+
+
+        //즐겨찾기 추가 여부
+        const settingsForm = document.getElementById('settingsForm');
+        const saveToFavoritesCheckbox = document.getElementById('saveToFavorites');
+        const favoriteNameSection = document.getElementById('favoriteNameSection');
+        const confirmModal = new bootstrap.Modal(document.getElementById('settingsSaveConfirmModal'));
+        const dateString = new Date().toLocaleDateString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).replace(/\D/g, '');
+
+
+        // 즐겨찾기 저장 체크박스 변경 시 이름 입력 섹션 표시/숨김
+        saveToFavoritesCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                favoriteNameSection.style.display = 'block';
+                // 현재 전략과 티커를 기반으로 기본 이름 생성
+                const ticker = document.querySelector('select[name="ticker"]').value;
+                const strategy = document.querySelector('select[name="strategy"]').value;
+                const defaultName = `${ticker}_${strategy}_${dateString}`;
+                document.getElementById('quickFavoriteName').value = defaultName;
+            } else {
+                favoriteNameSection.style.display = 'none';
+            }
+        });
+
+        // 설정 폼 제출 가로채기
+        settingsForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // 기본 제출 방지
+            confirmModal.show(); // 확인 팝업 표시
+        });
+
+        // 확인 버튼 클릭 시
+        document.getElementById('confirmSettingsSave').addEventListener('click', function() {
+            const shouldSaveToFavorites = saveToFavoritesCheckbox.checked;
+
+            if (shouldSaveToFavorites) {
+                const favoriteName = document.getElementById('quickFavoriteName').value.trim();
+                const startYn = document.getElementById('quickStartYn').checked;
+
+                if (!favoriteName) {
+                    alert('즐겨찾기 이름을 입력해주세요.');
+                    return;
+                }
+
+                // 즐겨찾기 저장을 위한 숨겨진 필드 추가
+                const favoriteNameField = document.createElement('input');
+                favoriteNameField.type = 'hidden';
+                favoriteNameField.name = 'save_to_favorites';
+                favoriteNameField.value = 'true';
+                settingsForm.appendChild(favoriteNameField);
+
+                const favoriteNameValueField = document.createElement('input');
+                favoriteNameValueField.type = 'hidden';
+                favoriteNameValueField.name = 'favorite_name';
+                favoriteNameValueField.value = favoriteName;
+                settingsForm.appendChild(favoriteNameValueField);
+
+                const favoriteStartYnField = document.createElement('input');
+                favoriteStartYnField.type = 'hidden';
+                favoriteStartYnField.name = 'favorite_start_yn';
+                favoriteStartYnField.value = startYn ? 'true' : 'false';
+                settingsForm.appendChild(favoriteStartYnField);
+            }
+
+            // 팝업 닫기
+            confirmModal.hide();
+
+            // 실제 폼 제출
+            HTMLFormElement.prototype.submit.call(settingsForm);
+        });
+
+        // 팝업이 닫힐 때 체크박스 초기화
+        document.getElementById('settingsSaveConfirmModal').addEventListener('hidden.bs.modal', function() {
+            saveToFavoritesCheckbox.checked = false;
+            favoriteNameSection.style.display = 'none';
+            document.getElementById('quickFavoriteName').value = '';
+            document.getElementById('quickStartYn').checked = false;
+        });
     });
 </script>
 
@@ -506,6 +665,25 @@
                 box-shadow: none;
             }
         }
+    }
+    /* 즐겨찾기 여부 팝업 */
+    #favoriteNameSection {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+    }
+
+    .form-check-label i {
+        color: #007bff;
+    }
+
+    #settingsSaveConfirmModal .modal-body {
+        font-size: 16px;
+    }
+
+    #favoriteNameSection .form-text {
+        margin-top: 5px;
     }
 </style>
 {% endblock %}

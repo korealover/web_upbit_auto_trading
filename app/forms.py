@@ -67,7 +67,8 @@ class TradingSettingsForm(FlaskForm):
 
     # 전략 선택 - 새로운 전략들 추가
     strategy = SelectField('거래 전략', choices=[
-        ('bollinger', '볼린저 밴드')
+        ('bollinger', '볼린저 밴드'),
+        ('bollinger_asymmetric', '비대칭 볼린저 밴드')
     ], default='bollinger')
 
     # 당분다 다른 전략은 주석 처리 ,
@@ -79,8 +80,8 @@ class TradingSettingsForm(FlaskForm):
     # 공통 설정
     # 기존 SelectField를 IntegerField와 FloatField로 변경
     buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=500000)], default=10000)
-    min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=10000000)], default=50000)
-    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=30, max=300)], default=60)
+    min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=2000000)], default=50000)
+    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10, max=300)], default=60)
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
@@ -91,6 +92,14 @@ class TradingSettingsForm(FlaskForm):
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
     multiplier = SelectField('볼린저 밴드 승수', choices=[
         (1.0, '1.0'), (2.0, '2.0(기본)'), (3.0, '3.0'), (4.0, '4.0'), (5.0, '5.0')
+    ], default=2.0)
+
+    # 비대칭 볼린저 밴드 전략용 추가 설정
+    buy_multiplier = SelectField('매수 승수', choices=[
+        (2.0, '2.0'), (2.5, '2.5'), (3.0, '3.0(기본)'), (3.5, '3.5'), (4.0, '4.0')
+    ], default=3.0)
+    sell_multiplier = SelectField('매도 승수', choices=[
+        (1.5, '1.5'), (2.0, '2.0(기본)'), (2.5, '2.5'), (3.0, '3.0')
     ], default=2.0)
 
     # 변동성 돌파 전략 설정
