@@ -392,3 +392,50 @@ class UpbitAPI:
             error_msg = f"분할 매도 처리 중 예외 발생: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             return {"error": {"name": "execution_error", "message": error_msg}}
+
+
+    def get_orderbook(self, ticker):
+        """호가 정보 조회"""
+        try:
+            self._log_api_call()
+            # pyupbit를 사용하여 호가 정보 조회
+            orderbook = pyupbit.get_orderbook(ticker)
+            if orderbook is None:
+                self.logger.warning(f"호가 정보를 가져올 수 없습니다: {ticker}")
+                return None
+            return orderbook
+        except Exception as e:
+            self.logger.error(f"호가 정보 조회 실패 ({ticker}): {str(e)}")
+            return None
+
+    def get_candles_from_ticker(self, ticker, interval="minute5", count=200):
+        """캔들 데이터 조회"""
+        try:
+            self._log_api_call()
+            # pyupbit를 사용하여 캔들 데이터 조회
+            df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
+            if df is None or df.empty:
+                self.logger.warning(f"캔들 데이터를 가져올 수 없습니다: {ticker}")
+                return None
+
+            # DataFrame을 딕셔너리 리스트로 변환
+            candles = []
+            for index, row in df.iterrows():
+                candle = {
+                    'candle_date_time_kst': index.strftime('%Y-%m-%dT%H:%M:%S'),
+                    'opening_price': float(row['open']),
+                    'high_price': float(row['high']),
+                    'low_price': float(row['low']),
+                    'trade_price': float(row['close']),
+                    'candle_acc_trade_volume': float(row['volume']),
+                    'timestamp': int(index.timestamp() * 1000)
+                }
+                candles.append(candle)
+
+            # 최신 데이터가 먼저 오도록 역순 정렬
+            candles.reverse()
+            return candles
+
+        except Exception as e:
+            self.logger.error(f"캔들 데이터 조회 실패 ({ticker}): {str(e)}")
+            return None
