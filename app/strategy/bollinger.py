@@ -12,7 +12,7 @@ class BollingerBandsStrategy:
 
     def get_bollinger_bands(self, prices, window=20, multiplier=2):
         """볼린저 밴드 계산"""
-        self.logger.debug(f"볼린저 밴드 계산 시작 (window={window}, multiplier={multiplier})")
+        self.logger.info(f"볼린저 밴드 계산 시작 (window={window}, multiplier={multiplier})")
 
         # 입력 파라미터 검증 및 타입 변환
         try:
@@ -29,7 +29,7 @@ class BollingerBandsStrategy:
         upper_band = sma + (rolling_std * multiplier)
         lower_band = sma - (rolling_std * multiplier)
 
-        self.logger.debug(f"볼린저 밴드 계산 완료")
+        self.logger.info(f"볼린저 밴드 계산 완료")
 
         return upper_band, lower_band
 
@@ -38,10 +38,10 @@ class BollingerBandsStrategy:
         try:
             volume_data = self.volume_analyzer.analyze_sell_pressure(ticker)
             if not volume_data:
-                self.logger.debug(f"매도 압력 데이터가 없어 매수 지연 검사를 건너뜁니다: {ticker}")
+                self.logger.info(f"매도 압력 데이터가 없어 매수 지연 검사를 건너뜁니다: {ticker}")
                 return False
 
-            self.logger.debug(f"매도 압력 데이터: {volume_data}")
+            self.logger.info(f"매도 압력 데이터: {volume_data}")
 
             # 매도 압력이 높은 경우 매수 지연
             if volume_data['sell_buy_ratio'] > 2.0:  # 매도 물량이 매수 물량의 2배 이상

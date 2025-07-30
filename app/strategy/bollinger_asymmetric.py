@@ -13,7 +13,7 @@ class AsymmetricBollingerBandsStrategy:
 
     def get_bollinger_bands(self, prices, window=20, buy_multiplier=3.0, sell_multiplier=2.0):
         """비대칭 볼린저 밴드 계산"""
-        self.logger.debug(f"비대칭 볼린저 밴드 계산 시작 (window={window}, buy_multiplier={buy_multiplier}, sell_multiplier={sell_multiplier})")
+        self.logger.info(f"비대칭 볼린저 밴드 계산 시작 (window={window}, buy_multiplier={buy_multiplier}, sell_multiplier={sell_multiplier})")
 
         # 입력 파라미터 검증 및 타입 변환
         try:
@@ -34,7 +34,7 @@ class AsymmetricBollingerBandsStrategy:
         # 매도용 상단밴드 (승수 2.0)
         sell_upper_band = sma + (rolling_std * sell_multiplier)
 
-        self.logger.debug(f"비대칭 볼린저 밴드 계산 완료")
+        self.logger.info(f"비대칭 볼린저 밴드 계산 완료")
 
         return sell_upper_band, buy_lower_band
 
@@ -43,10 +43,10 @@ class AsymmetricBollingerBandsStrategy:
         try:
             volume_data = self.volume_analyzer.analyze_sell_pressure(ticker)
             if not volume_data:
-                self.logger.debug(f"매도 압력 데이터가 없어 매수 지연 검사를 건너뜁니다: {ticker}")
+                self.logger.info(f"매도 압력 데이터가 없어 매수 지연 검사를 건너뜁니다: {ticker}")
                 return False
 
-            self.logger.debug(f"매도 압력 데이터: {volume_data}")
+            self.logger.info(f"매도 압력 데이터: {volume_data}")
 
             # 매도 압력이 높은 경우 매수 지연
             if volume_data['sell_buy_ratio'] > 2.5:  # 비대칭 전략이므로 더 보수적으로 설정
