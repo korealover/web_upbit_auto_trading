@@ -41,7 +41,7 @@ class BollingerBandsStrategy:
                 self.logger.info(f"매도 압력 데이터가 없어 매수 지연 검사를 건너뜁니다: {ticker}")
                 return False
 
-            self.logger.info(f"매도 압력 데이터: {volume_data}")
+            self.logger.info(f"매도 압력 데이터({ticker}): {volume_data}")
 
             # 매도 압력이 높은 경우 매수 지연
             if volume_data['sell_buy_ratio'] > 2.0:  # 매도 물량이 매수 물량의 2배 이상
@@ -55,6 +55,7 @@ class BollingerBandsStrategy:
 
             # 추가 시장 심리 분석
             sentiment = self.volume_analyzer.get_market_sentiment(ticker)
+            self.logger.info(f"시장 심리 분석 결과({ticker}): {sentiment}")
             if sentiment and sentiment['spread_ratio'] > 0.01:  # 스프레드가 1% 이상
                 self.logger.info(f"높은 스프레드로 매수 지연 (스프레드 비율: {sentiment['spread_ratio'] * 100:.2f}%)")
                 return True
