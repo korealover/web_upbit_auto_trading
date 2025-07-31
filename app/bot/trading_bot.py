@@ -225,7 +225,7 @@ class UpbitTradingBot:
                 rsi_threshold = 30
 
                 self.logger.info(f"볼린저 밴드 전략으로 거래 분석 시작: {ticker}, 간격: {interval}")
-                self.logger.info(f"RSI 필터 사용: {use_rsi_filter}, RSI 임계값: {rsi_threshold}")
+                self.logger.info(f"급락 방지 필터 사용: {use_rsi_filter}, RSI 임계값: {rsi_threshold}")
 
                 # OHLCV 데이터 가져오기
                 prices_data = self.api.get_ohlcv_data(ticker, interval, window + 5)  # 여유있게 가져옴
