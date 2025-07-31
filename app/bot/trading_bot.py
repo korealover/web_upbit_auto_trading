@@ -220,16 +220,6 @@ class UpbitTradingBot:
                     self.args.get('sell_multiplier') if isinstance(self.args, dict) else getattr(self.args, 'sell_multiplier', None)
                 )
 
-                # RSI 필터 관련 파라미터 추가
-                # use_rsi_filter = self._get_field_value(
-                #     self.args.get('use_rsi_filter') if isinstance(self.args, dict) else getattr(self.args, 'use_rsi_filter', None),
-                #     True  # 기본값: RSI 필터 사용
-                # )
-                # rsi_threshold = self._get_field_value(
-                #     self.args.get('rsi_threshold') if isinstance(self.args, dict) else getattr(self.args, 'rsi_threshold', None),
-                #     30  # 기본값: RSI 30 이하에서 과매도 판단
-                # )
-
                 # 우선  use_rsi_filter, rsi_threshold 값을 default 로 셋팅하고 모니터링 해보자
                 use_rsi_filter = True
                 rsi_threshold = 30

@@ -85,11 +85,11 @@ class BollingerBandsStrategy:
             self.logger.info(f"매도 신호 발생 (현재가 > 상단밴드: {cur_price:.2f} > {band_high:.2f})")
             return 'SELL'
         elif cur_price < band_low:
-            # 매수 신호 발생 시 선택적 필터링
+            # 매수 신호 발생 시 급락 보호 필터링
             if use_rsi_filter:
-                # RSI 과매도 구간에서만 매도 압력 고려
-                if self.rsi_analyzer.should_delay_buy_with_rsi_filter(ticker, rsi_threshold):
-                    self.logger.info(f"매수 조건 충족하지만 RSI+매도 압력으로 인해 대기")
+                # 급락 감지 및 점진적 매수 전략
+                if self.rsi_analyzer.should_delay_buy_gradual_approach(ticker, rsi_threshold):
+                    self.logger.info(f"매수 조건 충족하지만 급락 보호를 위해 대기")
                     return 'HOLD'
             else:
                 # 기본 매도 압력만 고려
