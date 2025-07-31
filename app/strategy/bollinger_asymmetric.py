@@ -1,4 +1,5 @@
 from app.strategy.volume_base_buy import VolumeBasedBuyStrategy
+from app.strategy.rsi_selling_pressure import RSIVolumeIntegratedStrategy
 
 
 class AsymmetricBollingerBandsStrategy:
@@ -9,6 +10,7 @@ class AsymmetricBollingerBandsStrategy:
         self.api = upbit_api
         self.logger = logger
         self.volume_analyzer = VolumeBasedBuyStrategy(upbit_api, logger)
+        self.rsi_analyzer = RSIVolumeIntegratedStrategy(upbit_api, logger)
 
 
     def get_bollinger_bands(self, prices, window=20, buy_multiplier=3.0, sell_multiplier=2.0):
@@ -70,8 +72,8 @@ class AsymmetricBollingerBandsStrategy:
             self.logger.error(f"매수 지연 판단 중 오류: {e}")
             return False
 
-    def generate_signal(self, ticker, prices, window, buy_multiplier=3.0, sell_multiplier=2.0):
-        """매매 신호 생성"""
+    def generate_signal(self, ticker, prices, window, buy_multiplier=3.0, sell_multiplier=2.0, use_rsi_filter=True, rsi_threshold=30):
+        """매매 신호 생성 - RSI 필터 선택 가능"""
         sell_upper_band, buy_lower_band = self.get_bollinger_bands(
             prices, window, buy_multiplier, sell_multiplier
         )
@@ -91,13 +93,20 @@ class AsymmetricBollingerBandsStrategy:
             self.logger.info(f"매도 신호 발생 (현재가 > 매도밴드(2.0σ): {cur_price:.2f} > {sell_band_high:.2f})")
             return 'SELL'
         elif cur_price < buy_band_low:
-            # 매수 신호 발생 시 매도 물량 확인
-            if self.should_delay_buy(ticker):
-                self.logger.info(f"매수 조건 충족하지만 매도 압력으로 인해 대기")
-                return 'HOLD'
+            # 매수 신호 발생 시 선택적 필터링
+            if use_rsi_filter:
+                # RSI 과매도 구간에서만 매도 압력 고려
+                if self.rsi_analyzer.should_delay_buy_with_rsi_filter(ticker, rsi_threshold):
+                    self.logger.info(f"매수 조건 충족하지만 RSI+매도 압력으로 인해 대기")
+                    return 'HOLD'
             else:
-                self.logger.info(f"매수 신호 발생 (현재가 < 매수밴드(3.0σ): {cur_price:.2f} < {buy_band_low:.2f})")
-                return 'BUY'
+                # 기본 매도 압력만 고려
+                if self.should_delay_buy(ticker):
+                    self.logger.info(f"매수 조건 충족하지만 매도 압력으로 인해 대기")
+                    return 'HOLD'
+
+            self.logger.info(f"매수 신호 발생 (현재가 < 매수밴드(3.0σ): {cur_price:.2f} < {buy_band_low:.2f})")
+            return 'BUY'
         else:
             self.logger.info("홀드 신호 (현재가가 매매 조건에 해당하지 않음)")
             return 'HOLD'

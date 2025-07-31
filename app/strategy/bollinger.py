@@ -1,4 +1,5 @@
 from app.strategy.volume_base_buy import VolumeBasedBuyStrategy
+from app.strategy.rsi_selling_pressure import RSIVolumeIntegratedStrategy
 
 
 class BollingerBandsStrategy:
@@ -9,6 +10,7 @@ class BollingerBandsStrategy:
         self.api = upbit_api
         self.logger = logger
         self.volume_analyzer = VolumeBasedBuyStrategy(upbit_api, logger)
+        self.rsi_analyzer = RSIVolumeIntegratedStrategy(upbit_api, logger)
 
     def get_bollinger_bands(self, prices, window=20, multiplier=2):
         """볼린저 밴드 계산"""
@@ -34,29 +36,27 @@ class BollingerBandsStrategy:
         return upper_band, lower_band
 
     def should_delay_buy(self, ticker):
-        """매수를 지연해야 하는지 판단"""
+        """기본 매도 압력 기반 매수 지연 판단 (RSI 필터링 없음)"""
         try:
             volume_data = self.volume_analyzer.analyze_sell_pressure(ticker)
             if not volume_data:
                 self.logger.info(f"매도 압력 데이터가 없어 매수 지연 검사를 건너뜁니다: {ticker}")
                 return False
 
-            self.logger.info(f"매도 압력 데이터({ticker}): {volume_data}")
+            self.logger.info(f"기본 매도 압력 데이터({ticker}): {volume_data}")
 
-            # 매도 압력이 높은 경우 매수 지연
-            if volume_data['sell_buy_ratio'] > 2.0:  # 매도 물량이 매수 물량의 2배 이상
+            # 기본 매도 압력 기준 (RSI 관계없이)
+            if volume_data['sell_buy_ratio'] > 2.0:
                 self.logger.info(f"높은 매도 압력으로 매수 지연 (매도/매수 비율: {volume_data['sell_buy_ratio']:.2f})")
                 return True
 
-            # 거래량이 평소보다 크게 증가한 경우 (매도 물량 급증 가능성)
             if volume_data['volume_ratio'] > 3.0:
                 self.logger.info(f"거래량 급증으로 매수 지연 (거래량 비율: {volume_data['volume_ratio']:.2f})")
                 return True
 
             # 추가 시장 심리 분석
             sentiment = self.volume_analyzer.get_market_sentiment(ticker)
-            self.logger.info(f"시장 심리 분석 결과({ticker}): {sentiment}")
-            if sentiment and sentiment['spread_ratio'] > 0.01:  # 스프레드가 1% 이상
+            if sentiment and sentiment['spread_ratio'] > 0.01:
                 self.logger.info(f"높은 스프레드로 매수 지연 (스프레드 비율: {sentiment['spread_ratio'] * 100:.2f}%)")
                 return True
 
@@ -66,8 +66,8 @@ class BollingerBandsStrategy:
             self.logger.error(f"매수 지연 판단 중 오류: {e}")
             return False
 
-    def generate_signal(self, ticker, prices, window, multiplier):
-        """매매 신호 생성"""
+    def generate_signal(self, ticker, prices, window, multiplier, use_rsi_filter=True, rsi_threshold=30):
+        """매매 신호 생성 - RSI 필터 선택 가능"""
         upper_band, lower_band = self.get_bollinger_bands(prices, window, multiplier)
 
         # 마지막 값만 필요하므로 최적화
@@ -85,13 +85,20 @@ class BollingerBandsStrategy:
             self.logger.info(f"매도 신호 발생 (현재가 > 상단밴드: {cur_price:.2f} > {band_high:.2f})")
             return 'SELL'
         elif cur_price < band_low:
-            # 매수 신호 발생 시 매도 물량 확인
-            if self.should_delay_buy(ticker):
-                self.logger.info(f"매수 조건 충족하지만 매도 압력으로 인해 대기")
-                return 'HOLD'
+            # 매수 신호 발생 시 선택적 필터링
+            if use_rsi_filter:
+                # RSI 과매도 구간에서만 매도 압력 고려
+                if self.rsi_analyzer.should_delay_buy_with_rsi_filter(ticker, rsi_threshold):
+                    self.logger.info(f"매수 조건 충족하지만 RSI+매도 압력으로 인해 대기")
+                    return 'HOLD'
             else:
-                self.logger.info(f"매수 신호 발생 (현재가 < 하단밴드: {cur_price:.2f} < {band_low:.2f})")
-                return 'BUY'
+                # 기본 매도 압력만 고려
+                if self.should_delay_buy(ticker):
+                    self.logger.info(f"매수 조건 충족하지만 매도 압력으로 인해 대기")
+                    return 'HOLD'
+
+            self.logger.info(f"매수 신호 발생 (현재가 < 하단밴드: {cur_price:.2f} < {band_low:.2f})")
+            return 'BUY'
         else:
             self.logger.info("홀드 신호 (현재가가 밴드 내에 있음)")
             return 'HOLD'

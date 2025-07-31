@@ -86,7 +86,10 @@ class TradingSettingsForm(FlaskForm):
 
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
     long_term_investment = SelectField('장기 투자', choices=[('Y', '예'), ('N', '아니오')], default='N')
-
+    # use_rsi_filter = BooleanField('RSI 필터 사용', default=True)
+    # rsi_threshold = IntegerField('RSI 과매도 임계값', default=30, validators=[DataRequired(),
+    #     NumberRange(min=10, max=50, message="RSI 임계값은 10-50 사이여야 합니다.")
+    # ])
 
     # 볼린저 밴드 전략 설정
     window = IntegerField('이동평균 기간', validators=[NumberRange(min=5)], default=20)
