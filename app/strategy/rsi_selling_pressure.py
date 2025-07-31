@@ -1,5 +1,6 @@
 from app.strategy.rsi import RSIStrategy
 from app.strategy.volume_base_buy import VolumeBasedBuyStrategy
+import pandas as pd
 
 
 class RSIVolumeIntegratedStrategy:
