@@ -12,41 +12,47 @@ class RSIVolumeIntegratedStrategy:
         self.rsi_strategy = RSIStrategy(upbit_api, logger)
         self.volume_analyzer = VolumeBasedBuyStrategy(upbit_api, logger)
 
-    def detect_rapid_decline(self, ticker, lookback_periods=5):
+    def detect_rapid_decline(self, ticker, lookback_periods=10):
         """급격한 가격 하락 감지"""
         try:
-            # 최근 데이터 조회 (5분봉 기준)
+            # 최근 데이터 조회 (16분봉 기준)
             df = self.api.get_ohlcv_data(ticker, 'minute5', lookback_periods + 10)
             if df is None or len(df) < lookback_periods + 5:
                 self.logger.warning(f"급락 감지용 데이터 부족: {ticker}")
                 return False, 0, {}
 
-            prices = df['close']
+            prices = df['low']
             current_price = prices.iloc[-1]
 
             # 다양한 기간별 하락률 계산
             decline_analysis = {}
 
-            # 1. 최근 5분봉 하락률
+            # 1. 최근 15분봉 하락률
             if len(prices) >= 2:
                 recent_decline = (current_price - prices.iloc[-2]) / prices.iloc[-2] * 100
                 decline_analysis['1_period'] = recent_decline
 
-            # 2. 최근 3개 봉 하락률
+                # 2. 최근 15분 하락률
             if len(prices) >= 4:
                 three_period_decline = (current_price - prices.iloc[-4]) / prices.iloc[-4] * 100
                 decline_analysis['3_period'] = three_period_decline
 
-            # 3. 최근 5개 봉 하락률
-            if len(prices) >= 6:
-                five_period_decline = (current_price - prices.iloc[-6]) / prices.iloc[-6] * 100
-                decline_analysis['5_period'] = five_period_decline
+                # 3. 최근 30분 하락률
+            if len(prices) >= 7:
+                six_period_decline = (current_price - prices.iloc[-7]) / prices.iloc[-7] * 100
+                decline_analysis['6_period'] = six_period_decline
+
+                # 3. 최근 1시간 하락률
+            if len(prices) >= 13:
+                twelve_period_decline = (current_price - prices.iloc[-13]) / prices.iloc[-13] * 100
+                decline_analysis['12_period'] = twelve_period_decline
 
             # 급락 기준 설정 (코인별로 조정 가능)
             rapid_decline_thresholds = {
-                '1_period': -3.0,  # 1봉에서 3% 이상 하락
-                '3_period': -8.0,  # 3봉에서 8% 이상 하락
-                '5_period': -15.0  # 5봉에서 15% 이상 하락
+                '1_period': -1.5,   # 5분에서 1.5% 하락
+                '3_period': -2.5,   # 15분에서 2.5% 하락
+                '6_period': -4.0,   # 30분에서 4% 하락
+                '12_period': -6.0   # 1시간에서 6% 하락
             }
 
             # 급락 감지
