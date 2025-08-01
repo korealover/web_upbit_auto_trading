@@ -254,15 +254,15 @@
                                     {% set total_profit = (total_current_price|default(0)) - (total_buy_price|default(0)) %}
                                     <span class="{% if total_profit > 0 %}text-success{% elif total_profit < 0 %}text-danger{% endif %}">
                                         {% if total_profit|abs >= 100 %}
-                                        ₩{{ "{:+,.1f}".format(total_profit) }}
+                                        {{ "{:+,.1f}".format(total_profit) }}
                                         {% elif total_profit|abs >= 1 %}
-                                        ₩{{ "{:+,.2f}".format(total_profit) }}
+                                        {{ "{:+,.2f}".format(total_profit) }}
                                         {% elif total_profit|abs >= 0.1 %}
-                                        ₩{{ "{:+,.3f}".format(total_profit) }}
+                                        {{ "{:+,.3f}".format(total_profit) }}
                                         {% elif total_profit|abs >= 0.01 %}
-                                        ₩{{ "{:+,.4f}".format(total_profit) }}
+                                        {{ "{:+,.4f}".format(total_profit) }}
                                         {% else %}
-                                        ₩{{ "{:+,.5f}".format(total_profit) }}
+                                        {{ "{:+,.5f}".format(total_profit) }}
                                         {% endif %}
                                     </span>
                                 </td>
