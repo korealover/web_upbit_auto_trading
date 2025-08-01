@@ -107,6 +107,7 @@
 </div>
 
 <!-- 잔고 및 성과 정보 -->
+<!-- 잔고 및 성과 정보 -->
 <div class="row mt-4">
     <div class="col-md-12">
         <div class="card h-100">
@@ -156,7 +157,7 @@
     <div class="col-md-12">
         <div class="card h-100">
             <div class="card-header">
-                💰 보유 코인 정보
+                💰 보유 코인 정보 {% if balance_info.coins %}(총 {{ balance_info.coins|length }}개){% endif %}
             </div>
             <div class="card-body">
                 {% if balance_info.coins %}
@@ -164,6 +165,7 @@
                     <table class="table table-sm table-bordered align-middle mb-0">
                         <thead class="table-light">
                             <tr class="text-center">
+                                <th scope="col">번호</th>
                                 <th scope="col">코인</th>
                                 <th scope="col">보유량</th>
                                 <th scope="col">매수 단가</th>
@@ -178,6 +180,9 @@
                             {% for coin in balance_info.coins %}
                             <tr class="text-center">
                                 <td>
+                                    <span class="badge bg-primary">{{ loop.index }}</span>
+                                </td>
+                                <td>
                                     <span class="fw-bold">{{ coin.ticker }}</span>
                                 </td>
                                 <td class="text-end">
@@ -185,42 +190,80 @@
                                 </td>
                                 <td class="text-end">
                                     <span class="text-success">
-                                        {% if coin.avg_buy_price > 1 %}
+                                        {% if coin.avg_buy_price >= 100 %}
+                                        ₩{{ "{:,.0f}".format(coin.avg_buy_price|default(0)) }}
+                                        {% elif coin.avg_buy_price >= 1 %}
                                         ₩{{ "{:,.2f}".format(coin.avg_buy_price|default(0)) }}
+                                        {% elif coin.avg_buy_price >= 0.1 %}
+                                        ₩{{ "{:,.3f}".format(coin.avg_buy_price|default(0)) }}
+                                        {% elif coin.avg_buy_price >= 0.01 %}
+                                        ₩{{ "{:,.4f}".format(coin.avg_buy_price|default(0)) }}
                                         {% else %}
-                                        ₩{{ "{:,.2f}".format(coin.avg_buy_price|default(0)) }}
+                                        ₩{{ "{:,.5f}".format(coin.avg_buy_price|default(0)) }}
                                         {% endif %}
                                     </span>
                                 </td>
                                 <td class="text-end">
                                     <span class="text-primary">
-                                        {% if coin.current_price > 1 %}
+                                        {% if coin.current_price >= 100 %}
+                                        ₩{{ "{:,.1f}".format(coin.current_price|default(0)) }}
+                                        {% elif coin.current_price >= 1 %}
                                         ₩{{ "{:,.2f}".format(coin.current_price|default(0)) }}
+                                        {% elif coin.current_price >= 0.1 %}
+                                        ₩{{ "{:,.3f}".format(coin.current_price|default(0)) }}
+                                        {% elif coin.current_price >= 0.01 %}
+                                        ₩{{ "{:,.4f}".format(coin.current_price|default(0)) }}
                                         {% else %}
-                                        ₩{{ "{:,.2f}".format(coin.current_price|default(0)) }}
+                                        ₩{{ "{:,.5f}".format(coin.current_price|default(0)) }}
                                         {% endif %}
                                     </span>
                                 </td>
                                 <td class="text-end">
                                     <span class="text-success">
-                                        {% if coin.avg_buy_price > 1 %}
                                         {% set total_buy_price = coin.avg_buy_price * coin.balance %}
+                                        {% if total_buy_price >= 100 %}
+                                        ₩{{ "{:,.1f}".format(total_buy_price|default(0)) }}
+                                        {% elif total_buy_price >= 1 %}
                                         ₩{{ "{:,.2f}".format(total_buy_price|default(0)) }}
+                                        {% elif total_buy_price >= 0.1 %}
+                                        ₩{{ "{:,.3f}".format(total_buy_price|default(0)) }}
+                                        {% elif total_buy_price >= 0.01 %}
+                                        ₩{{ "{:,.4f}".format(total_buy_price|default(0)) }}
+                                        {% else %}
+                                        ₩{{ "{:,.5f}".format(total_buy_price|default(0)) }}
                                         {% endif %}
                                     </span>
                                 </td>
                                 <td class="text-end">
                                     <span class="text-primary">
-                                        {% if coin.current_price > 1 %}
                                         {% set total_current_price = coin.current_price * coin.balance %}
+                                        {% if total_current_price >= 100 %}
+                                        ₩{{ "{:,.1f}".format(total_current_price|default(0)) }}
+                                        {% elif total_current_price >= 1 %}
                                         ₩{{ "{:,.2f}".format(total_current_price|default(0)) }}
+                                        {% elif total_current_price >= 0.1 %}
+                                        ₩{{ "{:,.3f}".format(total_current_price|default(0)) }}
+                                        {% elif total_current_price >= 0.01 %}
+                                        ₩{{ "{:,.4f}".format(total_current_price|default(0)) }}
+                                        {% else %}
+                                        ₩{{ "{:,.5f}".format(total_current_price|default(0)) }}
                                         {% endif %}
                                     </span>
                                 </td>
                                 <td class="text-end">
                                     {% set total_profit = (total_current_price|default(0)) - (total_buy_price|default(0)) %}
                                     <span class="{% if total_profit > 0 %}text-success{% elif total_profit < 0 %}text-danger{% endif %}">
-                                        {{ "{:,.2f}".format(total_profit) }}
+                                        {% if total_profit|abs >= 100 %}
+                                        ₩{{ "{:+,.1f}".format(total_profit) }}
+                                        {% elif total_profit|abs >= 1 %}
+                                        ₩{{ "{:+,.2f}".format(total_profit) }}
+                                        {% elif total_profit|abs >= 0.1 %}
+                                        ₩{{ "{:+,.3f}".format(total_profit) }}
+                                        {% elif total_profit|abs >= 0.01 %}
+                                        ₩{{ "{:+,.4f}".format(total_profit) }}
+                                        {% else %}
+                                        ₩{{ "{:+,.5f}".format(total_profit) }}
+                                        {% endif %}
                                     </span>
                                 </td>
                                 <td class="text-end">
@@ -234,6 +277,10 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted">
+                    보유 중인 코인이 없습니다.
                 </div>
                 {% endif %}
             </div>
