@@ -238,7 +238,7 @@ class RSIVolumeIntegratedStrategy:
             # 4단계: 매도 압력 분석
             volume_data = self.volume_analyzer.analyze_sell_pressure(ticker)
 
-            self.logger.info(f"급락분석 - 급락여부: {is_declining}, 심각도: {decline_severity:.1f}, RSI: {current_rsi:.1f}")
+            self.logger.info(f"급락분석 - 급락여부({ticker}): {is_declining}, 심각도: {decline_severity:.1f}, RSI: {current_rsi:.1f}")
 
             # 매수 지연 결정 로직
             if not is_declining:

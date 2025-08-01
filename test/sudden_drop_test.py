@@ -55,8 +55,7 @@ def _get_volatility_multiplier(volatility_level):
     return multipliers.get(volatility_level, 1.0)
 
 
-# tickers = ['KRW-BTC', 'KRW-ETH', 'KRW-XRP', 'KRW-USDT', 'KRW-DOGE']
-tickers = ['KRW-LAYER']
+tickers = ['KRW-BTC', 'KRW-ETH', 'KRW-XRP', 'KRW-USDT', 'KRW-DOGE']
 # all_tickers = pyupbit.get_tickers(fiat="KRW")
 for ticker in tickers:
     interval='minute5'
@@ -64,13 +63,13 @@ for ticker in tickers:
     # 최근 데이터 조회 (5분봉 기준)
 
     df = pyupbit.get_ohlcv(ticker, interval, lookback_periods + 10)
-    print(df)
-    prices = df['low']
+    # print(df)
+    prices = df['close']
     current_price = prices.iloc[-1]
 
     # 코인별 변동성을 고려한 동적 기준 설정
     volatility_info = get_market_volatility(ticker)
-    print(volatility_info)
+    # print(volatility_info)
     volatility_multiplier = _get_volatility_multiplier(volatility_info['volatility'])
 
     # 다양한 기간별 하락률 계산
@@ -133,4 +132,5 @@ for ticker in tickers:
 
             print(f"급락 감지 ({period}): {decline_rate:.2f}% (기준: {threshold}%, 심각도: {severity:.1f})")
 
+    print(f"급락분석 - 급락여부: {is_rapid_decline}, 심각도: {decline_severity:.1f}")
     print(f'=' * 50)
