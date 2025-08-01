@@ -148,6 +148,11 @@ class UpbitTradingBot:
                 self.args.get('long_term_investment') if isinstance(self.args, dict) else getattr(self.args, 'long_term_investment', None),
                 'N'
             )
+            # 최대 주문 금액 추가
+            max_order_amount = self._get_field_value(
+                self.args.get('max_order_amount') if isinstance(self.args, dict) else getattr(self.args, 'max_order_amount', None),
+                0  # 기본값 5만원
+            )
 
             # 전략 이름 안전하게 가져오기 - 개선된 부분
             strategy_name = self._get_field_value(
@@ -263,8 +268,47 @@ class UpbitTradingBot:
 
                 # 매매 신호에 따른 주문 처리
                 if signal == 'BUY' and balance_cash and balance_cash > min_cash:
-                    self.logger.info(f"매수 시그널 발생: {buy_amount:,.2f}원 매수 시도")
-                    order_result = self.api.order_buy_market(ticker, buy_amount)
+                    # max_order_amount가 0이 아닌 경우에만 제한 로직 적용
+                    if max_order_amount > 0:
+                        # 현재 해당 코인의 보유량과 평균매수가 조회
+                        current_balance = self.api.get_balance_coin(ticker) or 0
+                        avg_buy_price = self.api.get_buy_avg(ticker) or 0
+
+                        # 현재까지 투자한 총 금액 계산
+                        total_invested_amount = current_balance * avg_buy_price if current_balance > 0 and avg_buy_price > 0 else 0
+
+                        self.logger.info(f"현재 보유량: {current_balance}, 평균매수가: {avg_buy_price:,.2f}원")
+                        self.logger.info(f"현재까지 투자한 총 금액: {total_invested_amount:,.2f}원")
+                        self.logger.info(f"최대 주문 가능 금액: {max_order_amount:,.2f}원")
+
+                        # 이미 투자한 금액이 최대 주문 금액을 초과하는 경우
+                        if total_invested_amount >= max_order_amount:
+                            self.logger.info(
+                                f"최대 주문 금액 초과로 매수를 건너뜁니다. (투자금액: {total_invested_amount:,.2f}원 >= 제한금액: {max_order_amount:,.2f}원)")
+                            return None
+
+                        # 남은 주문 가능 금액 계산
+                        remaining_amount = max_order_amount - total_invested_amount
+
+                        # 실제 매수 금액을 남은 금액과 비교하여 조정
+                        actual_buy_amount = min(buy_amount, remaining_amount)
+
+                        if actual_buy_amount != buy_amount:
+                            self.logger.info(
+                                f"매수 금액이 남은 주문 가능 금액으로 조정됨: {buy_amount:,.2f}원 → {actual_buy_amount:,.2f}원")
+
+                        # 조정된 매수 금액이 최소 주문 금액보다 작은 경우
+                        if actual_buy_amount < 5000:
+                            self.logger.info(f"남은 주문 가능 금액이 최소 주문 금액(5,000원) 미만입니다. (남은 금액: {actual_buy_amount:,.2f}원)")
+                            return None
+
+                    else:
+                        # max_order_amount가 0인 경우 제한 없이 매수
+                        actual_buy_amount = buy_amount
+                        self.logger.info("최대 주문 금액 제한 없음 (max_order_amount = 0)")
+
+                    self.logger.info(f"매수 시그널 발생: {actual_buy_amount:,.2f}원 매수 시도")
+                    order_result = self.api.order_buy_market(ticker, actual_buy_amount)
 
                     # 매수 완료 텔레그램 알림 전송
                     if order_result and not isinstance(order_result, int) and 'error' not in order_result:
@@ -289,7 +333,7 @@ class UpbitTradingBot:
                             self.logger.info(f"매수 체결 확인: {actual_volume} {ticker.split('-')[1]} 매수됨")
 
                             # 매수 금액 (실제 지불한 금액)
-                            amount = buy_amount  # 주문 금액 사용
+                            amount = actual_buy_amount  # 주문 금액 사용
 
                             # 텔레그램 알림 전송
                             self.send_trade_notification('BUY', ticker, {
@@ -303,11 +347,11 @@ class UpbitTradingBot:
                             self.logger.warning(f"매수 주문이 접수되었으나 아직 체결되지 않았습니다. UUID: {order_uuid}")
 
                             # 체결되지 않은 경우, 예상 수량으로 기록
-                            estimated_volume = buy_amount / current_price if current_price else 0
+                            estimated_volume = actual_buy_amount / current_price if current_price else 0
                             self.logger.info(f"예상 매수 수량: {estimated_volume} (현재가 기준)")
 
                             # 거래 기록 저장 (예상 수량 사용)
-                            self.record_trade('BUY', ticker, current_price, estimated_volume, buy_amount)
+                            self.record_trade('BUY', ticker, current_price, estimated_volume, actual_buy_amount)
 
                     return order_result
                 elif signal == 'SELL' and balance_coin and balance_coin > 0:

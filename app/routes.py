@@ -280,6 +280,7 @@ def dashboard():
                             'sell_portion': 100,
                             'prevent_loss_sale': 'Y',
                             'long_term_investment': 'N',
+                            'max_order_amount': 0,
                             'sleep_time': 60,
                             'ticker': ticker,
                             'strategy': bot_info.get('strategy', ''),
@@ -305,7 +306,7 @@ def dashboard():
 
                                 # 숫자 필드들은 안전하게 변환
                                 if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
-                                                  'rsi_oversold', 'rsi_overbought']:
+                                                  'rsi_oversold', 'rsi_overbought', 'max_order_amount']:
                                     raw_value = safe_numeric_value(raw_value, default_value)
 
                                 # 템플릿에서 직접 접근 가능하도록 간단한 구조로 변경
@@ -318,8 +319,7 @@ def dashboard():
 
                                     # 숫자 필드들은 안전하게 변환
                                     if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss',
-                                                      'rsi_period',
-                                                      'rsi_oversold', 'rsi_overbought']:
+                                                      'rsi_period', 'rsi_oversold', 'rsi_overbought', 'max_order_amount']:
                                         raw_value = safe_numeric_value(raw_value, default_value)
 
                                     normalized_settings[field_name] = raw_value
@@ -353,6 +353,7 @@ def dashboard():
                             'sell_portion': 100,
                             'prevent_loss_sale': 'Y',
                             'long_term_investment': 'N',
+                            'max_order_amount': 0,
                             'sleep_time': 60,
                             'ticker': ticker,
                             'strategy': '',
@@ -803,6 +804,7 @@ def create_trading_bot_from_favorite(favorite):
             'sell_portion': favorite.sell_portion,
             'prevent_loss_sale': favorite.prevent_loss_sale,
             'long_term_investment': favorite.long_term_investment,
+            'max_order_amount': favorite.max_order_amount,
             'window': favorite.window,
             'multiplier': favorite.multiplier,
             'buy_multiplier': favorite.buy_multiplier,
@@ -1303,6 +1305,7 @@ def auto_save_favorite_from_settings(form_data):
             'sell_portion': form_data.get('sell_portion'),
             'prevent_loss_sale': form_data.get('prevent_loss_sale'),
             'long_term_investment': form_data.get('long_term_investment'),
+            'max_order_amount': form_data.get('max_order_amount'),
             'window': form_data.get('window'),
             'multiplier': form_data.get('multiplier'),
             'buy_multiplier': form_data.get('buy_multiplier'),
@@ -1347,6 +1350,7 @@ def save_favorite_data(favorite_data):
             sell_portion=float(favorite_data['sell_portion']),
             prevent_loss_sale=favorite_data['prevent_loss_sale'],
             long_term_investment=favorite_data['long_term_investment'],
+            max_order_amount=float(favorite_data['max_order_amount']),
             window=int(favorite_data['window']),
             multiplier=float(favorite_data['multiplier']),
             # 비대칭 볼린저 밴드 필드 추가
@@ -1574,6 +1578,7 @@ def get_scheduler_status():
                     'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
                     'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
+                    'max_order_amount': get_setting_value('max_order_amount', 0),
                     # 투자 정보 추가
                     'portfolio_info': user_portfolio_info.get(ticker, {
                         'coin_balance': 0,

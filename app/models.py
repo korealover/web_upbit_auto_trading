@@ -85,6 +85,9 @@ class TradingFavorite(db.Model):
     prevent_loss_sale = db.Column(db.String(1), nullable=False, default='N')
     long_term_investment = db.Column(db.String(1), nullable=False, default='N')
 
+    # 주문 가능 금액 필드 추가
+    max_order_amount = db.Column(db.Float, nullable=True, default=1000000)  # 기본값 100만원
+
     # 기존 볼린저 밴드 전략 설정
     window = db.Column(db.Integer, nullable=True)
     multiplier = db.Column(db.Float, nullable=True)
@@ -127,6 +130,7 @@ class TradingFavorite(db.Model):
             'sell_portion': self.sell_portion,
             'prevent_loss_sale': self.prevent_loss_sale,
             'long_term_investment': self.long_term_investment,
+            'max_order_amount': self.max_order_amount,  # 추가
             'window': self.window,
             'multiplier': self.multiplier,
             # 비대칭 볼린저 밴드 필드 추가

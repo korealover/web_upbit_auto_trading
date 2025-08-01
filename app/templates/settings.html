@@ -96,13 +96,28 @@
                     </div>
 
 
+                    <!-- 새로 추가: 주문 가능 금액 설정 -->
                     <div class="row mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
+                            {{ form.max_order_amount.label(class="form-label") }}
+                            <div class="mobile-slider-container">
+                                <input type="range" class="form-range mobile-slider"
+                                       id="max_order_amount_slider"
+                                       min="0" max="500000" step="5000"
+                                       value="{{ form.max_order_amount.data or 50000 }}">
+                                <div class="slider-value-display">
+                                    <span id="max_order_amount_display">{{ "{:,}".format(form.max_order_amount.data or 50000) }}원</span>
+                                </div>
+                            </div>
+                            {{ form.max_order_amount(class="form-control d-none", id="max_order_amount_input") }}
+                            <small class="text-muted">코인당 최대 투자 한도</small>
+                        </div>
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.prevent_loss_sale.label(class="form-label") }}
                             {{ form.prevent_loss_sale(class="form-select") }}
                             <small class="text-muted">매수 평단가 이하 매도 금지</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3 col-12 mb-3">
                             {{ form.long_term_investment.label(class="form-label") }}
                             {{ form.long_term_investment(class="form-select") }}
                             <small class="text-muted">장기 투자(보유)를 위해 매도 금지</small>
@@ -451,6 +466,7 @@
         setupMobileSlider('min_cash_slider', 'min_cash_input', 'min_cash_display', formatCurrency);
         setupMobileSlider('sleep_time_slider', 'sleep_time_input', 'sleep_time_display', formatSeconds);
         setupMobileSlider('sell_portion_slider', 'sell_portion_input', 'sell_portion_display', formatPercentage);
+        setupMobileSlider('max_order_amount_slider', 'max_order_amount_input', 'max_order_amount_display', formatCurrency);
 
         function toggleSettings() {
             // 모든 설정 숨기기
