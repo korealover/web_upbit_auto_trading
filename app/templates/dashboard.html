@@ -191,7 +191,7 @@
                                 <td class="text-end">
                                     <span class="text-success">
                                         {% if coin.avg_buy_price >= 100 %}
-                                        ₩{{ "{:,.0f}".format(coin.avg_buy_price|default(0)) }}
+                                        ₩{{ "{:,.1f}".format(coin.avg_buy_price|default(0)) }}
                                         {% elif coin.avg_buy_price >= 1 %}
                                         ₩{{ "{:,.2f}".format(coin.avg_buy_price|default(0)) }}
                                         {% elif coin.avg_buy_price >= 0.1 %}
