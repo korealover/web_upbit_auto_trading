@@ -277,14 +277,13 @@ class UpbitTradingBot:
                         # 현재까지 투자한 총 금액 계산
                         total_invested_amount = current_balance * avg_buy_price if current_balance > 0 and avg_buy_price > 0 else 0
 
-                        self.logger.info(f"현재 보유량: {current_balance}, 평균매수가: {avg_buy_price:,.2f}원")
-                        self.logger.info(f"현재까지 투자한 총 금액: {total_invested_amount:,.2f}원")
-                        self.logger.info(f"최대 주문 가능 금액: {max_order_amount:,.2f}원")
+                        self.logger.info(f"({ticker}) - 현재 보유량: {current_balance}, 평균매수가: {avg_buy_price:,.2f}원")
+                        self.logger.info(f"({ticker}) - 현재까지 투자한 총 금액: {total_invested_amount:,.2f}원")
+                        self.logger.info(f"({ticker}) - 최대 주문 가능 금액: {max_order_amount:,.2f}원")
 
                         # 이미 투자한 금액이 최대 주문 금액을 초과하는 경우
                         if total_invested_amount >= max_order_amount:
-                            self.logger.info(
-                                f"최대 주문 금액 초과로 매수를 건너뜁니다. (투자금액: {total_invested_amount:,.2f}원 >= 제한금액: {max_order_amount:,.2f}원)")
+                            self.logger.info(f"({ticker}) - 최대 주문 금액 초과로 매수를 건너뜁니다. (투자금액: {total_invested_amount:,.2f}원 >= 제한금액: {max_order_amount:,.2f}원)")
                             return None
 
                         # 남은 주문 가능 금액 계산
