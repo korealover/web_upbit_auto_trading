@@ -86,7 +86,7 @@ class TradingFavorite(db.Model):
     long_term_investment = db.Column(db.String(1), nullable=False, default='N')
 
     # 주문 가능 금액 필드 추가
-    max_order_amount = db.Column(db.Float, nullable=True, default=1000000)  # 기본값 100만원
+    max_order_amount = db.Column(db.Float, nullable=True, default=0)  # 기본값 0원
 
     # 기존 볼린저 밴드 전략 설정
     window = db.Column(db.Integer, nullable=True)
