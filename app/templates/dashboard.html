@@ -136,7 +136,7 @@
                                         <!-- 전략별 세부 설정 카드 -->
                                         {% if bot_info.strategy == 'bollinger' or bot_info.strategy == 'bollinger_asymmetric' %}
                                         <div class="col-12 mt-2 px-1">
-                                            <div class="card border-0 shadow-sm" style="height: 80px;">
+                                            <div class="card border-0 shadow-sm">
                                                 <div class="card-header bg-light border-0 py-1 px-2">
                                                     <h6 class="mb-0 text-info" style="font-size: 0.9rem;">
                                                         <i class="fas fa-chart-area me-2"></i>
@@ -154,7 +154,7 @@
                                                             <div class="d-flex justify-content-between align-items-center">
                                                                 <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균 기간</span>
                                                                 <span class="badge bg-secondary" style="font-size: 0.65rem;">
-                                                                    {{ bot_info.settings.window|default('N/A') }}
+                                                                    {{ bot_info.settings.window|default('N/A') }}일
                                                                 </span>
                                                             </div>
                                                         </div>
@@ -169,23 +169,23 @@
                                                     </div>
                                                     {% elif bot_info.strategy == 'bollinger_asymmetric' %}
                                                     <div class="row g-2">
-                                                        <div class="col-md-4">
-                                                            <div class="d-flex justify-content-between align-items-center">
-                                                                <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균</span>
+                                                        <div class="col-lg-4 col-md-12">
+                                                            <div class="d-flex justify-content-between align-items-center mb-md-2 mb-lg-0">
+                                                                <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균 기간</span>
                                                                 <span class="badge bg-secondary" style="font-size: 0.65rem;">
-                                                                    {{ bot_info.settings.window|default('N/A') }}
+                                                                    {{ bot_info.settings.window|default('N/A') }}일
                                                                 </span>
                                                             </div>
                                                         </div>
-                                                        <div class="col-md-4">
-                                                            <div class="d-flex justify-content-between align-items-center">
+                                                        <div class="col-lg-4 col-md-12">
+                                                            <div class="d-flex justify-content-between align-items-center mb-md-2 mb-lg-0">
                                                                 <span><i class="fas fa-arrow-up text-success me-2"></i>매수 승수</span>
                                                                 <span class="badge bg-success" style="font-size: 0.65rem;">
                                                                     {{ "{:.1f}".format(bot_info.settings.buy_multiplier) if bot_info.settings.buy_multiplier is not none else "N/A" }}
                                                                 </span>
                                                             </div>
                                                         </div>
-                                                        <div class="col-md-4">
+                                                        <div class="col-lg-4 col-md-12">
                                                             <div class="d-flex justify-content-between align-items-center">
                                                                 <span><i class="fas fa-arrow-down text-danger me-2"></i>매도 승수</span>
                                                                 <span class="badge bg-danger" style="font-size: 0.65rem;">
@@ -200,7 +200,10 @@
                                         </div>
                                         {% endif %}
                                     </div>
+
+
                                 </p>
+                                <hr>
                                 <div class="d-flex justify-content-between align-items-center">
                                     <small class="text-muted">
                                         {% if bot_info.last_signal_time %}
@@ -232,7 +235,6 @@
     </div>
 </div>
 
-<!-- 잔고 및 성과 정보 -->
 <!-- 잔고 및 성과 정보 -->
 <div class="row mt-4">
     <div class="col-md-12">
@@ -419,7 +421,7 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span>📈 거래 기록 <span id="trade-records-title">(오늘의 모든 거래)</span></span>
+                <span>📈 오늘의 거래</span>
                 <div class="d-flex gap-2">
                     <select id="ticker-filter" class="form-select form-select-sm" style="width: 120px;">
                         <option value="">모든 티커</option>
@@ -905,3 +907,18 @@ document.addEventListener('DOMContentLoaded', function() {
     </p>
 </div>
 {% endif %}
+<style>
+/* 전략 카드의 반응형 높이 조정 */
+@media (min-width: 992px) {
+    .col-12.mt-2.px-1 .card {
+        height: 80px !important;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .col-12.mt-2.px-1 .card {
+        height: auto !important;
+        min-height: 120px;
+    }
+}
+</style>
