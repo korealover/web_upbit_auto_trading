@@ -48,158 +48,158 @@
                                     {% endif %}
                                     <hr>
                                     <div class="row g-2 mt-2 mx-1">
-    <!-- 기본 설정 정보 카드 -->
-    <div class="col-md-6 px-1">
-        <div class="card border-0 shadow-sm" style="height: 120px;">
-            <div class="card-header bg-light border-0 py-1 px-2">
-                <h6 class="mb-0 text-primary" style="font-size: 0.9rem;">
-                    <i class="fas fa-cog me-2"></i>기본 설정
-                </h6>
-            </div>
-            <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span><i class="fas fa-chart-line text-info me-2"></i>차트 간격</span>
-                    <span class="badge bg-info" style="font-size: 0.7rem;">{{ bot_info.interval_label|default('N/A') }}</span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-won-sign text-success me-2"></i>매수 금액</span>
-                    <span class="text-success fw-bold" style="font-size: 0.75rem;">
-                        {{ "{:,.0f}".format(bot_info.settings.buy_amount) if bot_info.settings.buy_amount is not none else "N/A" }}원
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
+                                        <!-- 기본 설정 정보 카드 -->
+                                        <div class="col-md-6 px-1">
+                                            <div class="card border-0 shadow-sm" style="height: 120px;">
+                                                <div class="card-header bg-light border-0 py-1 px-2">
+                                                    <h6 class="mb-0 text-primary" style="font-size: 0.9rem;">
+                                                        <i class="fas fa-cog me-2"></i>기본 설정
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
+                                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                                        <span><i class="fas fa-chart-line text-info me-2"></i>차트 간격</span>
+                                                        <span class="badge bg-info" style="font-size: 0.7rem;">{{ bot_info.interval_label|default('N/A') }}</span>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <span><i class="fas fa-won-sign text-success me-2"></i>매수 금액</span>
+                                                        <span class="text-success fw-bold" style="font-size: 0.75rem;">
+                                                            {{ "{:,.0f}".format(bot_info.settings.buy_amount) if bot_info.settings.buy_amount is not none else "N/A" }}원
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
-    <!-- 거래 설정 정보 카드 -->
-    <div class="col-md-6 px-1">
-        <div class="card border-0 shadow-sm" style="height: 120px;">
-            <div class="card-header bg-light border-0 py-1 px-2">
-                <h6 class="mb-0 text-secondary" style="font-size: 0.9rem;">
-                    <i class="fas fa-exchange-alt me-2"></i>거래 설정
-                </h6>
-            </div>
-            <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span><i class="fas fa-shield-alt {{ 'text-success' if bot_info.settings.prevent_loss_sale == 'Y' else 'text-danger' }} me-2"></i>손절 금지</span>
-                    <span class="badge {{ 'bg-success' if bot_info.settings.prevent_loss_sale == 'Y' else 'bg-danger' }}" style="font-size: 0.65rem;">
-                        {{ 'ON' if bot_info.settings.prevent_loss_sale == 'Y' else 'OFF' if bot_info.settings.prevent_loss_sale == 'N' else 'N/A' }}
-                    </span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span><i class="fas fa-clock text-info me-2"></i>거래 간격</span>
-                    <span class="badge bg-info" style="font-size: 0.65rem;">
-                        {{ bot_info.settings.sleep_time|default('N/A') }}초
-                    </span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-percentage text-danger me-2"></i>매도 비율</span>
-                    <span class="badge bg-danger" style="font-size: 0.65rem;">
-                        {{ (bot_info.settings.sell_portion * 100)|default('N/A') }}%
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
+                                        <!-- 거래 설정 정보 카드 -->
+                                        <div class="col-md-6 px-1">
+                                            <div class="card border-0 shadow-sm" style="height: 120px;">
+                                                <div class="card-header bg-light border-0 py-1 px-2">
+                                                    <h6 class="mb-0 text-secondary" style="font-size: 0.9rem;">
+                                                        <i class="fas fa-exchange-alt me-2"></i>거래 설정
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span><i class="fas fa-shield-alt {{ 'text-success' if bot_info.settings.prevent_loss_sale == 'Y' else 'text-danger' }} me-2"></i>손절 금지</span>
+                                                        <span class="badge {{ 'bg-success' if bot_info.settings.prevent_loss_sale == 'Y' else 'bg-danger' }}" style="font-size: 0.65rem;">
+                                                            {{ 'ON' if bot_info.settings.prevent_loss_sale == 'Y' else 'OFF' if bot_info.settings.prevent_loss_sale == 'N' else 'N/A' }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span><i class="fas fa-clock text-info me-2"></i>거래 간격</span>
+                                                        <span class="badge bg-info" style="font-size: 0.65rem;">
+                                                            {{ bot_info.settings.sleep_time|default('N/A') }}초
+                                                        </span>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <span><i class="fas fa-percentage text-danger me-2"></i>매도 비율</span>
+                                                        <span class="badge bg-danger" style="font-size: 0.65rem;">
+                                                            {{ (bot_info.settings.sell_portion * 100)|default('N/A') }}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
-    <!-- 자금 관리 정보 카드 (하단) -->
-    <div class="col-md-12 mt-2 px-1">
-        <div class="card border-0 shadow-sm" style="height: 110px;">
-            <div class="card-header bg-light border-0 py-1 px-2">
-                <h6 class="mb-0 text-warning" style="font-size: 0.9rem;">
-                    <i class="fas fa-wallet me-2"></i>자금 관리
-                </h6>
-            </div>
-            <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
-                <div class="row g-2">
-                    <div class="col-md-12">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span><i class="fas fa-piggy-bank text-warning me-2"></i>최소 보유 현금</span>
-                            <span class="text-warning fw-bold" style="font-size: 0.75rem;">
-                                {{ "{:,.0f}".format(bot_info.settings.min_cash) if bot_info.settings.min_cash is not none else "N/A" }}원
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-12">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-credit-card text-primary me-2"></i>주문 가능 금액</span>
-                            <span class="text-primary fw-bold" style="font-size: 0.75rem;">
-                                {{ "{:,.0f}".format(bot_info.settings.max_order_amount) if bot_info.settings.max_order_amount is not none else "N/A" }}원
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+                                        <!-- 자금 관리 정보 카드 (하단) -->
+                                        <div class="col-md-12 mt-2 px-1">
+                                            <div class="card border-0 shadow-sm" style="height: 110px;">
+                                                <div class="card-header bg-light border-0 py-1 px-2">
+                                                    <h6 class="mb-0 text-warning" style="font-size: 0.9rem;">
+                                                        <i class="fas fa-wallet me-2"></i>자금 관리
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
+                                                    <div class="row g-2">
+                                                        <div class="col-md-12">
+                                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                                <span><i class="fas fa-piggy-bank text-warning me-2"></i>최소 보유 현금</span>
+                                                                <span class="text-warning fw-bold" style="font-size: 0.75rem;">
+                                                                    {{ "{:,.0f}".format(bot_info.settings.min_cash) if bot_info.settings.min_cash is not none else "N/A" }}원
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-12">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span><i class="fas fa-credit-card text-primary me-2"></i>주문 가능 금액</span>
+                                                                <span class="text-primary fw-bold" style="font-size: 0.75rem;">
+                                                                    {{ "{:,.0f}".format(bot_info.settings.max_order_amount) if bot_info.settings.max_order_amount is not none else "N/A" }}원
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
-    <!-- 전략별 세부 설정 카드 -->
-    {% if bot_info.strategy == 'bollinger' or bot_info.strategy == 'bollinger_asymmetric' %}
-    <div class="col-12 mt-2 px-1">
-        <div class="card border-0 shadow-sm" style="height: 80px;">
-            <div class="card-header bg-light border-0 py-1 px-2">
-                <h6 class="mb-0 text-info" style="font-size: 0.9rem;">
-                    <i class="fas fa-chart-area me-2"></i>
-                    {% if bot_info.strategy == 'bollinger' %}
-                    볼린저 밴드 설정
-                    {% else %}
-                    비대칭 볼린저 밴드 설정
-                    {% endif %}
-                </h6>
-            </div>
-            <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
-                {% if bot_info.strategy == 'bollinger' %}
-                <div class="row g-2">
-                    <div class="col-md-6">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균 기간</span>
-                            <span class="badge bg-secondary" style="font-size: 0.65rem;">
-                                {{ bot_info.settings.window|default('N/A') }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-expand-arrows-alt text-info me-2"></i>볼린저 밴드 승수</span>
-                            <span class="badge bg-info" style="font-size: 0.65rem;">
-                                {{ "{:.1f}".format(bot_info.settings.multiplier) if bot_info.settings.multiplier is not none else "N/A" }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                {% elif bot_info.strategy == 'bollinger_asymmetric' %}
-                <div class="row g-2">
-                    <div class="col-md-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균</span>
-                            <span class="badge bg-secondary" style="font-size: 0.65rem;">
-                                {{ bot_info.settings.window|default('N/A') }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-arrow-up text-success me-2"></i>매수 승수</span>
-                            <span class="badge bg-success" style="font-size: 0.65rem;">
-                                {{ "{:.1f}".format(bot_info.settings.buy_multiplier) if bot_info.settings.buy_multiplier is not none else "N/A" }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-arrow-down text-danger me-2"></i>매도 승수</span>
-                            <span class="badge bg-danger" style="font-size: 0.65rem;">
-                                {{ "{:.1f}".format(bot_info.settings.sell_multiplier) if bot_info.settings.sell_multiplier is not none else "N/A" }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% endif %}
-</div>
+                                        <!-- 전략별 세부 설정 카드 -->
+                                        {% if bot_info.strategy == 'bollinger' or bot_info.strategy == 'bollinger_asymmetric' %}
+                                        <div class="col-12 mt-2 px-1">
+                                            <div class="card border-0 shadow-sm" style="height: 80px;">
+                                                <div class="card-header bg-light border-0 py-1 px-2">
+                                                    <h6 class="mb-0 text-info" style="font-size: 0.9rem;">
+                                                        <i class="fas fa-chart-area me-2"></i>
+                                                        {% if bot_info.strategy == 'bollinger' %}
+                                                        볼린저 밴드 설정
+                                                        {% else %}
+                                                        비대칭 볼린저 밴드 설정
+                                                        {% endif %}
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body py-2 px-2" style="font-size: 0.8rem;">
+                                                    {% if bot_info.strategy == 'bollinger' %}
+                                                    <div class="row g-2">
+                                                        <div class="col-md-6">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균 기간</span>
+                                                                <span class="badge bg-secondary" style="font-size: 0.65rem;">
+                                                                    {{ bot_info.settings.window|default('N/A') }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span><i class="fas fa-expand-arrows-alt text-info me-2"></i>볼린저 밴드 승수</span>
+                                                                <span class="badge bg-info" style="font-size: 0.65rem;">
+                                                                    {{ "{:.1f}".format(bot_info.settings.multiplier) if bot_info.settings.multiplier is not none else "N/A" }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {% elif bot_info.strategy == 'bollinger_asymmetric' %}
+                                                    <div class="row g-2">
+                                                        <div class="col-md-4">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span><i class="fas fa-calendar-alt text-secondary me-2"></i>이동평균</span>
+                                                                <span class="badge bg-secondary" style="font-size: 0.65rem;">
+                                                                    {{ bot_info.settings.window|default('N/A') }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span><i class="fas fa-arrow-up text-success me-2"></i>매수 승수</span>
+                                                                <span class="badge bg-success" style="font-size: 0.65rem;">
+                                                                    {{ "{:.1f}".format(bot_info.settings.buy_multiplier) if bot_info.settings.buy_multiplier is not none else "N/A" }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span><i class="fas fa-arrow-down text-danger me-2"></i>매도 승수</span>
+                                                                <span class="badge bg-danger" style="font-size: 0.65rem;">
+                                                                    {{ "{:.1f}".format(bot_info.settings.sell_multiplier) if bot_info.settings.sell_multiplier is not none else "N/A" }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
                                 </p>
                                 <div class="d-flex justify-content-between align-items-center">
                                     <small class="text-muted">
