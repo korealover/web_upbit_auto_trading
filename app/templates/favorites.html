@@ -96,7 +96,7 @@
                 <div class="row text-center mb-3">
                     <div class="col-4">
                         <small class="text-muted">코인</small>
-                        <div class="mt-1"><span class="badge bg-primary">{{ favorite.ticker }}</span></div>
+                        <div class="mt-1"><a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ ticker }}&tab=chart" target="_blank" rel="noopener noreferrer"><span class="badge bg-primary">{{ favorite.ticker }}</span></a></div>
                     </div>
                     <div class="col-4">
                         <small class="text-muted">전략</small>
@@ -134,8 +134,26 @@
                     </div>
                     <div class="col-6 mb-2">
                         <div class="d-flex justify-content-between">
-                            <span class="param-label"><i class="fas fa-piggy-bank me-2 text-warning"></i>최소 현금</span>
+                            <span class="param-label"><i class="fas fa-shield-alt me-2 text-danger"></i>손절 금지</span>
+                            <span class="param-value">
+                                {% if favorite.prevent_loss_sale == 'Y' %}
+                                    <span class="badge bg-success">ON</span>
+                                {% else %}
+                                    <span class="badge bg-danger">OFF</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="param-label"><i class="fas fa-piggy-bank me-2 text-warning"></i>최소 보유액</span>
                             <span class="param-value">{{ "{:,.0f}".format(favorite.min_cash) }}원</span>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span class="param-label"><i class="fas fa-credit-card me-2 text-primary"></i>주문 가능액</span>
+                            <span class="param-value">{{ "{:,.0f}".format(favorite.max_order_amount or 0) }}원</span>
                         </div>
                     </div>
                     <div class="col-6 mb-2">
