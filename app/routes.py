@@ -1572,15 +1572,33 @@ def get_scheduler_status():
                     'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
                     'username': bot_info.get('username', 'Unknown'),
                     'interval_label': bot_info.get('interval_label', 'Unknown'),
-                    'buy_amount': get_setting_value('buy_amount', 0),
-                    'window': get_setting_value('window', 20),
-                    'multiplier': get_setting_value('multiplier', 2.0),
-                    'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
-                    'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
+                    # 봇 설정 정보 추가
+                    'settings': {
+                        'buy_amount': get_setting_value('buy_amount', 0),
+                        'window': get_setting_value('window', 20),
+                        'multiplier': get_setting_value('multiplier', 2.0),
+                        'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
+                        'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
+                        'max_order_amount': get_setting_value('max_order_amount', 0),
+                        'min_cash': get_setting_value('min_cash', 0),
+                        'sleep_time': get_setting_value('sleep_time', 60),
+                        'sell_portion': get_setting_value('sell_portion', 1.0),
+                        'prevent_loss_sale': get_setting_value('prevent_loss_sale', 'N'),
+                        # RSI 관련 설정
+                        'rsi_buy_threshold': get_setting_value('rsi_buy_threshold', 30),
+                        'rsi_sell_threshold': get_setting_value('rsi_sell_threshold', 70),
+                        'rsi_period': get_setting_value('rsi_period', 14),
+                        # 변동성 돌파 관련 설정
+                        'volatility_multiplier': get_setting_value('volatility_multiplier', 0.5),
+                        'volatility_period': get_setting_value('volatility_period', 20),
+                        # 앙상블 관련 설정
+                        'ensemble_weights': get_setting_value('ensemble_weights', {}),
+                        'ensemble_threshold': get_setting_value('ensemble_threshold', 0.6)
+                    },
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
-                    'max_order_amount': get_setting_value('max_order_amount', 0),
                     # 투자 정보 추가
                     'portfolio_info': user_portfolio_info.get(ticker, {
+                        'investment_amount': get_setting_value('buy_amount', 0),  # 투자 금액
                         'coin_balance': 0,
                         'avg_buy_price': 0,
                         'current_price': 0,
