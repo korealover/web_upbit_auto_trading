@@ -1525,13 +1525,15 @@ def get_scheduler_status():
 
                             # 현재 보유 가치 계산 (현재 투자된 ticker들의 평가금액)
                             current_value = coin_balance * current_price
-                            # user_total_current_value += current_value
+                            # 투자 정보 계산
+                            investment_amount = coin_balance * avg_buy_price  # 실제 투자한 금액
 
                             # 수익률 계산
                             profit_rate = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price > 0 else 0
 
                             # 포트폴리오 정보 저장
                             user_portfolio_info[ticker] = {
+                                'investment_amount': investment_amount,
                                 'coin_balance': coin_balance,
                                 'avg_buy_price': avg_buy_price,
                                 'current_price': current_price,
@@ -1541,6 +1543,7 @@ def get_scheduler_status():
                         else:
                             # API 키가 없는 경우 기본값 설정
                             user_portfolio_info[ticker] = {
+                                'investment_amount': 0,
                                 'coin_balance': 0,
                                 'avg_buy_price': 0,
                                 'current_price': 0,
@@ -1552,6 +1555,7 @@ def get_scheduler_status():
                     logger.error(f"투자 정보 조회 중 오류 (사용자: {user_id}, 티커: {ticker}): {str(e)}")
                     # 오류 발생 시 기본값 설정
                     user_portfolio_info[ticker] = {
+                        'investment_amount': 0,
                         'coin_balance': 0,
                         'avg_buy_price': 0,
                         'current_price': 0,
@@ -1598,7 +1602,7 @@ def get_scheduler_status():
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
                     # 투자 정보 추가
                     'portfolio_info': user_portfolio_info.get(ticker, {
-                        'investment_amount': get_setting_value('buy_amount', 0),  # 투자 금액
+                        'investment_amount': 0,  # 투자 금액
                         'coin_balance': 0,
                         'avg_buy_price': 0,
                         'current_price': 0,
