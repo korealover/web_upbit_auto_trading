@@ -117,6 +117,10 @@ class UpbitTradingBot:
     def trading(self):
         """트레이딩 로직 실행"""
         try:
+            # 기본 검증 먼저 수행
+            if not self._validate_trading_conditions():
+                return None
+
             # 스레드 모니터링 등록 (사용 가능한 경우만)
             if THREAD_MONITOR_AVAILABLE:
                 ticker_value = self._get_field_value(self.args.get('ticker') if isinstance(self.args, dict) else getattr(self.args, 'ticker', None))
@@ -611,3 +615,23 @@ class UpbitTradingBot:
         except Exception as e:
             self.logger.error(f"스케줄링된 트레이딩 사이클 실행 중 오류: {e}", exc_info=True)
 
+    def _validate_trading_conditions(self):
+        """거래 실행 전 기본 조건 검증"""
+        try:
+            # API 키 유효성 검증
+            is_valid, error_msg = self.api.validate_api_keys()
+            if not is_valid:
+                self.logger.error(f"API 키 검증 실패: {error_msg}")
+                return False
+
+            # 현금 잔고 조회 가능한지 확인
+            cash_balance = self.api.get_balance_cash()
+            if cash_balance is None:
+                self.logger.error("현금 잔고 조회에 실패했습니다.")
+                return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"거래 조건 검증 중 오류: {e}")
+            return False
