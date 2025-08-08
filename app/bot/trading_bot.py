@@ -392,7 +392,7 @@ class UpbitTradingBot:
                     if sell_portion < 1.0:
                         if signal == 'PARTIAL_SELL':
                             sell_portion = sell_portion * sell_ratio
-                            self.logger.info(f"분할 매도 시도 및 RSI보조지표 사용: 보유량의 {sell_portion * 100:.1f}% 매도, RSI보조지표: {sell_ratio}")
+                            self.logger.info(f"분할 매도 시도 및 RSI보조지표 사용(PARTIAL_SELL): 보유량의 {sell_portion * 100:.1f}% 매도, RSI보조지표: {sell_ratio}")
                         else:
                             self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
                         order_result = self.api.order_sell_market_partial(ticker, sell_portion)
