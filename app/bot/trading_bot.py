@@ -394,27 +394,59 @@ class UpbitTradingBot:
 
                     # 매도 전략 결정
                     if sell_portion < 1.0:
-                        if signal == 'PARTIAL_SELL':
-                            sell_portion = sell_portion * sell_ratio
-                            self.logger.info(f"분할 매도 시도 및 RSI보조지표 사용(PARTIAL_SELL): 보유량의 {sell_portion * 100:.1f}% 매도, RSI보조지표: {sell_ratio}")
-                        else:
-                            self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
-                        order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+                        # 현재 보유량과 가치 확인
+                        balance = self.api.get_balance_coin(ticker)
+                        current_price = self.api.get_current_price(ticker)
 
-                        # 분할 매도에서 오류가 발생한 경우 처리
-                        if order_result and 'error' in order_result:
-                            error_name = order_result['error'].get('name', '')
+                        if balance and current_price:
+                            total_value = balance * current_price
+                            estimated_sell_value = total_value * sell_portion
+                            min_order_value = 5000
 
-                            if error_name == 'insufficient_total_value':
-                                self.logger.warning("보유 코인 가치가 부족하여 매도를 건너뜁니다.")
-                                return None
-                            elif error_name == 'too_small_volume':
-                                self.logger.warning("매도 수량이 너무 적어 전량 매도로 전환합니다.")
-                                # 전량 매도로 재시도
-                                order_result = self.api.order_sell_market(ticker, balance_coin)
+                            # 최소 매도 금액 체크 및 조정
+                            if estimated_sell_value < min_order_value:
+                                if min_order_value <= total_value < 10000:
+                                    # 전체 보유가 5,000원 이상 10,000원 미만인 경우 전량 매도
+                                    self.logger.info(f"{ticker} 예상 매도 금액({estimated_sell_value:,.0f}원)이 최소 금액 미만으로 전량 매도로 변경")
+                                    sell_portion = 1.0
+                                    order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+                                elif total_value < min_order_value:
+                                    # 전체 보유가 최소 금액 미만인 경우 매도 보류
+                                    self.logger.warning(f"{ticker} 전체 보유가치({total_value:,.0f}원)가 최소 매도 금액 미만으로 매도 보류")
+                                    order_result = {"error": {"name": "insufficient_value", "message": "최소 매도 금액 미만"}}
+                                else:
+                                    # 보유가치가 충분하지만 분할 매도 금액이 부족한 경우
+                                    # 최소 금액을 충족하는 매도 비율로 조정
+                                    adjusted_portion = min(1.0, (min_order_value + 1000) / total_value)  # 여유분 추가
+                                    self.logger.info(f"{ticker} 매도 비율을 최소 금액 충족을 위해 {sell_portion:.2f}에서 {adjusted_portion:.2f}로 조정")
+                                    sell_portion = adjusted_portion
+                                    order_result = self.api.order_sell_market_partial(ticker, sell_portion)
                             else:
-                                self.logger.error(f"분할 매도 오류: {order_result['error']['message']}")
-                                return None
+                                # 정상적인 분할 매도 진행
+                                if signal == 'PARTIAL_SELL':
+                                    sell_portion = sell_portion * sell_ratio
+                                    self.logger.info(f"{ticker} 분할 매도 시도 및 RSI보조지표 사용(PARTIAL_SELL): 보유량의 {sell_portion * 100:.1f}% 매도, RSI보조지표: {sell_ratio}")
+                                else:
+                                    self.logger.info(f"{ticker} 분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
+                                order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+
+                            # 분할 매도에서 오류가 발생한 경우 처리
+                            if order_result and 'error' in order_result:
+                                error_name = order_result['error'].get('name', '')
+
+                                if error_name == 'insufficient_total_value':
+                                    self.logger.warning("보유 코인 가치가 부족하여 매도를 건너뜁니다.")
+                                    return None
+                                elif error_name == 'too_small_volume':
+                                    self.logger.warning("매도 수량이 너무 적어 전량 매도로 전환합니다.")
+                                    # 전량 매도로 재시도
+                                    order_result = self.api.order_sell_market(ticker, balance_coin)
+                                else:
+                                    self.logger.error(f"분할 매도 오류: {order_result['error']['message']}")
+                                    return None
+                        else:
+                            self.logger.error(f"{ticker} 보유량 또는 현재가 정보를 가져올 수 없음")
+                            return None
                     else:
                         self.logger.info(f"전량 매도 시도: {balance_coin} {ticker.split('-')[1]}")
                         order_result = self.api.order_sell_market(ticker, balance_coin)
