@@ -85,7 +85,7 @@ class TradingSettingsForm(FlaskForm):
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
     # 새로 추가: 주문 가능 금액 필드
-    max_order_amount = IntegerField('주문 가능 금액 (원)', validators=[NumberRange(min=0, max=500000)], default=5000)
+    max_order_amount = IntegerField('주문 가능 금액 (원)', validators=[NumberRange(min=0, max=1000000)], default=50000)
 
     prevent_loss_sale = SelectField('손절 금지', choices=[('Y', '예'), ('N', '아니오')], default='Y')
     long_term_investment = SelectField('장기 투자', choices=[('Y', '예'), ('N', '아니오')], default='N')

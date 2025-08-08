@@ -103,7 +103,7 @@
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
                                        id="max_order_amount_slider"
-                                       min="0" max="500000" step="5000"
+                                       min="0" max="1000000" step="5000"
                                        value="{{ form.max_order_amount.data or 50000 }}">
                                 <div class="slider-value-display">
                                     <span id="max_order_amount_display">{{ "{:,}".format(form.max_order_amount.data or 50000) }}원</span>

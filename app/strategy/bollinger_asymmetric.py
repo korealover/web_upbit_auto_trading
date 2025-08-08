@@ -72,11 +72,9 @@ class AsymmetricBollingerBandsStrategy:
             self.logger.error(f"매수 지연 판단 중 오류: {e}")
             return False
 
-    def generate_signal(self, ticker, prices, window, buy_multiplier=3.0, sell_multiplier=2.0, use_rsi_filter=True, rsi_threshold=30):
+    def generate_signal(self, ticker, prices, window, buy_multiplier=3.0, sell_multiplier=2.0, use_rsi_filter=True, rsi_threshold=30, interval='minute5'):
         """매매 신호 생성 - RSI 필터 선택 가능"""
-        sell_upper_band, buy_lower_band = self.get_bollinger_bands(
-            prices, window, buy_multiplier, sell_multiplier
-        )
+        sell_upper_band, buy_lower_band = self.get_bollinger_bands(prices, window, buy_multiplier, sell_multiplier)
 
         # 마지막 값만 필요하므로 최적화
         sell_band_high = sell_upper_band.iloc[-1]
@@ -85,28 +83,36 @@ class AsymmetricBollingerBandsStrategy:
 
         if cur_price is None:
             self.logger.error("현재가를 가져올 수 없어 신호 생성을 중단합니다.")
-            return 'HOLD'
+            return {'signal': 'HOLD', 'sell_ratio': 0}
 
         self.logger.info(f"매도밴드(2.0σ): {sell_band_high:.2f} / 매수밴드(3.0σ): {buy_band_low:.2f} / {ticker} PRICE: {cur_price:.2f}")
 
         if cur_price > sell_band_high:
-            self.logger.info(f"매도 신호 발생 (현재가 > 매도밴드(2.0σ): {cur_price:.2f} > {sell_band_high:.2f})")
-            return 'SELL'
+            # RSI 상승세 체크로 매도 지연 여부 판단
+            if self.rsi_analyzer.should_delay_sell_rsi_rising(ticker, interval, 70):
+                # RSI가 계속 상승 중이면 부분 매도만 진행
+                sell_strength = self.rsi_analyzer.get_sell_signal_strength(ticker, cur_price, sell_band_high, interval)
+                self.logger.info(f"RSI 상승세 감지, 부분 매도 진행 (강도: {sell_strength:.2f})")
+                return {'signal': 'PARTIAL_SELL', 'sell_ratio': sell_strength}
+            else:
+                # 일반적인 매도 신호
+                self.logger.info(f"매도 신호 발생 (현재가 > 상단밴드: {cur_price:.2f} > {sell_band_high:.2f})")
+                return {'signal': 'SELL', 'sell_ratio': 0.5}
         elif cur_price < buy_band_low:
             # 매수 신호 발생 시 급락 보호 필터링
             if use_rsi_filter:
                 # 급락 감지 및 점진적 매수 전략
                 if self.rsi_analyzer.should_delay_buy_gradual_approach(ticker, rsi_threshold):
                     self.logger.info(f"매수 조건 충족하지만 급락 보호를 위해 대기")
-                    return 'HOLD'
+                    return {'signal': 'HOLD', 'sell_ratio': 0}
             else:
                 # 기본 매도 압력만 고려
                 if self.should_delay_buy(ticker):
                     self.logger.info(f"매수 조건 충족하지만 매도 압력으로 인해 대기")
-                    return 'HOLD'
+                    return {'signal': 'HOLD', 'sell_ratio': 0}
 
             self.logger.info(f"매수 신호 발생 (현재가 < 매수밴드(3.0σ): {cur_price:.2f} < {buy_band_low:.2f})")
-            return 'BUY'
+            return {'signal': 'BUY', 'sell_ratio': 0}
         else:
             self.logger.info("홀드 신호 (현재가가 매매 조건에 해당하지 않음)")
-            return 'HOLD'
+            return {'signal': 'HOLD', 'sell_ratio': 0}

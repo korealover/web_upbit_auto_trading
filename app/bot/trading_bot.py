@@ -244,10 +244,13 @@ class UpbitTradingBot:
 
                 if strategy_name == 'bollinger_asymmetric':
                     # 매매 신호 생성 (비대칭 볼린저 밴드 전략에 맞는 매개변수 전달)
-                    signal = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier, use_rsi_filter, rsi_threshold)
+                    signal_result = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier, use_rsi_filter, rsi_threshold, interval)
                 else:
                     # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
-                    signal = self.strategy.generate_signal(ticker, prices, window, multiplier, use_rsi_filter, rsi_threshold)
+                    signal_result = self.strategy.generate_signal(ticker, prices, window, multiplier, use_rsi_filter, rsi_threshold, interval)
+
+                signal = signal_result['signal']
+                sell_ratio = signal_result.get('sell_ratio', 1.0)
 
                 # 잔고 조회
                 balance_cash = self.api.get_balance_cash()
@@ -353,7 +356,7 @@ class UpbitTradingBot:
                             self.record_trade('BUY', ticker, current_price, estimated_volume, actual_buy_amount)
 
                     return order_result
-                elif signal == 'SELL' and balance_coin and balance_coin > 0:
+                elif signal == 'SELL' or signal == 'PARTIAL_SELL' and balance_coin and balance_coin > 0:
                     self.logger.info(f"매도 시그널 발생: {balance_coin} {ticker.split('-')[1]} 매도 시도")
 
                     # 현재가 조회하여 보유 코인 가치 확인
@@ -383,14 +386,15 @@ class UpbitTradingBot:
                             return None
 
                     # 분할 매도 처리
-                    sell_portion = self._get_field_value(
-                        self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None),
-                        1.0
-                    )
+                    sell_portion = self._get_field_value(self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None),1.0)
 
                     # 매도 전략 결정
                     if sell_portion < 1.0:
-                        self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
+                        if signal == 'PARTIAL_SELL':
+                            sell_portion = sell_portion * sell_ratio
+                            self.logger.info(f"분할 매도 시도 및 RSI보조지표 사용: 보유량의 {sell_portion * 100:.1f}% 매도, RSI보조지표: {sell_ratio}")
+                        else:
+                            self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
                         order_result = self.api.order_sell_market_partial(ticker, sell_portion)
 
                         # 분할 매도에서 오류가 발생한 경우 처리

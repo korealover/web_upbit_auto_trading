@@ -439,3 +439,38 @@ class UpbitAPI:
         except Exception as e:
             self.logger.error(f"캔들 데이터 조회 실패 ({ticker}): {str(e)}")
             return None
+
+    def get_candles_data(self, ticker, interval='minute5', count=200):
+        """캔들 데이터 가져오기 (RSI 계산용)"""
+        try:
+            self._log_api_call()
+
+            # interval 매개변수 처리
+            if interval.startswith('minute'):
+                period = int(interval.replace('minute', '')) if interval != 'minute' else 1
+                df = self.get_ohlcv_data(ticker, interval, count)
+            else:
+                df = self.get_ohlcv_data(ticker, interval, count)
+
+            if df is None or len(df) == 0:
+                self.logger.warning(f"캔들 데이터가 없습니다: {ticker}")
+                return []
+
+            # 데이터 형식 변환 (rsi_selling_pressure.py에서 기대하는 형식으로)
+            formatted_candles = []
+            for idx, row in df.iterrows():
+                formatted_candles.append({
+                    'trade_price': row['close'],
+                    'high_price': row['high'],
+                    'low_price': row['low'],
+                    'opening_price': row['open'],
+                    'timestamp': idx,
+                    'candle_acc_trade_volume': row['volume']
+                })
+
+            self.logger.info(f"캔들 데이터 {len(formatted_candles)}개 조회 완료: {ticker}")
+            return formatted_candles
+
+        except Exception as e:
+            self.logger.error(f"캔들 데이터 조회 실패: {ticker}, 오류: {e}")
+            return []

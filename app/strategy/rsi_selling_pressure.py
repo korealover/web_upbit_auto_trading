@@ -328,3 +328,99 @@ class RSIVolumeIntegratedStrategy:
             return True
 
         return False
+
+    def should_delay_sell_rsi_rising(self, ticker, interval='minute5', rsi_threshold=70):
+        """RSI가 상승 중일 때 매도를 지연할지 판단"""
+        try:
+            # RSI 데이터 가져오기
+            rsi_data = self.get_rsi_trend(ticker, interval)
+            if not rsi_data:
+                return False
+
+            current_rsi = rsi_data['current_rsi']
+            rsi_trend = rsi_data['trend']  # 'rising', 'falling', 'neutral'
+
+            # RSI가 임계값보다 높고 계속 상승 중인 경우
+            if current_rsi > rsi_threshold and rsi_trend == 'rising':
+                self.logger.info(f"RSI 상승세로 매도 지연 (RSI: {current_rsi:.2f}, 추세: {rsi_trend})")
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"RSI 기반 매도 지연 판단 중 오류: {e}")
+            return False
+
+    def get_sell_signal_strength(self, ticker, current_price, sell_band, interval='minute5'):
+        """매도 신호 강도 계산 (0.0 ~ 1.0)"""
+        try:
+            # 밴드 돌파 정도 계산
+            band_breakout_ratio = (current_price - sell_band) / sell_band
+
+            # RSI 정보 가져오기
+            rsi_data = self.get_rsi_trend(ticker, interval)
+            if rsi_data:
+                current_rsi = rsi_data['current_rsi']
+                rsi_momentum = rsi_data.get('momentum', 0)  # RSI 변화율
+
+                # RSI가 80 이상이고 상승세가 둔화되면 강한 매도 신호
+                if current_rsi >= 80 and rsi_momentum <= 0:
+                    return min(1.0, 0.8 + band_breakout_ratio * 0.2)
+
+                # RSI가 70~80이고 상승 중이면 중간 매도 신호
+                elif current_rsi >= 70 and rsi_momentum > 0:
+                    return min(0.6, 0.3 + band_breakout_ratio * 0.3)
+
+            # 기본적으로 밴드 돌파 정도에 따른 신호 강도
+            return min(1.0, 0.5 + band_breakout_ratio * 0.5)
+
+        except Exception as e:
+            self.logger.error(f"매도 신호 강도 계산 중 오류: {e}")
+            return 1.0  # 오류 시 전체 매도
+
+
+    def get_rsi_trend(self, ticker, interval='minute5', period=14, lookback=5):
+        """RSI 추세 분석"""
+        try:
+            # 캔들 데이터 가져오기
+            candles = self.api.get_candles_data(ticker, interval, count=period + lookback + 10)
+            if len(candles) < period + lookback:
+                return None
+
+            closes = pd.Series([float(candle['trade_price']) for candle in candles])
+
+            # RSI 계산
+            rsi_values = self.rsi_strategy.calculate_rsi(closes, period)
+
+            if len(rsi_values) < lookback:
+                return None
+
+            current_rsi = rsi_values.iloc[-1]
+            prev_rsi_values = rsi_values.iloc[-lookback:-1]
+
+            # 추세 판단
+            if len(prev_rsi_values) > 0:
+                rsi_slope = current_rsi - prev_rsi_values.mean()
+                momentum = (current_rsi - rsi_values.iloc[-2]) if len(rsi_values) > 1 else 0
+
+                if rsi_slope > 2 and momentum > 0:
+                    trend = 'rising'
+                elif rsi_slope < -2 and momentum < 0:
+                    trend = 'falling'
+                else:
+                    trend = 'neutral'
+            else:
+                trend = 'neutral'
+                momentum = 0
+
+            return {
+                'current_rsi': current_rsi,
+                'trend': trend,
+                'momentum': momentum,
+                'slope': rsi_slope
+            }
+
+        except Exception as e:
+            self.logger.error(f"RSI 추세 분석 중 오류: {e}")
+            return None
+
