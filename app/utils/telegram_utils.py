@@ -9,6 +9,8 @@ import requests
 from functools import lru_cache
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import weakref
+import time
 
 
 @lru_cache(maxsize=1)
@@ -22,9 +24,14 @@ def get_telegram_bot(token):
     )
     return Bot(token=token, request=request)
 
-# TelegramNotifier 클래스
+
 class TelegramNotifier:
     """텔레그램 알림 클래스 (최적화)"""
+
+    _instances = weakref.WeakSet()
+    _global_loop = None
+    _global_loop_thread = None
+    _loop_lock = threading.Lock()
 
     def __init__(self, token, chat_id, logger=None, usename=None):
         """텔레그램 알림 초기화"""
@@ -33,42 +40,54 @@ class TelegramNotifier:
         self.bot = get_telegram_bot(token)
         self.logger = logger or logging.getLogger(__name__)
         self.usename = usename
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TelegramNotifier")
-        self._loop = None
-        self._loop_thread = None
         self._shutdown = False
-        self._initialize_async_components()
 
-    def _initialize_async_components(self):
-        """비동기 컴포넌트 초기화 - 개선된 버전"""
+        # 전역 이벤트 루프 사용
+        self._ensure_global_loop()
+        TelegramNotifier._instances.add(self)
+
+    @classmethod
+    def _ensure_global_loop(cls):
+        """전역 이벤트 루프 보장"""
+        with cls._loop_lock:
+            if cls._global_loop is None or cls._global_loop.is_closed():
+                cls._create_global_loop()
+
+    @classmethod
+    def _create_global_loop(cls):
+        """전역 이벤트 루프 생성"""
         try:
-            # 새로운 이벤트 루프 생성
-            self._loop = asyncio.new_event_loop()
+            # 기존 루프 정리
+            if cls._global_loop_thread and cls._global_loop_thread.is_alive():
+                if cls._global_loop and not cls._global_loop.is_closed():
+                    cls._global_loop.call_soon_threadsafe(cls._global_loop.stop)
+                cls._global_loop_thread.join(timeout=2)
 
-            # 별도 스레드에서 이벤트 루프 실행
+            # 새 이벤트 루프 생성
+            cls._global_loop = asyncio.new_event_loop()
+
             def run_event_loop():
-                asyncio.set_event_loop(self._loop)
+                asyncio.set_event_loop(cls._global_loop)
                 try:
-                    self._loop.run_forever()
+                    cls._global_loop.run_forever()
                 except Exception as e:
-                    self.logger.error(f"이벤트 루프 실행 중 오류: {e}")
+                    logging.error(f"전역 이벤트 루프 실행 중 오류: {e}")
                 finally:
-                    self._loop.close()
+                    cls._global_loop.close()
 
-            self._loop_thread = threading.Thread(
+            cls._global_loop_thread = threading.Thread(
                 target=run_event_loop,
                 daemon=True,
-                name="TelegramNotifierLoop"
+                name="GlobalTelegramLoop"
             )
-            self._loop_thread.start()
+            cls._global_loop_thread.start()
 
-            # 이벤트 루프가 시작될 때까지 잠시 대기
-            import time
+            # 루프 시작 대기
             time.sleep(0.1)
 
         except Exception as e:
-            self.logger.error(f"비동기 컴포넌트 초기화 실패: {e}")
-            self._loop = None
+            logging.error(f"전역 이벤트 루프 생성 실패: {e}")
+            cls._global_loop = None
 
     async def _send_message_async(self, message):
         """비동기로 메시지 전송"""
@@ -84,46 +103,49 @@ class TelegramNotifier:
             return False
 
     def send_message(self, message):
-        """메시지 전송 - 스레드 안전 버전"""
+        """메시지 전송 - 개선된 버전"""
         try:
             self.logger.debug(f"텔레그램 메시지 전송 시도: {message[:30]}...")
 
-            # 토큰과 채팅 ID 확인
+            # 기본 검증
             if not self.token or not self.chat_id:
                 self.logger.error("텔레그램 토큰 또는 채팅 ID가 설정되지 않았습니다.")
                 return False
 
-            # 종료 상태 확인
             if self._shutdown:
                 self.logger.warning("TelegramNotifier가 종료 상태입니다.")
                 return False
 
-            # 이벤트 루프가 있고 실행 중인지 확인
-            if self._loop and not self._loop.is_closed():
+            # 전역 루프 확인 및 재생성
+            if (self._global_loop is None or
+                    self._global_loop.is_closed() or
+                    not self._global_loop_thread.is_alive()):
+                self.logger.info("이벤트 루프 재생성 중...")
+                self._ensure_global_loop()
+
+            # 비동기 메시지 전송
+            if self._global_loop and not self._global_loop.is_closed():
                 try:
-                    # 코루틴을 별도 스레드의 이벤트 루프에서 실행
                     future = asyncio.run_coroutine_threadsafe(
                         self._send_message_async(message),
-                        self._loop
+                        self._global_loop
                     )
-                    # 결과 대기 (최대 10초)
-                    result = future.result(timeout=10)
+                    result = future.result(timeout=15)
                     return result
                 except Exception as e:
-                    self.logger.error(f"이벤트 루프 실행 중 오류: {e}")
-                    return False
+                    self.logger.error(f"비동기 전송 실패: {e}")
+                    # 동기 방식으로 대체
+                    return self._send_message_sync(message)
             else:
-                # 이벤트 루프가 없으면 동기 방식으로 전송 시도
                 return self._send_message_sync(message)
 
         except Exception as e:
             self.logger.error(f"텔레그램 메시지 전송 중 오류: {str(e)}", exc_info=True)
-            return False
+            return self._send_message_sync(message)
 
     def _send_message_sync(self, message):
         """동기 방식으로 메시지 전송 (백업용)"""
         try:
-            import requests
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
             data = {
                 'chat_id': self.chat_id,
@@ -131,7 +153,12 @@ class TelegramNotifier:
                 'parse_mode': 'Markdown'
             }
             response = requests.post(url, data=data, timeout=10)
-            return response.status_code == 200
+            if response.status_code == 200:
+                self.logger.debug("동기 방식으로 메시지 전송 성공")
+                return True
+            else:
+                self.logger.error(f"동기 전송 실패 - 상태코드: {response.status_code}")
+                return False
         except Exception as e:
             self.logger.error(f"동기 방식 메시지 전송 실패: {e}")
             return False
@@ -183,23 +210,25 @@ class TelegramNotifier:
 
         return self.send_message(message)
 
-    def __del__(self):
-        """소멸자에서 리소스 정리"""
-        try:
-            self._shutdown = True
+    @classmethod
+    def shutdown_all(cls):
+        """모든 인스턴스 종료"""
+        with cls._loop_lock:
+            # 모든 인스턴스 종료 플래그 설정
+            for instance in cls._instances:
+                instance._shutdown = True
 
-            # 이벤트 루프 종료
-            if self._loop and not self._loop.is_closed():
-                self._loop.call_soon_threadsafe(self._loop.stop)
+            # 전역 루프 종료
+            if cls._global_loop and not cls._global_loop.is_closed():
+                cls._global_loop.call_soon_threadsafe(cls._global_loop.stop)
 
             # 스레드 종료 대기
-            if self._loop_thread and self._loop_thread.is_alive():
-                self._loop_thread.join(timeout=1)
+            if cls._global_loop_thread and cls._global_loop_thread.is_alive():
+                cls._global_loop_thread.join(timeout=3)
 
-            # 스레드 풀 종료
-            if hasattr(self, '_executor') and self._executor:
-                self._executor.shutdown(wait=False)
+            cls._global_loop = None
+            cls._global_loop_thread = None
 
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"리소스 정리 중 오류: {str(e)}")
+    def __del__(self):
+        """소멸자에서 개별 인스턴스 정리"""
+        self._shutdown = True
