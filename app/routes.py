@@ -1232,11 +1232,140 @@ def get_ticker_trade_records(ticker):
 
 
 # 즐겨찾기
+
 @bp.route('/favorites')
 @login_required
 def favorites():
-    favorites = TradingFavorite.query.filter_by(user_id=current_user.id).order_by(TradingFavorite.created_at.desc()).all()
-    return render_template('favorites.html', title='즐겨찾기', favorites=favorites)
+    """즐겨찾기 목록 조회 - 검색 및 필터링 기능 추가"""
+    try:
+        # 검색 및 필터 파라미터 받기
+        search = request.args.get('search', '').strip()
+        strategy_filter = request.args.get('strategy', '').strip()
+        sort_by = request.args.get('sort', 'created_at')  # name, created_at, buy_amount
+        order = request.args.get('order', 'desc')  # asc, desc
+
+        # 기본 쿼리
+        query = TradingFavorite.query.filter_by(user_id=current_user.id)
+
+        # 검색 조건 적용 (이름, 티커에서 검색)
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    TradingFavorite.name.ilike(search_pattern),
+                    TradingFavorite.ticker.ilike(search_pattern)
+                )
+            )
+
+        # 전략 필터 적용
+        if strategy_filter:
+            query = query.filter(TradingFavorite.strategy == strategy_filter)
+
+        # 정렬 적용
+        if sort_by == 'name':
+            if order == 'asc':
+                query = query.order_by(TradingFavorite.name.asc())
+            else:
+                query = query.order_by(TradingFavorite.name.desc())
+        elif sort_by == 'buy_amount':
+            if order == 'asc':
+                query = query.order_by(TradingFavorite.buy_amount.asc())
+            else:
+                query = query.order_by(TradingFavorite.buy_amount.desc())
+        else:  # created_at (기본값)
+            if order == 'asc':
+                query = query.order_by(TradingFavorite.created_at.asc())
+            else:
+                query = query.order_by(TradingFavorite.created_at.desc())
+
+        # 쿼리 실행
+        favorites = query.all()
+
+        # 전체 즐겨찾기 수 (필터링 전)
+        total_count = TradingFavorite.query.filter_by(user_id=current_user.id).count()
+
+        # 통계 정보 생성
+        stats = {
+            'total_count': total_count,
+            'filtered_count': len(favorites),
+            'search_term': search,
+            'strategy_filter': strategy_filter,
+            'strategies': {}
+        }
+
+        # 전략별 통계 (전체 즐겨찾기 기준)
+        all_favorites = TradingFavorite.query.filter_by(user_id=current_user.id).all()
+        for favorite in all_favorites:
+            strategy = favorite.strategy
+            if strategy not in stats['strategies']:
+                stats['strategies'][strategy] = 0
+            stats['strategies'][strategy] += 1
+
+        logger.info(f"사용자 {current_user.username}의 즐겨찾기 조회 완료: {len(favorites)}개 (검색: '{search}', 전략: '{strategy_filter}')")
+
+        return render_template('favorites.html',
+                               title='즐겨찾기',
+                               favorites=favorites,
+                               stats=stats)
+
+    except Exception as e:
+        logger.error(f"즐겨찾기 목록 조회 실패: {str(e)}")
+        flash(f'즐겨찾기 목록을 불러오는 중 오류가 발생했습니다: {str(e)}', 'error')
+        return render_template('favorites.html',
+                               title='즐겨찾기',
+                               favorites=[],
+                               stats={'total_count': 0, 'filtered_count': 0, 'search_term': '', 'strategy_filter': '', 'strategies': {}})
+
+
+@bp.route('/favorites/search', methods=['GET'])
+@login_required
+def favorites_search():
+    """AJAX 즐겨찾기 검색 API"""
+    try:
+        search = request.args.get('search', '').strip()
+        strategy_filter = request.args.get('strategy', '').strip()
+
+        query = TradingFavorite.query.filter_by(user_id=current_user.id)
+
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    TradingFavorite.name.ilike(search_pattern),
+                    TradingFavorite.ticker.ilike(search_pattern)
+                )
+            )
+
+        if strategy_filter:
+            query = query.filter(TradingFavorite.strategy == strategy_filter)
+
+        favorites = query.order_by(TradingFavorite.created_at.desc()).all()
+
+        # JSON 형태로 반환할 데이터 구성
+        result = []
+        for favorite in favorites:
+            result.append({
+                'id': favorite.id,
+                'name': favorite.name,
+                'ticker': favorite.ticker,
+                'strategy': favorite.strategy,
+                'buy_amount': favorite.buy_amount,
+                'created_at': favorite.created_at.strftime('%Y-%m-%d'),
+                'start_yn': favorite.start_yn
+            })
+
+        return jsonify({
+            'success': True,
+            'data': result,
+            'count': len(result)
+        })
+
+    except Exception as e:
+        logger.error(f"즐겨찾기 검색 실패: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 
 # 자동재시작 토글

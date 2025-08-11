@@ -96,18 +96,50 @@ class UpbitAPI:
             tuple: (is_valid, error_message)
         """
         try:
-            # 간단한 API 호출로 키 유효성 검증
-            balance = self.upbit.get_balance("KRW")
-            if balance is None:
-                return False, "API 키가 유효하지 않습니다."
+            # API 키가 설정되어 있는지 먼저 확인
+            if not hasattr(self, 'upbit') or self.upbit is None:
+                return False, "업비트 API 객체가 초기화되지 않았습니다."
 
-            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공")
+            if not self.access_key or not self.secret_key:
+                return False, "API 키가 설정되지 않았습니다."
+
+            # 간단한 API 호출로 키 유효성 검증 - fetch_data 사용으로 안정성 향상
+            balance = self.fetch_data(
+                lambda: self.upbit.get_balance("KRW"),
+                max_retries=2,  # 재시도 횟수 줄임
+                delay=1.0,  # 재시도 간격 늘림
+                backoff_factor=1.5
+            )
+
+            # balance가 None이거나 숫자가 아닌 경우 체크
+            if balance is None:
+                return False, "API 키가 유효하지 않거나 서버 응답이 없습니다."
+
+            # balance가 문자열로 반환되는 경우도 있으므로 타입 체크
+            try:
+                float(balance)
+            except (TypeError, ValueError):
+                self.logger.warning(f"예상하지 못한 balance 응답: {type(balance)} - {balance}")
+                return False, "API 응답 형식이 올바르지 않습니다."
+
+            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공 (잔고: {balance})")
             return True, None
 
         except Exception as e:
             error_msg = f"API 키 유효성 검증 실패: {str(e)}"
-            self.logger.error(error_msg)
-            return False, error_msg
+            self.logger.error(error_msg, exc_info=True)
+
+            # 구체적인 에러 타입에 따른 메시지 개선
+            if "Invalid API key" in str(e) or "invalid_access_key" in str(e):
+                return False, "잘못된 API 키입니다. 키를 다시 확인해주세요."
+            elif "permission" in str(e).lower():
+                return False, "API 키 권한이 부족합니다. 자산 조회 권한을 확인해주세요."
+            elif "network" in str(e).lower() or "timeout" in str(e).lower():
+                return False, "네트워크 연결 문제입니다. 잠시 후 다시 시도해주세요."
+            elif "rate limit" in str(e).lower():
+                return False, "API 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+            else:
+                return False, f"API 키 검증 중 오류 발생: {str(e)}"
 
     def fetch_data(self, fetch_func, max_retries=5, delay=0.5, backoff_factor=2):
         """데이터 가져오기 - 지수 백오프 추가"""
