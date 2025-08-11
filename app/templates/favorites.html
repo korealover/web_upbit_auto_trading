@@ -283,6 +283,12 @@
                                 <span class="badge bg-info">비대칭 볼린저</span>
                             {% elif favorite.strategy == 'bollinger' %}
                                 <span class="badge bg-danger">볼린저</span>
+                            {% elif favorite.strategy == 'rsi' %}
+                                <span class="badge bg-warning text-dark">RSI</span>
+                            {% elif favorite.strategy == 'volatility' %}
+                                <span class="badge bg-success">변동성</span>
+                            {% elif favorite.strategy == 'ensemble' %}
+                                <span class="badge bg-dark">앙상블</span>
                             {% else %}
                                 <span class="badge bg-secondary">{{ favorite.strategy }}</span>
                             {% endif %}
