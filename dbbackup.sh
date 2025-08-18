@@ -2,8 +2,8 @@
 # backup_users_db_compressed.sh
 
 # 설정
-DB_PATH="/data/web/blrr/database/users.db"
-BACKUP_DIR="/data/backups/db"
+DB_PATH="/home/korealover/web_upbit_autp_trading/db/app.db"
+BACKUP_DIR="/home/korealover/dbbackup"
 DATE=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="users_${DATE}.db.gz"
 
