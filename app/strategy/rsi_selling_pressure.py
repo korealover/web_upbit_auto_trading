@@ -2,6 +2,50 @@ from app.strategy.rsi import RSIStrategy
 from app.strategy.volume_base_buy import VolumeBasedBuyStrategy
 import pandas as pd
 
+COIN_CATEGORIES = {
+    'major': ['KRW-BTC', 'KRW-ETH'],
+    'high_volatility': ['KRW-DOGE', 'KRW-SHIB', 'KRW-PEPE', 'KRW-WIF', 'KRW-BONK'],
+    'stable': ['KRW-USDT', 'KRW-USDC'],
+    'mid_tier': ['KRW-ADA', 'KRW-DOT', 'KRW-LINK', 'KRW-MATIC', 'KRW-SOL']
+}
+
+
+def _get_volatility_multiplier(volatility_level):
+    """변동성에 따른 기준 조정 배수"""
+    multipliers = {
+        'VERY_HIGH': 1.5,  # 고변동성일 때 기준 완화
+        'HIGH': 1.2,
+        'MEDIUM': 1.0,  # 기본값
+        'LOW': 0.8  # 저변동성일 때 기준 강화
+    }
+    return multipliers.get(volatility_level, 1.0)
+
+
+def get_coin_specific_thresholds(ticker, base_thresholds):
+    """코인별 특성을 고려한 기준 조정"""
+
+    # 코인 분류별 multiplier
+    multipliers = {
+        'major': 0.8,  # 안정적
+        'high_volatility': 1.3,  # 고변동성
+        'stable': 0.6,  # 매우 안정적
+        'mid_tier': 1.1  # 중간 변동성
+    }
+
+    # 해당 코인의 카테고리 찾기
+    coin_multiplier = 1.0  # 기본값
+    for category, coins in COIN_CATEGORIES.items():
+        if ticker in coins:
+            coin_multiplier = multipliers[category]
+            break
+
+    # 기준값 조정
+    adjusted_thresholds = {}
+    for period, threshold in base_thresholds.items():
+        adjusted_thresholds[period] = threshold * coin_multiplier
+
+    return adjusted_thresholds
+
 
 class RSIVolumeIntegratedStrategy:
     """급락 감지 및 점진적 매수 전략"""
@@ -13,21 +57,22 @@ class RSIVolumeIntegratedStrategy:
         self.volume_analyzer = VolumeBasedBuyStrategy(upbit_api, logger)
 
     def detect_rapid_decline(self, ticker, lookback_periods=5):
-        """급격한 가격 하락 감지"""
+        """급격한 가격 하락 감지 (기존 15분봉 기반)"""
         try:
-            # 최근 데이터 조회 (5분봉 기준)
-            df = self.api.get_ohlcv_data(ticker, 'minute5', lookback_periods + 10)
+            # 최근 데이터 조회 (15분봉 기준으로 복원)
+            df = self.api.get_ohlcv_data(ticker, 'minute15', lookback_periods + 10)
             if df is None or len(df) < lookback_periods + 5:
                 self.logger.warning(f"급락 감지용 데이터 부족: {ticker}")
                 return False, 0, {}
 
+            # 일관성을 위해 close 가격 사용
             prices = df['close']
             current_price = prices.iloc[-1]
 
             # 다양한 기간별 하락률 계산
             decline_analysis = {}
 
-            # 1. 최근 5분봉 하락률
+            # 1. 최근 15분봉 하락률
             if len(prices) >= 2:
                 recent_decline = (current_price - prices.iloc[-2]) / prices.iloc[-2] * 100
                 decline_analysis['1_period'] = recent_decline
@@ -42,11 +87,11 @@ class RSIVolumeIntegratedStrategy:
                 five_period_decline = (current_price - prices.iloc[-6]) / prices.iloc[-6] * 100
                 decline_analysis['5_period'] = five_period_decline
 
-            # 급락 기준 설정 (코인별로 조정 가능)
+            # 급락 기준 설정 (기존 보수적 기준에서 완화)
             rapid_decline_thresholds = {
-                '1_period': -3.0,  # 1봉에서 3% 이상 하락
-                '3_period': -8.0,  # 3봉에서 8% 이상 하락
-                '5_period': -15.0  # 5봉에서 15% 이상 하락
+                '1_period': -2.5,  # 15분에서 2.5% 하락 (기존 3%에서 완화)
+                '3_period': -4.0,  # 45분에서 4% 하락 (기존 8%에서 대폭 완화)
+                '5_period': -6.0  # 1시간 15분에서 6% 하락 (기존 15%에서 대폭 완화)
             }
 
             # 급락 감지
@@ -69,12 +114,77 @@ class RSIVolumeIntegratedStrategy:
             self.logger.error(f"급락 감지 실패: {e}")
             return False, 0, {}
 
+    def detect_rapid_decline_5min(self, ticker, lookback_periods=12):
+        """5분봉 기반 급격한 가격 하락 감지"""
+        try:
+            # 5분봉 데이터 조회
+            df = self.api.get_ohlcv_data(ticker, 'minute5', lookback_periods + 5)
+            if df is None or len(df) < lookback_periods + 2:
+                self.logger.warning(f"5분봉 급락 감지용 데이터 부족: {ticker}")
+                return False, 0, {}
+
+            # 일관성을 위해 close 가격 사용
+            prices = df['close']
+            current_price = prices.iloc[-1]
+
+            # 변동성 분석
+            volatility_info = self.get_market_volatility(ticker)
+            volatility_multiplier = _get_volatility_multiplier(volatility_info['volatility'])
+
+            # 기간별 하락률 계산
+            decline_analysis = {}
+
+            periods = {
+                '1_period': 1,  # 5분
+                '3_period': 3,  # 15분
+                '6_period': 6,  # 30분
+                '12_period': 12  # 1시간
+            }
+
+            for period_name, period_count in periods.items():
+                if len(prices) >= period_count + 1:
+                    decline_rate = (current_price - prices.iloc[-(period_count + 1)]) / prices.iloc[-(period_count + 1)] * 100
+                    decline_analysis[period_name] = decline_rate
+
+            # 5분봉 기준 (변동성 고려)
+            base_thresholds = {
+                '1_period': -1.5,  # 5분에서 1.5%
+                '3_period': -2.5,  # 15분에서 2.5%
+                '6_period': -4.0,  # 30분에서 4%
+                '12_period': -6.0  # 1시간에서 6%
+            }
+
+            # 변동성 및 코인별 조정
+            coin_adjusted = get_coin_specific_thresholds(ticker, base_thresholds)
+            final_thresholds = {}
+            for period, threshold in coin_adjusted.items():
+                final_thresholds[period] = threshold * volatility_multiplier
+
+            # 급락 감지
+            is_rapid_decline = False
+            decline_severity = 0
+
+            for period, decline_rate in decline_analysis.items():
+                threshold = final_thresholds.get(period, 0)
+                if decline_rate <= threshold:
+                    is_rapid_decline = True
+                    severity = abs(decline_rate) / abs(threshold)
+                    decline_severity = max(decline_severity, severity)
+
+                    self.logger.info(f"5분봉 급락 감지 ({period}): {decline_rate:.2f}% (기준: {threshold:.2f}%, 심각도: {severity:.1f})")
+
+            return is_rapid_decline, decline_severity, decline_analysis
+
+        except Exception as e:
+            self.logger.error(f"5분봉 급락 감지 실패: {e}")
+            return False, 0, {}
+
     def get_market_volatility(self, ticker):
         """시장 변동성 분석"""
         try:
             df = self.api.get_ohlcv_data(ticker, 'minute5', 20)
             if df is None or len(df) < 15:
-                return {'volatility': 'LOW', 'atr_ratio': 1.0}
+                return {'volatility': 'MEDIUM', 'atr_ratio': 2.0}  # 기본값 조정
 
             # ATR (Average True Range) 계산
             high = df['high']
@@ -92,12 +202,12 @@ class RSIVolumeIntegratedStrategy:
             current_price = close.iloc[-1]
             atr_ratio = (atr / current_price) * 100 if current_price > 0 else 0
 
-            # 변동성 등급
-            if atr_ratio > 5.0:
+            # 변동성 등급 (5분봉 기준으로 조정)
+            if atr_ratio > 4.0:  # 기존 5.0에서 낮춤
                 volatility_level = 'VERY_HIGH'
-            elif atr_ratio > 3.0:
+            elif atr_ratio > 2.5:  # 기존 3.0에서 낮춤
                 volatility_level = 'HIGH'
-            elif atr_ratio > 1.5:
+            elif atr_ratio > 1.2:  # 기존 1.5에서 낮춤
                 volatility_level = 'MEDIUM'
             else:
                 volatility_level = 'LOW'
@@ -116,8 +226,8 @@ class RSIVolumeIntegratedStrategy:
     def should_delay_buy_gradual_approach(self, ticker, rsi_threshold=30):
         """급락 시 점진적 매수를 위한 지연 판단"""
         try:
-            # 1단계: 급락 감지
-            is_declining, decline_severity, decline_details = self.detect_rapid_decline(ticker)
+            # 1단계: 급락 감지(5분봉으로 변경)
+            is_declining, decline_severity, decline_details = self.detect_rapid_decline_5min(ticker)
 
             # 2단계: 시장 변동성 분석
             volatility_info = self.get_market_volatility(ticker)
@@ -128,7 +238,7 @@ class RSIVolumeIntegratedStrategy:
             # 4단계: 매도 압력 분석
             volume_data = self.volume_analyzer.analyze_sell_pressure(ticker)
 
-            self.logger.info(f"급락분석 - 급락여부: {is_declining}, 심각도: {decline_severity:.1f}, RSI: {current_rsi:.1f}")
+            self.logger.info(f"급락분석 - 급락여부({ticker}): {is_declining}, 심각도: {decline_severity:.1f}, RSI: {current_rsi:.1f}")
 
             # 매수 지연 결정 로직
             if not is_declining:
@@ -214,7 +324,103 @@ class RSIVolumeIntegratedStrategy:
 
         # 표준 기준
         if volume_data['sell_buy_ratio'] > 2.5:
-            self.logger.info(f"일반 상황 - 높은 매도 압력으로 매수 지연")
+            self.logger.info(f"일반 상황 - 높은 매도 압력으로 매수 지연 (비율: {volume_data['sell_buy_ratio']:.2f})")
             return True
 
         return False
+
+    def should_delay_sell_rsi_rising(self, ticker, interval='minute5', rsi_threshold=70):
+        """RSI가 상승 중일 때 매도를 지연할지 판단"""
+        try:
+            # RSI 데이터 가져오기
+            rsi_data = self.get_rsi_trend(ticker, interval)
+            if not rsi_data:
+                return False
+
+            current_rsi = rsi_data['current_rsi']
+            rsi_trend = rsi_data['trend']  # 'rising', 'falling', 'neutral'
+
+            # RSI가 임계값보다 높고 계속 상승 중인 경우
+            if current_rsi > rsi_threshold and rsi_trend == 'rising':
+                self.logger.info(f"RSI 상승세로 매도 지연 (RSI: {current_rsi:.2f}, 추세: {rsi_trend})")
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"RSI 기반 매도 지연 판단 중 오류: {e}")
+            return False
+
+    def get_sell_signal_strength(self, ticker, current_price, sell_band, interval='minute5'):
+        """매도 신호 강도 계산 (0.0 ~ 1.0)"""
+        try:
+            # 밴드 돌파 정도 계산
+            band_breakout_ratio = (current_price - sell_band) / sell_band
+
+            # RSI 정보 가져오기
+            rsi_data = self.get_rsi_trend(ticker, interval)
+            if rsi_data:
+                current_rsi = rsi_data['current_rsi']
+                rsi_momentum = rsi_data.get('momentum', 0)  # RSI 변화율
+
+                # RSI가 80 이상이고 상승세가 둔화되면 강한 매도 신호
+                if current_rsi >= 80 and rsi_momentum <= 0:
+                    return min(1.0, 0.8 + band_breakout_ratio * 0.2)
+
+                # RSI가 70~80이고 상승 중이면 중간 매도 신호
+                elif current_rsi >= 70 and rsi_momentum > 0:
+                    return min(0.6, 0.3 + band_breakout_ratio * 0.3)
+
+            # 기본적으로 밴드 돌파 정도에 따른 신호 강도
+            return min(1.0, 0.5 + band_breakout_ratio * 0.5)
+
+        except Exception as e:
+            self.logger.error(f"매도 신호 강도 계산 중 오류: {e}")
+            return 1.0  # 오류 시 전체 매도
+
+
+    def get_rsi_trend(self, ticker, interval='minute5', period=14, lookback=5):
+        """RSI 추세 분석"""
+        try:
+            # 캔들 데이터 가져오기
+            candles = self.api.get_candles_data(ticker, interval, count=period + lookback + 10)
+            if len(candles) < period + lookback:
+                return None
+
+            closes = pd.Series([float(candle['trade_price']) for candle in candles])
+
+            # RSI 계산
+            rsi_values = self.rsi_strategy.calculate_rsi(closes, period)
+
+            if len(rsi_values) < lookback:
+                return None
+
+            current_rsi = rsi_values.iloc[-1]
+            prev_rsi_values = rsi_values.iloc[-lookback:-1]
+
+            # 추세 판단
+            if len(prev_rsi_values) > 0:
+                rsi_slope = current_rsi - prev_rsi_values.mean()
+                momentum = (current_rsi - rsi_values.iloc[-2]) if len(rsi_values) > 1 else 0
+
+                if rsi_slope > 2 and momentum > 0:
+                    trend = 'rising'
+                elif rsi_slope < -2 and momentum < 0:
+                    trend = 'falling'
+                else:
+                    trend = 'neutral'
+            else:
+                trend = 'neutral'
+                momentum = 0
+
+            return {
+                'current_rsi': current_rsi,
+                'trend': trend,
+                'momentum': momentum,
+                'slope': rsi_slope
+            }
+
+        except Exception as e:
+            self.logger.error(f"RSI 추세 분석 중 오류: {e}")
+            return None
+

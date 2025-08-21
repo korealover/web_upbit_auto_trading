@@ -220,7 +220,12 @@ class UpbitTradingBot:
                     self.args.get('sell_multiplier') if isinstance(self.args, dict) else getattr(self.args, 'sell_multiplier', None)
                 )
 
+                # 우선  use_rsi_filter, rsi_threshold 값을 default 로 셋팅하고 모니터링 해보자
+                use_rsi_filter = True
+                rsi_threshold = 30
+
                 self.logger.info(f"볼린저 밴드 전략으로 거래 분석 시작: {ticker}, 간격: {interval}")
+                self.logger.info(f"급락 방지 필터 사용: {use_rsi_filter}, RSI 임계값: {rsi_threshold}")
 
                 # OHLCV 데이터 가져오기
                 prices_data = self.api.get_ohlcv_data(ticker, interval, window + 5)  # 여유있게 가져옴
@@ -231,14 +236,13 @@ class UpbitTradingBot:
 
                 # 종가 데이터만 추출
                 prices = prices_data['close']
-                # print(ticker, prices, window, multiplier)
 
                 if strategy_name == 'bollinger_asymmetric':
                     # 매매 신호 생성 (비대칭 볼린저 밴드 전략에 맞는 매개변수 전달)
-                    signal = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier)
+                    signal = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier, use_rsi_filter, rsi_threshold)
                 else:
                     # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
-                    signal = self.strategy.generate_signal(ticker, prices, window, multiplier)
+                    signal = self.strategy.generate_signal(ticker, prices, window, multiplier, use_rsi_filter, rsi_threshold)
 
                 # 잔고 조회
                 balance_cash = self.api.get_balance_cash()

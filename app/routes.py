@@ -280,6 +280,7 @@ def dashboard():
                             'sell_portion': 100,
                             'prevent_loss_sale': 'Y',
                             'long_term_investment': 'N',
+                            'max_order_amount': 0,
                             'sleep_time': 60,
                             'ticker': ticker,
                             'strategy': bot_info.get('strategy', ''),
@@ -305,7 +306,7 @@ def dashboard():
 
                                 # 숫자 필드들은 안전하게 변환
                                 if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss', 'rsi_period',
-                                                  'rsi_oversold', 'rsi_overbought']:
+                                                  'rsi_oversold', 'rsi_overbought', 'max_order_amount']:
                                     raw_value = safe_numeric_value(raw_value, default_value)
 
                                 # 템플릿에서 직접 접근 가능하도록 간단한 구조로 변경
@@ -318,8 +319,7 @@ def dashboard():
 
                                     # 숫자 필드들은 안전하게 변환
                                     if field_name in ['buy_amount', 'min_cash', 'sell_portion', 'sleep_time', 'window', 'multiplier', 'buy_multiplier', 'sell_multiplier', 'k', 'target_profit', 'stop_loss',
-                                                      'rsi_period',
-                                                      'rsi_oversold', 'rsi_overbought']:
+                                                      'rsi_period', 'rsi_oversold', 'rsi_overbought', 'max_order_amount']:
                                         raw_value = safe_numeric_value(raw_value, default_value)
 
                                     normalized_settings[field_name] = raw_value
@@ -353,6 +353,7 @@ def dashboard():
                             'sell_portion': 100,
                             'prevent_loss_sale': 'Y',
                             'long_term_investment': 'N',
+                            'max_order_amount': 0,
                             'sleep_time': 60,
                             'ticker': ticker,
                             'strategy': '',
@@ -803,6 +804,7 @@ def create_trading_bot_from_favorite(favorite):
             'sell_portion': favorite.sell_portion,
             'prevent_loss_sale': favorite.prevent_loss_sale,
             'long_term_investment': favorite.long_term_investment,
+            'max_order_amount': favorite.max_order_amount,
             'window': favorite.window,
             'multiplier': favorite.multiplier,
             'buy_multiplier': favorite.buy_multiplier,
@@ -1230,11 +1232,140 @@ def get_ticker_trade_records(ticker):
 
 
 # 즐겨찾기
+
 @bp.route('/favorites')
 @login_required
 def favorites():
-    favorites = TradingFavorite.query.filter_by(user_id=current_user.id).order_by(TradingFavorite.created_at.desc()).all()
-    return render_template('favorites.html', title='즐겨찾기', favorites=favorites)
+    """즐겨찾기 목록 조회 - 검색 및 필터링 기능 추가"""
+    try:
+        # 검색 및 필터 파라미터 받기
+        search = request.args.get('search', '').strip()
+        strategy_filter = request.args.get('strategy', '').strip()
+        sort_by = request.args.get('sort', 'created_at')  # name, created_at, buy_amount
+        order = request.args.get('order', 'desc')  # asc, desc
+
+        # 기본 쿼리
+        query = TradingFavorite.query.filter_by(user_id=current_user.id)
+
+        # 검색 조건 적용 (이름, 티커에서 검색)
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    TradingFavorite.name.ilike(search_pattern),
+                    TradingFavorite.ticker.ilike(search_pattern)
+                )
+            )
+
+        # 전략 필터 적용
+        if strategy_filter:
+            query = query.filter(TradingFavorite.strategy == strategy_filter)
+
+        # 정렬 적용
+        if sort_by == 'name':
+            if order == 'asc':
+                query = query.order_by(TradingFavorite.name.asc())
+            else:
+                query = query.order_by(TradingFavorite.name.desc())
+        elif sort_by == 'buy_amount':
+            if order == 'asc':
+                query = query.order_by(TradingFavorite.buy_amount.asc())
+            else:
+                query = query.order_by(TradingFavorite.buy_amount.desc())
+        else:  # created_at (기본값)
+            if order == 'asc':
+                query = query.order_by(TradingFavorite.created_at.asc())
+            else:
+                query = query.order_by(TradingFavorite.created_at.desc())
+
+        # 쿼리 실행
+        favorites = query.all()
+
+        # 전체 즐겨찾기 수 (필터링 전)
+        total_count = TradingFavorite.query.filter_by(user_id=current_user.id).count()
+
+        # 통계 정보 생성
+        stats = {
+            'total_count': total_count,
+            'filtered_count': len(favorites),
+            'search_term': search,
+            'strategy_filter': strategy_filter,
+            'strategies': {}
+        }
+
+        # 전략별 통계 (전체 즐겨찾기 기준)
+        all_favorites = TradingFavorite.query.filter_by(user_id=current_user.id).all()
+        for favorite in all_favorites:
+            strategy = favorite.strategy
+            if strategy not in stats['strategies']:
+                stats['strategies'][strategy] = 0
+            stats['strategies'][strategy] += 1
+
+        logger.info(f"사용자 {current_user.username}의 즐겨찾기 조회 완료: {len(favorites)}개 (검색: '{search}', 전략: '{strategy_filter}')")
+
+        return render_template('favorites.html',
+                               title='즐겨찾기',
+                               favorites=favorites,
+                               stats=stats)
+
+    except Exception as e:
+        logger.error(f"즐겨찾기 목록 조회 실패: {str(e)}")
+        flash(f'즐겨찾기 목록을 불러오는 중 오류가 발생했습니다: {str(e)}', 'error')
+        return render_template('favorites.html',
+                               title='즐겨찾기',
+                               favorites=[],
+                               stats={'total_count': 0, 'filtered_count': 0, 'search_term': '', 'strategy_filter': '', 'strategies': {}})
+
+
+@bp.route('/favorites/search', methods=['GET'])
+@login_required
+def favorites_search():
+    """AJAX 즐겨찾기 검색 API"""
+    try:
+        search = request.args.get('search', '').strip()
+        strategy_filter = request.args.get('strategy', '').strip()
+
+        query = TradingFavorite.query.filter_by(user_id=current_user.id)
+
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    TradingFavorite.name.ilike(search_pattern),
+                    TradingFavorite.ticker.ilike(search_pattern)
+                )
+            )
+
+        if strategy_filter:
+            query = query.filter(TradingFavorite.strategy == strategy_filter)
+
+        favorites = query.order_by(TradingFavorite.created_at.desc()).all()
+
+        # JSON 형태로 반환할 데이터 구성
+        result = []
+        for favorite in favorites:
+            result.append({
+                'id': favorite.id,
+                'name': favorite.name,
+                'ticker': favorite.ticker,
+                'strategy': favorite.strategy,
+                'buy_amount': favorite.buy_amount,
+                'created_at': favorite.created_at.strftime('%Y-%m-%d'),
+                'start_yn': favorite.start_yn
+            })
+
+        return jsonify({
+            'success': True,
+            'data': result,
+            'count': len(result)
+        })
+
+    except Exception as e:
+        logger.error(f"즐겨찾기 검색 실패: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 
 # 자동재시작 토글
@@ -1303,6 +1434,7 @@ def auto_save_favorite_from_settings(form_data):
             'sell_portion': form_data.get('sell_portion'),
             'prevent_loss_sale': form_data.get('prevent_loss_sale'),
             'long_term_investment': form_data.get('long_term_investment'),
+            'max_order_amount': form_data.get('max_order_amount'),
             'window': form_data.get('window'),
             'multiplier': form_data.get('multiplier'),
             'buy_multiplier': form_data.get('buy_multiplier'),
@@ -1347,6 +1479,7 @@ def save_favorite_data(favorite_data):
             sell_portion=float(favorite_data['sell_portion']),
             prevent_loss_sale=favorite_data['prevent_loss_sale'],
             long_term_investment=favorite_data['long_term_investment'],
+            max_order_amount=float(favorite_data['max_order_amount']),
             window=int(favorite_data['window']),
             multiplier=float(favorite_data['multiplier']),
             # 비대칭 볼린저 밴드 필드 추가
@@ -1521,13 +1654,15 @@ def get_scheduler_status():
 
                             # 현재 보유 가치 계산 (현재 투자된 ticker들의 평가금액)
                             current_value = coin_balance * current_price
-                            # user_total_current_value += current_value
+                            # 투자 정보 계산
+                            investment_amount = coin_balance * avg_buy_price  # 실제 투자한 금액
 
                             # 수익률 계산
                             profit_rate = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price > 0 else 0
 
                             # 포트폴리오 정보 저장
                             user_portfolio_info[ticker] = {
+                                'investment_amount': investment_amount,
                                 'coin_balance': coin_balance,
                                 'avg_buy_price': avg_buy_price,
                                 'current_price': current_price,
@@ -1537,6 +1672,7 @@ def get_scheduler_status():
                         else:
                             # API 키가 없는 경우 기본값 설정
                             user_portfolio_info[ticker] = {
+                                'investment_amount': 0,
                                 'coin_balance': 0,
                                 'avg_buy_price': 0,
                                 'current_price': 0,
@@ -1548,6 +1684,7 @@ def get_scheduler_status():
                     logger.error(f"투자 정보 조회 중 오류 (사용자: {user_id}, 티커: {ticker}): {str(e)}")
                     # 오류 발생 시 기본값 설정
                     user_portfolio_info[ticker] = {
+                        'investment_amount': 0,
                         'coin_balance': 0,
                         'avg_buy_price': 0,
                         'current_price': 0,
@@ -1568,14 +1705,33 @@ def get_scheduler_status():
                     'run_count': job_info_from_scheduler.get('run_count', 0) if job_info_from_scheduler else 0,
                     'username': bot_info.get('username', 'Unknown'),
                     'interval_label': bot_info.get('interval_label', 'Unknown'),
-                    'buy_amount': get_setting_value('buy_amount', 0),
-                    'window': get_setting_value('window', 20),
-                    'multiplier': get_setting_value('multiplier', 2.0),
-                    'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
-                    'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
+                    # 봇 설정 정보 추가
+                    'settings': {
+                        'buy_amount': get_setting_value('buy_amount', 0),
+                        'window': get_setting_value('window', 20),
+                        'multiplier': get_setting_value('multiplier', 2.0),
+                        'buy_multiplier': get_setting_value('buy_multiplier', 3.0),
+                        'sell_multiplier': get_setting_value('sell_multiplier', 2.0),
+                        'max_order_amount': get_setting_value('max_order_amount', 0),
+                        'min_cash': get_setting_value('min_cash', 0),
+                        'sleep_time': get_setting_value('sleep_time', 60),
+                        'sell_portion': get_setting_value('sell_portion', 1.0),
+                        'prevent_loss_sale': get_setting_value('prevent_loss_sale', 'N'),
+                        # RSI 관련 설정
+                        'rsi_buy_threshold': get_setting_value('rsi_buy_threshold', 30),
+                        'rsi_sell_threshold': get_setting_value('rsi_sell_threshold', 70),
+                        'rsi_period': get_setting_value('rsi_period', 14),
+                        # 변동성 돌파 관련 설정
+                        'volatility_multiplier': get_setting_value('volatility_multiplier', 0.5),
+                        'volatility_period': get_setting_value('volatility_period', 20),
+                        # 앙상블 관련 설정
+                        'ensemble_weights': get_setting_value('ensemble_weights', {}),
+                        'ensemble_threshold': get_setting_value('ensemble_threshold', 0.6)
+                    },
                     'long_term_investment': bot_info.get('long_term_investment', 'N'),
                     # 투자 정보 추가
                     'portfolio_info': user_portfolio_info.get(ticker, {
+                        'investment_amount': 0,  # 투자 금액
                         'coin_balance': 0,
                         'avg_buy_price': 0,
                         'current_price': 0,

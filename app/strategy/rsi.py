@@ -11,11 +11,10 @@ class RSIStrategy:
 
     def calculate_rsi(self, prices, period=14, use_ema=True):
         """RSI 계산 - 개선된 버전 (SMA/EMA 선택 가능)"""
-        global rsi
         try:
             if len(prices) < period + 1:
                 self.logger.warning(f"RSI 계산을 위한 데이터 부족: {len(prices)}개 (최소 {period + 1}개 필요)")
-                return pd.Series([50] * len(prices), index=prices.index)
+                return pd.Series([50.0] * len(prices), index=prices.index, dtype='float64')
 
             delta = prices.diff()
             gain = delta.where(delta > 0, 0)
@@ -54,13 +53,14 @@ class RSIStrategy:
                             rs = avg_gains[i] / avg_losses[i]
                             rsi_values.append(100 - (100 / (1 + rs)))
 
-                    # 전체 길이에 맞춰 RSI 시리즈 생성
-                    full_rsi = pd.Series([50] * len(prices), index=prices.index)
+                    # 전체 길이에 맞춰 RSI 시리즈 생성 (dtype을 float64로 명시)
+                    full_rsi = pd.Series([50.0] * len(prices), index=prices.index, dtype='float64')
                     if len(rsi_values) > 0:
                         start_idx = min(period, len(prices) - len(rsi_values))
                         end_idx = start_idx + len(rsi_values)
-                        full_rsi.iloc[start_idx:end_idx] = rsi_values
-                    rsi = full_rsi.fillna(50)
+                        # 명시적으로 numpy 배열로 변환하여 할당
+                        full_rsi.iloc[start_idx:end_idx] = pd.Series(rsi_values, dtype='float64')
+                    rsi = full_rsi.fillna(50.0)
 
                 except Exception as ema_error:
                     self.logger.warning(f"EMA RSI 계산 실패, SMA로 대체: {str(ema_error)}")
@@ -73,13 +73,13 @@ class RSIStrategy:
                 avg_loss = loss.rolling(window=period).mean()
                 rs = avg_gain / avg_loss
                 rsi = 100 - (100 / (1 + rs))
-                rsi = rsi.fillna(50)
+                rsi = rsi.fillna(50.0).astype('float64')
 
             return rsi
 
         except Exception as e:
             self.logger.error(f"RSI 계산 중 오류: {str(e)}")
-            return pd.Series([50] * len(prices), index=prices.index)
+            return pd.Series([50.0] * len(prices), index=prices.index, dtype='float64')
 
     def get_market_data_safely(self, ticker, timeframe='minute15', count=50, max_retries=3):
         """안전한 데이터 조회 함수"""

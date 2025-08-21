@@ -96,18 +96,50 @@ class UpbitAPI:
             tuple: (is_valid, error_message)
         """
         try:
-            # 간단한 API 호출로 키 유효성 검증
-            balance = self.upbit.get_balance("KRW")
-            if balance is None:
-                return False, "API 키가 유효하지 않습니다."
+            # API 키가 설정되어 있는지 먼저 확인
+            if not hasattr(self, 'upbit') or self.upbit is None:
+                return False, "업비트 API 객체가 초기화되지 않았습니다."
 
-            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공")
+            if not self.access_key or not self.secret_key:
+                return False, "API 키가 설정되지 않았습니다."
+
+            # 간단한 API 호출로 키 유효성 검증 - fetch_data 사용으로 안정성 향상
+            balance = self.fetch_data(
+                lambda: self.upbit.get_balance("KRW"),
+                max_retries=2,  # 재시도 횟수 줄임
+                delay=1.0,  # 재시도 간격 늘림
+                backoff_factor=1.5
+            )
+
+            # balance가 None이거나 숫자가 아닌 경우 체크
+            if balance is None:
+                return False, "API 키가 유효하지 않거나 서버 응답이 없습니다."
+
+            # balance가 문자열로 반환되는 경우도 있으므로 타입 체크
+            try:
+                float(balance)
+            except (TypeError, ValueError):
+                self.logger.warning(f"예상하지 못한 balance 응답: {type(balance)} - {balance}")
+                return False, "API 응답 형식이 올바르지 않습니다."
+
+            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공 (잔고: {balance})")
             return True, None
 
         except Exception as e:
             error_msg = f"API 키 유효성 검증 실패: {str(e)}"
-            self.logger.error(error_msg)
-            return False, error_msg
+            self.logger.error(error_msg, exc_info=True)
+
+            # 구체적인 에러 타입에 따른 메시지 개선
+            if "Invalid API key" in str(e) or "invalid_access_key" in str(e):
+                return False, "잘못된 API 키입니다. 키를 다시 확인해주세요."
+            elif "permission" in str(e).lower():
+                return False, "API 키 권한이 부족합니다. 자산 조회 권한을 확인해주세요."
+            elif "network" in str(e).lower() or "timeout" in str(e).lower():
+                return False, "네트워크 연결 문제입니다. 잠시 후 다시 시도해주세요."
+            elif "rate limit" in str(e).lower():
+                return False, "API 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+            else:
+                return False, f"API 키 검증 중 오류 발생: {str(e)}"
 
     def fetch_data(self, fetch_func, max_retries=5, delay=0.5, backoff_factor=2):
         """데이터 가져오기 - 지수 백오프 추가"""
@@ -121,14 +153,12 @@ class UpbitAPI:
         self._log_api_call()
         return result
 
-
     def validate_ticker(self, ticker):
-        """ticker 유효성 검증 - 캐싱 추가"""
+        """ticker 유효성 검증 - 개선된 버전"""
         try:
             import pyupbit
 
             # 캐시된 티커 목록이 있는지 확인 (1시간마다 갱신)
-            cache_key = 'valid_tickers'
             current_time = time.time()
 
             if not hasattr(self, '_ticker_cache') or not hasattr(self, '_ticker_cache_time'):
@@ -138,15 +168,28 @@ class UpbitAPI:
             # 캐시가 없거나 1시간이 지났으면 새로 조회
             if (self._ticker_cache is None or
                     current_time - self._ticker_cache_time > 3600):
-                self.logger.info("티커 목록 새로고침 중...")
-                all_tickers = pyupbit.get_tickers(fiat="KRW")
-                self._ticker_cache = set(all_tickers) if all_tickers else set()
-                self._ticker_cache_time = current_time
-                self.logger.info(f"총 {len(self._ticker_cache)}개의 유효한 KRW 티커 로드됨")
+                try:
+                    self.logger.info("티커 목록 새로고침 중...")
+                    all_tickers = pyupbit.get_tickers(fiat="KRW")
+
+                    if all_tickers and len(all_tickers) > 0:
+                        self._ticker_cache = set(all_tickers)
+                        self._ticker_cache_time = current_time
+                        self.logger.info(f"총 {len(self._ticker_cache)}개의 유효한 KRW 티커 로드됨")
+                    else:
+                        self.logger.warning("티커 목록 조회 결과가 비어있습니다.")
+                        # 기존 캐시가 있다면 그대로 사용
+                        if self._ticker_cache is None:
+                            return False
+
+                except Exception as e:
+                    self.logger.error(f"티커 목록 조회 실패: {e}")
+                    # 기존 캐시가 있다면 그대로 사용
+                    if self._ticker_cache is None:
+                        return False
 
             if ticker not in self._ticker_cache:
                 self.logger.warning(f"유효하지 않은 ticker: {ticker}")
-                self.logger.info(f"사용 가능한 ticker 예시: {list(self._ticker_cache)[:10]}")
                 return False
 
             return True
@@ -157,7 +200,7 @@ class UpbitAPI:
 
     @cache_with_timeout(seconds=Config.CACHE_DURATION_PRICE)
     def get_current_price(self, ticker):
-        """현재 가격 조회 - 티커 검증 추가"""
+        """현재 가격 조회 - 안전성 및 로깅 개선"""
         try:
             # 먼저 ticker 형식 검증
             if not ticker or not isinstance(ticker, str):
@@ -171,6 +214,8 @@ class UpbitAPI:
             # 티커 유효성 검증
             if not self.validate_ticker(ticker):
                 self.logger.error(f"유효하지 않은 ticker로 거래 중단: {ticker}")
+                # 사용 가능한 유사한 티커 제안
+                self._suggest_similar_tickers(ticker)
                 return None
 
             def safe_get_price():
@@ -183,33 +228,45 @@ class UpbitAPI:
                         self.logger.warning(f"가격 정보 없음: {ticker}")
                         return None
 
-                    # 숫자인지 확인
-                    if isinstance(result, (int, float)) and result > 0:
+                    # 0 또는 음수 체크
+                    if isinstance(result, (int, float)):
+                        if result <= 0:
+                            self.logger.warning(f"비정상적인 가격: {ticker} -> {result}")
+                            return None
                         return float(result)
 
                     # 딕셔너리나 리스트 형태의 응답 처리
                     if isinstance(result, dict):
+                        price = None
                         if 'trade_price' in result:
-                            return float(result['trade_price'])
+                            price = result['trade_price']
                         elif ticker in result:
-                            return float(result[ticker])
+                            price = result[ticker]
+
+                        if price is not None and price > 0:
+                            return float(price)
 
                     if isinstance(result, list) and len(result) > 0:
                         if isinstance(result[0], dict) and 'trade_price' in result[0]:
-                            return float(result[0]['trade_price'])
+                            price = result[0]['trade_price']
+                            if price is not None and price > 0:
+                                return float(price)
 
-                    self.logger.warning(f"예상하지 못한 응답 형식: {ticker} -> {type(result)}: {result}")
+                    self.logger.warning(f"예상하지 못한 응답 형식 또는 비정상적인 가격: {ticker} -> {type(result)}: {result}")
                     return None
 
                 except Exception as e:
-                    self.logger.error(f"가격 조회 실패 ({ticker}): {e}")
+                    self.logger.error(f"가격 조회 API 호출 실패 ({ticker}): {e}")
                     return None
 
             # fetch_data를 통해 안전하게 호출
-            price = self.fetch_data(safe_get_price)
+            price = self.fetch_data(safe_get_price, max_retries=3)
 
             if price is None:
-                self.logger.error(f"최종 가격 조회 실패: {ticker}")
+                self.logger.error(f"가격 조회 실패 ({ticker}): 최종 결과가 None")
+            elif price <= 0:
+                self.logger.error(f"가격 조회 실패 ({ticker}): 비정상적인 가격 {price}")
+                return None
 
             return price
 
@@ -217,12 +274,55 @@ class UpbitAPI:
             self.logger.error(f"get_current_price 전체 오류 ({ticker}): {e}")
             return None
 
+    def _suggest_similar_tickers(self, invalid_ticker):
+        """유사한 티커 제안"""
+        try:
+            if hasattr(self, '_ticker_cache') and self._ticker_cache:
+                # 입력된 티커에서 코인 이름 추출
+                coin_name = invalid_ticker.replace('KRW-', '') if invalid_ticker.startswith('KRW-') else invalid_ticker
+
+                # 유사한 티커 찾기
+                similar = [t for t in self._ticker_cache if coin_name.lower() in t.lower()]
+
+                if similar:
+                    self.logger.info(f"유사한 티커 제안: {similar[:5]}")  # 최대 5개만 제안
+                else:
+                    # 랜덤하게 몇 개 제안
+                    sample_tickers = list(self._ticker_cache)[:10]
+                    self.logger.info(f"사용 가능한 티커 예시: {sample_tickers}")
+
+        except Exception as e:
+            self.logger.debug(f"티커 제안 중 오류: {e}")
+
     @cache_with_timeout(seconds=Config.CACHE_DURATION_BALANCE)
     def get_balance_cash(self):
-        """현금 잔고 조회"""
-        balance = self.fetch_data(lambda: self.upbit.get_balance("KRW"))
-        self.logger.debug(f"보유 현금: {balance} KRW")
-        return balance
+        """현금 잔고 조회 - 안전성 강화"""
+        try:
+            balance = self.fetch_data(lambda: self.upbit.get_balance("KRW"))
+
+            if balance is None:
+                self.logger.warning("현금 잔고 조회 결과가 None입니다.")
+                return 0.0
+
+            # 타입 검증 및 변환
+            if isinstance(balance, (int, float)):
+                result = float(balance)
+            elif isinstance(balance, str):
+                try:
+                    result = float(balance)
+                except ValueError:
+                    self.logger.error(f"현금 잔고를 숫자로 변환할 수 없습니다: {balance}")
+                    return 0.0
+            else:
+                self.logger.error(f"예상하지 못한 현금 잔고 타입: {type(balance)} - {balance}")
+                return 0.0
+
+            self.logger.debug(f"보유 현금: {result:,.2f} KRW")
+            return result
+
+        except Exception as e:
+            self.logger.error(f"현금 보유량 조회 중 오류 (사용자: {self.user_id}): {str(e)}")
+            return 0.0
 
     @cache_with_timeout(seconds=Config.CACHE_DURATION_BALANCE)
     def get_balance_coin(self, ticker):
@@ -439,3 +539,38 @@ class UpbitAPI:
         except Exception as e:
             self.logger.error(f"캔들 데이터 조회 실패 ({ticker}): {str(e)}")
             return None
+
+    def get_candles_data(self, ticker, interval='minute5', count=200):
+        """캔들 데이터 가져오기 (RSI 계산용)"""
+        try:
+            self._log_api_call()
+
+            # interval 매개변수 처리
+            if interval.startswith('minute'):
+                period = int(interval.replace('minute', '')) if interval != 'minute' else 1
+                df = self.get_ohlcv_data(ticker, interval, count)
+            else:
+                df = self.get_ohlcv_data(ticker, interval, count)
+
+            if df is None or len(df) == 0:
+                self.logger.warning(f"캔들 데이터가 없습니다: {ticker}")
+                return []
+
+            # 데이터 형식 변환 (rsi_selling_pressure.py에서 기대하는 형식으로)
+            formatted_candles = []
+            for idx, row in df.iterrows():
+                formatted_candles.append({
+                    'trade_price': row['close'],
+                    'high_price': row['high'],
+                    'low_price': row['low'],
+                    'opening_price': row['open'],
+                    'timestamp': idx,
+                    'candle_acc_trade_volume': row['volume']
+                })
+
+            self.logger.info(f"캔들 데이터 {len(formatted_candles)}개 조회 완료: {ticker}")
+            return formatted_candles
+
+        except Exception as e:
+            self.logger.error(f"캔들 데이터 조회 실패: {ticker}, 오류: {e}")
+            return []

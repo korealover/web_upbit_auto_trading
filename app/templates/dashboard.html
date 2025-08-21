@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -26,6 +27,9 @@
                                     {% else %}
                                     <span class="badge bg-danger">중지됨</span>
                                     {% endif %}
+                                    {% if bot_info.long_term_investment == 'Y' %}
+                                    <span class="badge bg-warning text-dark">장기투자</span>
+                                    {% endif %}
                                 </h6>
                                 <p class="card-text">
                                     <strong>전략:</strong>
@@ -37,6 +41,8 @@
                                     🔥 앙상블 전략
                                     {% elif bot_info.strategy == 'volatility' %}
                                     🚀 변동성 돌파
+                                    {% elif bot_info.strategy == 'bollinger_asymmetric' %}
+                                    📊 비대칭 볼린저 밴드
                                     {% else %}
                                     📊 볼린저 밴드
                                     {% endif %}
@@ -45,18 +51,27 @@
                                         <strong>차트 간격 : </strong>
                                         {{ bot_info.interval_label|default('N/A') }} /
                                         <strong>매수 금액(원) : </strong>
-                                        {{ "{:,.0f}".format(bot_info.settings.buy_amount.data) if bot_info.settings.buy_amount.data is not none else "N/A" }} 원
+                                        {{ "{:,.0f}".format(bot_info.settings.buy_amount) if bot_info.settings.buy_amount is not none else "N/A" }} 원
                                         <br>
                                         <strong>거래 간격(초) : </strong>
-                                        {{ bot_info.settings.sleep_time.data|default('N/A') }} /
+                                        {{ bot_info.settings.sleep_time|default('N/A') }} /
                                         <strong>매도 비율 : </strong>
-                                        {{ bot_info.settings.sell_portion.data|default('N/A') }}%
+                                        {{ (bot_info.settings.sell_portion * 100) |default('N/A') }}%
+                                        
                                         {% if bot_info.strategy == 'bollinger' %}
                                         <br>
                                         <strong>이동평균 기간 : </strong>
-                                        {{ bot_info.settings.window.data|default('N/A') }} /
+                                        {{ bot_info.settings.window|default('N/A') }} /
                                         <strong>볼린저 밴드 승수 : </strong>
-                                        {{ "{:,.1f}".format(bot_info.settings.multiplier.data) if bot_info.settings.multiplier.data is not none else "N/A" }}
+                                        {{ "{:,.1f}".format(bot_info.settings.multiplier) if bot_info.settings.multiplier is not none else "N/A" }}
+                                        {% elif bot_info.strategy == 'bollinger_asymmetric' %}
+                                        <br>
+                                        <strong>이동평균 기간 : </strong>
+                                        {{ bot_info.settings.window|default('N/A') }} /
+                                        <strong>매수 승수 : </strong>
+                                        {{ "{:,.1f}".format(bot_info.settings.buy_multiplier) if bot_info.settings.buy_multiplier is not none else "N/A" }} /
+                                        <strong>매도 승수 : </strong>
+                                        {{ "{:,.1f}".format(bot_info.settings.sell_multiplier) if bot_info.settings.sell_multiplier is not none else "N/A" }}
                                         {% endif %}
                                     </small>
                                 </p>
@@ -151,8 +166,11 @@
                             <tr class="text-center">
                                 <th scope="col">코인</th>
                                 <th scope="col">보유량</th>
-                                <th scope="col">구매 단가</th>
+                                <th scope="col">매수 단가</th>
                                 <th scope="col">현재 단가</th>
+                                <th scope="col">매수 금액</th>
+                                <th scope="col">평가 금액</th>
+                                <th scope="col">손익</th>
                                 <th scope="col">수익률</th>
                             </tr>
                         </thead>
@@ -166,21 +184,43 @@
                                     {{ "{:.4f}".format(coin.balance) }}
                                 </td>
                                 <td class="text-end">
-                                    <span class="text-danger">
+                                    <span class="text-success">
                                         {% if coin.avg_buy_price > 1 %}
-                                        ₩{{ "{:,.0f}".format(coin.avg_buy_price|default(0)) }}
+                                        ₩{{ "{:,.2f}".format(coin.avg_buy_price|default(0)) }}
                                         {% else %}
-                                        ₩{{ "{:,.5f}".format(coin.avg_buy_price|default(0)) }}
+                                        ₩{{ "{:,.2f}".format(coin.avg_buy_price|default(0)) }}
                                         {% endif %}
                                     </span>
                                 </td>
                                 <td class="text-end">
                                     <span class="text-primary">
                                         {% if coin.current_price > 1 %}
-                                        ₩{{ "{:,.0f}".format(coin.current_price|default(0)) }}
+                                        ₩{{ "{:,.2f}".format(coin.current_price|default(0)) }}
                                         {% else %}
-                                        ₩{{ "{:,.5f}".format(coin.current_price|default(0)) }}
+                                        ₩{{ "{:,.2f}".format(coin.current_price|default(0)) }}
                                         {% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="text-success">
+                                        {% if coin.avg_buy_price > 1 %}
+                                        {% set total_buy_price = coin.avg_buy_price * coin.balance %}
+                                        ₩{{ "{:,.2f}".format(total_buy_price|default(0)) }}
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="text-primary">
+                                        {% if coin.current_price > 1 %}
+                                        {% set total_current_price = coin.current_price * coin.balance %}
+                                        ₩{{ "{:,.2f}".format(total_current_price|default(0)) }}
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    {% set total_profit = (total_current_price|default(0)) - (total_buy_price|default(0)) %}
+                                    <span class="{% if total_profit > 0 %}text-success{% elif total_profit < 0 %}text-danger{% endif %}">
+                                        {{ "{:,.2f}".format(total_profit) }}
                                     </span>
                                 </td>
                                 <td class="text-end">
@@ -218,6 +258,7 @@
                         <option value="ensemble">🔥 앙상블</option>
                         <option value="volatility">🚀 변동성</option>
                         <option value="bollinger">📊 볼린저</option>
+                        <option value="bollinger_asymmetric">📊 비대칭 볼린저</option>
                     </select>
                     <button id="refresh-trades-btn" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-sync-alt"></i> 새로고침
@@ -549,6 +590,7 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'ensemble': return '🔥';
             case 'volatility': return '🚀';
             case 'bollinger': return '📊';
+            case 'bollinger_asymmetric': return '📊';
             default: return '📊';
         }
     }
