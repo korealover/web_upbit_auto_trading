@@ -6,7 +6,6 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv()
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard-to-guess-string'
     UPBIT_ACCESS_KEY = os.environ.get("UPBIT_ACCESS_KEY")
     UPBIT_SECRET_KEY = os.environ.get("UPBIT_SECRET_KEY")
     UPBIT_SERVER_URL = os.environ.get("UPBIT_SERVER_URL")
@@ -54,6 +53,12 @@ class Config:
     # 스레드 풀 설정
     MAX_WORKERS = int(os.environ.get('MAX_WORKERS', '5'))
     THREAD_NAME_PREFIX = os.environ.get('THREAD_NAME_PREFIX', 'AsyncWorker')
+
+    # MCP 서버 관련 설정 추가
+    MCP_SERVER_HOST = os.environ.get('MCP_SERVER_HOST', '0.0.0.0')
+    MCP_SERVER_PORT = int(os.environ.get('MCP_SERVER_PORT', 5001))
+    MCP_SECRET_KEY = os.environ.get('MCP_SECRET_KEY', SECRET_KEY)  # 기존 SECRET_KEY 재사용
+    MCP_AUTH_TOKEN = os.environ.get('MCP_AUTH_TOKEN', 'mcp-auth-token-2025')
 
 
 
