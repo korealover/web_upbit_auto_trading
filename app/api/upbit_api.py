@@ -10,58 +10,36 @@ class UpbitAPI:
 
     def __init__(self, user_id, async_handler, logger):
         """
-        UpbitAPI 초기화
+        초기화 - User 객체를 통해 암호화된 키를 자동 복호화
 
         Args:
             user_id: 사용자 ID
-            async_handler: 비동기 처리를 위한 핸들러
-            logger: 로깅을 위한 로거 객체
+            async_handler: 비동기 핸들러
+            logger: 로거 객체
         """
         self.user_id = user_id
         self.async_handler = async_handler
         self.logger = logger
-
-        # API 호출 통계
         self.api_call_count = 0
-        self.last_reset_time = time.time()
+        self.last_reset_time = 0
 
-        # 초기에는 User 객체를 저장하지 않고 필요할 때마다 조회
-        self.user = None  # 사용하지 않도록 None으로 설정
+        # 사용자 정보 및 API 키 복호화
+        self.user = User.query.get(user_id)
+        if not self.user:
+            raise ValueError(f"사용자를 찾을 수 없습니다: {user_id}")
 
-        # API 키 초기화
-        self.access_key = None
-        self.secret_key = None
-        self.upbit = None
-
-        # User 정보와 API 키 로드
         try:
-            from app.models import User
-            user = User.query.get(self.user_id)
-            if user:
-                # API 키 복호화
-                try:
-                    access_key, secret_key = user.get_upbit_keys()
-                    if access_key and secret_key:
-                        self.access_key = access_key
-                        self.secret_key = secret_key
+            self.access_key, self.secret_key = self.user.get_upbit_keys()
+            if not self.access_key or not self.secret_key:
+                raise ValueError("업비트 API 키가 설정되지 않았습니다.")
 
-                        # pyupbit 클라이언트 초기화
-                        import pyupbit
-                        self.upbit = pyupbit.Upbit(access_key, secret_key)
+            # 복호화된 키로 업비트 API 초기화
+            self.upbit = pyupbit.Upbit(self.access_key, self.secret_key)
+            self.logger.info(f"사용자 {self.user.username}의 업비트 API 초기화 완료")
 
-                        self.logger.info(f"사용자 {user.username} (ID: {self.user_id})의 업비트 API 초기화 완료")
-                    else:
-                        self.logger.warning(f"사용자 ID {self.user_id}의 API 키가 설정되지 않았습니다")
-                except Exception as e:
-                    self.logger.error(f"사용자 ID {self.user_id}의 API 키 초기화 실패: {str(e)}")
-            else:
-                self.logger.error(f"사용자 ID {self.user_id}를 찾을 수 없습니다")
         except Exception as e:
-            self.logger.error(f"UpbitAPI 초기화 중 오류: {str(e)}")
-
-        # 캐시 관리
-        self._ticker_cache = {}
-        self._ticker_cache_time = {}
+            self.logger.error(f"업비트 API 초기화 실패: {str(e)}")
+            raise ValueError(f"업비트 API 초기화 실패: {str(e)}")
 
     @classmethod
     def create_from_user(cls, user, async_handler, logger):
@@ -156,7 +134,6 @@ class UpbitAPI:
             try:
                 balance = upbit.get_balance("KRW")
                 if balance is not None:
-                    # 여기서 self.user.username 대신 user.username 또는 user_id 사용
                     self.logger.info(f"사용자 {user.username} (ID: {self.user_id})의 API 키 유효성 검증 성공 (잔고: {balance})")
                     return True, "API 키가 유효합니다"
                 else:
