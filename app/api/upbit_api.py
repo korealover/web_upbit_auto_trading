@@ -70,82 +70,76 @@ class UpbitAPI:
 
     def refresh_api_keys(self):
         """
-        사용자의 API 키를 데이터베이스에서 다시 로드
+        API 키 새로고침 (사용자가 키를 업데이트한 경우)
         """
         try:
-            from app.models import User
-            user = User.query.get(self.user_id)
+            # 사용자 정보 새로고침
+            self.user = User.query.get(self.user_id)
+            self.access_key, self.secret_key = self.user.get_upbit_keys()
 
-            if user:
-                access_key, secret_key = user.get_upbit_keys()
-                if access_key and secret_key:
-                    self.access_key = access_key
-                    self.secret_key = secret_key
+            if not self.access_key or not self.secret_key:
+                raise ValueError("업비트 API 키가 설정되지 않았습니다.")
 
-                    # 업비트 클라이언트 재생성
-                    import pyupbit
-                    self.upbit = pyupbit.Upbit(access_key, secret_key)
-                    self.user = user  # 새로 조회한 User 객체로 업데이트
-
-                    self.logger.info(f"사용자 {user.username} (ID: {self.user_id})의 API 키 갱신 완료")
-                    return True
-                else:
-                    self.logger.warning(f"사용자 ID {self.user_id}의 API 키가 설정되지 않았습니다")
-                    return False
-            else:
-                self.logger.error(f"사용자 ID {self.user_id}를 찾을 수 없습니다")
-                return False
+            # 새로운 키로 업비트 API 재초기화
+            self.upbit = pyupbit.Upbit(self.access_key, self.secret_key)
+            self.logger.info(f"사용자 {self.user.username}의 업비트 API 키 새로고침 완료")
 
         except Exception as e:
-            self.logger.error(f"API 키 갱신 실패: {str(e)}")
-            return False
+            self.logger.error(f"업비트 API 키 새로고침 실패: {str(e)}")
+            raise ValueError(f"업비트 API 키 새로고침 실패: {str(e)}")
 
     def validate_api_keys(self):
         """
         API 키 유효성 검증
+
+        Returns:
+            tuple: (is_valid, error_message)
         """
         try:
-            self.logger.info(f"사용자 ID {self.user_id}의 API 키 유효성 검증 시작")
+            # API 키가 설정되어 있는지 먼저 확인
+            if not hasattr(self, 'upbit') or self.upbit is None:
+                return False, "업비트 API 객체가 초기화되지 않았습니다."
 
-            # User 객체를 세션에서 다시 조회하여 사용
-            from app.models import User
-            from app import db
+            if not self.access_key or not self.secret_key:
+                return False, "API 키가 설정되지 않았습니다."
 
-            user = User.query.get(self.user_id)
-            if not user:
-                self.logger.error(f"사용자 ID {self.user_id}를 찾을 수 없습니다")
-                return False, "사용자를 찾을 수 없습니다"
+            # 간단한 API 호출로 키 유효성 검증 - fetch_data 사용으로 안정성 향상
+            balance = self.fetch_data(
+                lambda: self.upbit.get_balance("KRW"),
+                max_retries=2,  # 재시도 횟수 줄임
+                delay=1.0,  # 재시도 간격 늘림
+                backoff_factor=1.5
+            )
 
-            # API 키 복호화 및 유효성 검증
+            # balance가 None이거나 숫자가 아닌 경우 체크
+            if balance is None:
+                return False, "API 키가 유효하지 않거나 서버 응답이 없습니다."
+
+            # balance가 문자열로 반환되는 경우도 있으므로 타입 체크
             try:
-                access_key, secret_key = user.get_upbit_keys()
-                if not access_key or not secret_key:
-                    self.logger.warning(f"사용자 ID {self.user_id}의 API 키가 설정되지 않았습니다")
-                    return False, "API 키가 설정되지 않았습니다"
-            except Exception as e:
-                self.logger.error(f"사용자 ID {self.user_id}의 API 키 복호화 실패: {str(e)}")
-                return False, f"API 키 복호화 실패: {str(e)}"
+                float(balance)
+            except (TypeError, ValueError):
+                self.logger.warning(f"예상하지 못한 balance 응답: {type(balance)} - {balance}")
+                return False, "API 응답 형식이 올바르지 않습니다."
 
-            # 업비트 클라이언트 생성
-            import pyupbit
-            upbit = pyupbit.Upbit(access_key, secret_key)
-
-            # 잔고 조회로 API 키 유효성 검증
-            try:
-                balance = upbit.get_balance("KRW")
-                if balance is not None:
-                    self.logger.info(f"사용자 {user.username} (ID: {self.user_id})의 API 키 유효성 검증 성공 (잔고: {balance})")
-                    return True, "API 키가 유효합니다"
-                else:
-                    self.logger.warning(f"사용자 {user.username} (ID: {self.user_id})의 잔고 조회 실패")
-                    return False, "잔고 조회에 실패했습니다. API 키를 확인해주세요"
-            except Exception as api_error:
-                self.logger.error(f"사용자 {user.username} (ID: {self.user_id})의 API 호출 오류: {str(api_error)}")
-                return False, f"API 호출 오류: {str(api_error)}"
+            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공 (잔고: {balance})")
+            return True, None
 
         except Exception as e:
-            self.logger.error(f"API 키 검증 실패: API 키 검증 중 오류 발생: {str(e)}")
-            return False, f"API 키 검증 중 오류 발생: {str(e)}"
+            error_msg = f"API 키 유효성 검증 실패: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+
+            # 구체적인 에러 타입에 따른 메시지 개선
+            if "Invalid API key" in str(e) or "invalid_access_key" in str(e):
+                return False, "잘못된 API 키입니다. 키를 다시 확인해주세요."
+            elif "permission" in str(e).lower():
+                return False, "API 키 권한이 부족합니다. 자산 조회 권한을 확인해주세요."
+            elif "network" in str(e).lower() or "timeout" in str(e).lower():
+                return False, "네트워크 연결 문제입니다. 잠시 후 다시 시도해주세요."
+            elif "rate limit" in str(e).lower():
+                return False, "API 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+            else:
+                return False, f"API 키 검증 중 오류 발생: {str(e)}"
 
     def fetch_data(self, fetch_func, max_retries=5, delay=0.5, backoff_factor=2):
         """데이터 가져오기 - 지수 백오프 추가"""
