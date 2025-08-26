@@ -264,6 +264,7 @@ class UpbitTradingBot:
                 if balance_cash is not None:
                     self.logger.info(f"보유 현금: {balance_cash:,.2f}원")
 
+                # 보유 코인 로깅
                 if balance_coin is not None and balance_coin > 0:
                     avg_price = self.api.get_buy_avg(ticker)
                     current_price = self.api.get_current_price(ticker)
@@ -271,7 +272,7 @@ class UpbitTradingBot:
                     if avg_price and current_price:
                         profit_loss = (current_price - avg_price) / avg_price * 100
                         value = balance_coin * current_price
-                        self.logger.info(f"보유 {ticker}: {balance_coin} (평균가: {avg_price:,.2f}, 현재가치: {value:,.2f}원, 수익률: {profit_loss:.2f}%)")
+                        self.logger.info(f"보유 {ticker}: {balance_coin} (현재가: {current_price:,.2f} / 평균가: {avg_price:,.2f}, 현재가치: {value:,.2f}원, 수익률: {profit_loss:.2f}%)")
 
                 # 매매 신호에 따른 주문 처리
                 if signal == 'BUY' and balance_cash and balance_cash > min_cash:
