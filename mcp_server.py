@@ -20,7 +20,7 @@ from app import create_app, db
 import pyupbit
 
 # Initialize Flask app globally
-app = create_app()
+app = create_app(enable_scheduler=False)
 
 # Create MCP server instance
 server = Server("upbit-trading-analysis")
