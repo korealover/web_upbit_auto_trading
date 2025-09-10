@@ -1157,6 +1157,58 @@ def notify_user_rejection(user):
     logger.info(f"사용자 {user.username}에게 계정 거부 알림")
 
 
+# 승인된 사용자 삭제 라우트 추가
+@bp.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+@login_required
+def delete_user(user_id):
+    """승인된 사용자 삭제"""
+    # 관리자 권한 확인
+    if not current_user.is_admin:
+        flash('관리자 권한이 필요합니다.', 'danger')
+        return redirect(url_for('main.index'))
+
+    user = User.query.get_or_404(user_id)
+
+    # 본인은 삭제할 수 없도록 방지
+    if user.id == current_user.id:
+        flash('본인은 삭제할 수 없습니다.', 'warning')
+        return redirect(url_for('main.admin_panel'))
+
+    # 사용자의 모든 거래 봇 중지
+    try:
+        if user.id in scheduled_bots:
+            for ticker in list(scheduled_bots[user.id].keys()):
+                stop_bot(user.id, ticker)
+            logger.info(f"사용자 {user.username}의 모든 거래 봇이 중지되었습니다.")
+    except Exception as e:
+        logger.error(f"사용자 {user.username}의 거래 봇 중지 중 오류: {str(e)}")
+
+    # 사용자 삭제 (연관된 데이터도 함께 삭제됨 - CASCADE 설정에 따라)
+    username = user.username
+    try:
+        # 사용자 삭제 전 알림
+        notify_user_deletion(user)
+
+        # 데이터베이스에서 사용자 삭제
+        db.session.delete(user)
+        db.session.commit()
+
+        flash(f'사용자 {username}이(가) 성공적으로 삭제되었습니다.', 'success')
+        logger.info(f"관리자 {current_user.username}이 사용자 {username}을 삭제했습니다.")
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"사용자 {username} 삭제 중 오류: {str(e)}")
+        flash(f'사용자 삭제 중 오류가 발생했습니다: {str(e)}', 'danger')
+
+    return redirect(url_for('main.admin_panel'))
+
+def notify_user_deletion(user):
+    """사용자 삭제 알림"""
+    # 이메일 전송 또는 알림 로직 구현 (별도 구현 필요)
+    logger.info(f"사용자 {user.username} 계정 삭제 알림")
+
+
 # 티커별 거래 기록 가져오는 API 엔드포인트 수정 dashboard 에서 필요함
 @bp.route('/api/trade_records')
 @login_required
