@@ -42,10 +42,10 @@
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
                                        id="buy_amount_slider"
-                                       min="5000" max="500000" step="5000"
-                                       value="{{ form.buy_amount.data or 10000 }}">
+                                       min="5000" max="500000" step="1000"
+                                       value="{{ form.buy_amount.data or 7000 }}">
                                 <div class="slider-value-display">
-                                    <span id="buy_amount_display">{{ "{:,}".format(form.buy_amount.data or 10000) }}원</span>
+                                    <span id="buy_amount_display">{{ "{:,}".format(form.buy_amount.data or 7000) }}원</span>
                                 </div>
                             </div>
                             {{ form.buy_amount(class="form-control d-none", id="buy_amount_input") }}
