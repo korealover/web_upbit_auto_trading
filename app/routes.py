@@ -194,6 +194,9 @@ def dashboard():
 
         # 기존 대시보드 로직 계속...
         # API 키가 정상적으로 설정된 경우에만 UpbitAPI 객체 생성
+        api = None
+        balance_info = {}
+
         try:
             if user_id not in upbit_apis:
                 # UpbitAPI 클래스에서 자동으로 복호화 처리
@@ -202,11 +205,15 @@ def dashboard():
                 # API 키 유효성 검증
                 is_valid, error_msg = api.validate_api_keys()
                 if not is_valid:
-                    logger.error("업비트 키 복호화 에러")
-                    return None
-
-                # 잔고 정보 조회
-            balance_info = {}
+                    logger.error(f"업비트 키 검증 실패: {error_msg}")
+                    # API 키가 유효하지 않은 경우에도 기본 대시보드는 표시
+                    api = None
+                else:
+                    # API 객체를 캐시에 저장
+                    upbit_apis[user_id] = api
+            else:
+                # 기존 API 객체 사용
+                api = upbit_apis[user_id]
             try:
                 # 사용자별 봇 정보 가져오기
                 user_bots = scheduled_bots.get(user_id, {})
@@ -366,42 +373,56 @@ def dashboard():
                             'sell_multiplier': 2.0
                         }
 
-                # 업비트 잔고 확인
-                balance_info['cash'] = api.get_balance_cash()
-                if balance_info['cash'] is None:
+                # 업비트 잔고 확인 (API 객체가 유효한 경우에만)
+                if api is not None:
+                    try:
+                        balance_info['cash'] = api.get_balance_cash()
+                        if balance_info['cash'] is None:
+                            balance_info['cash'] = 0
+
+                        # 보유 코인 정보 조회 - pyupbit를 직접 사용
+                        try:
+                            all_balances = api.upbit.get_balances()
+                            balance_info['coins'] = []
+                            total_balance = balance_info['cash']
+
+                            if all_balances:
+                                for balance in all_balances:
+                                    if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
+                                        ticker = f"KRW-{balance['currency']}"
+                                        try:
+                                            # 현재 코인 가격
+                                            current_price = api.get_current_price(ticker)
+                                            coin_value = float(balance['balance']) * current_price
+                                            total_balance += coin_value
+
+                                            balance_info['coins'].append({
+                                                'ticker': ticker,
+                                                'balance': float(balance['balance']),
+                                                'value': coin_value,
+                                                'avg_buy_price': float(balance['avg_buy_price']),
+                                                'current_price': current_price
+                                            })
+                                        except Exception as e:
+                                            logger.warning(f"코인 {ticker} 가격 조회 실패: {str(e)}")
+
+                            balance_info['total_balance'] = total_balance
+
+                        except Exception as e:
+                            logger.warning(f"보유 코인 정보 조회 실패: {str(e)}")
+                            balance_info['total_balance'] = balance_info['cash']
+                            balance_info['coins'] = []
+
+                    except Exception as e:
+                        logger.warning(f"잔고 정보 조회 실패: {str(e)}")
+                        balance_info['cash'] = 0
+                        balance_info['total_balance'] = 0
+                        balance_info['coins'] = []
+                else:
+                    # API 객체가 없는 경우 기본값 설정
+                    logger.warning("API 객체가 유효하지 않아 잔고 정보를 조회할 수 없습니다.")
                     balance_info['cash'] = 0
-
-                # 보유 코인 정보 조회 - pyupbit를 직접 사용
-                try:
-                    all_balances = api.upbit.get_balances()
-                    balance_info['coins'] = []
-                    total_balance = balance_info['cash']
-
-                    if all_balances:
-                        for balance in all_balances:
-                            if balance['currency'] != 'KRW' and float(balance['balance']) > 0:
-                                ticker = f"KRW-{balance['currency']}"
-                                try:
-                                    # 현재 코인 가격
-                                    current_price = api.get_current_price(ticker)
-                                    coin_value = float(balance['balance']) * current_price
-                                    total_balance += coin_value
-
-                                    balance_info['coins'].append({
-                                        'ticker': ticker,
-                                        'balance': float(balance['balance']),
-                                        'value': coin_value,
-                                        'avg_buy_price': float(balance['avg_buy_price']),
-                                        'current_price': current_price
-                                    })
-                                except Exception as e:
-                                    logger.warning(f"코인 {ticker} 가격 조회 실패: {str(e)}")
-
-                    balance_info['total_balance'] = total_balance
-
-                except Exception as e:
-                    logger.warning(f"보유 코인 정보 조회 실패: {str(e)}")
-                    balance_info['total_balance'] = balance_info['cash']
+                    balance_info['total_balance'] = 0
                     balance_info['coins'] = []
 
             except Exception as e:
