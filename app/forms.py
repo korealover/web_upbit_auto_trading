@@ -71,7 +71,7 @@ class TradingSettingsForm(FlaskForm):
         ('bollinger_asymmetric', '비대칭 볼린저 밴드')
     ], default='bollinger')
 
-    # 당분다 다른 전략은 주석 처리 ,
+    # 당분간 다른 전략은 주석 처리 ,
     # ('volatility', '변동성 돌파'),
     # ('rsi', 'RSI 전략'),
     # ('adaptive', '어댑티브 전략 (시장 상황 자동 감지)'),
@@ -79,7 +79,7 @@ class TradingSettingsForm(FlaskForm):
 
     # 공통 설정
     # 기존 SelectField를 IntegerField와 FloatField로 변경
-    buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=50000)], default=7000)
+    buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=50000)], default=12000)
     min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=2000000)], default=50000)
     sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10, max=600)], default=60)
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
