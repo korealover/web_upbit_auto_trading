@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title">
+                        <i class="fas fa-chart-line"></i> 코인 수익성 분석 및 추천
+                    </h3>
+                    <div class="btn-group">
+                        <button id="refreshBtn" class="btn btn-primary">
+                            <i class="fas fa-sync-alt"></i> 새로고침
+                        </button>
+                        <button id="marketAnalysisBtn" class="btn btn-info">
+                            <i class="fas fa-market"></i> 시장 전체 분석
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- 필터 및 설정 -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label for="limitSelect" class="form-label">추천 개수</label>
+                            <select id="limitSelect" class="form-select">
+                                <option value="5">상위 5개</option>
+                                <option value="10" selected>상위 10개</option>
+                                <option value="20">상위 20개</option>
+                                <option value="30">상위 30개</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="minScoreSelect" class="form-label">최소 점수</label>
+                            <select id="minScoreSelect" class="form-select">
+                                <option value="50">50점 이상</option>
+                                <option value="60" selected>60점 이상</option>
+                                <option value="70">70점 이상</option>
+                                <option value="80">80점 이상</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="autoRefresh">
+                                <label class="form-check-label" for="autoRefresh">
+                                    자동 새로고침 (5분마다)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 로딩 상태 -->
+                    <div id="loadingIndicator" class="text-center py-4" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">수익성 분석 중...</p>
+                    </div>
+
+                    <!-- 분석 결과 요약 -->
+                    <div id="analysisSummary" class="row mb-4" style="display: none;">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h4 id="totalAnalyzed">-</h4>
+                                    <small>분석된 코인</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center">
+                                    <h4 id="recommendedCount">-</h4>
+                                    <small>추천 코인</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h4 id="avgScore">-</h4>
+                                    <small>평균 점수</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-white">
+                                <div class="card-body text-center">
+                                    <h4 id="lastUpdate">-</h4>
+                                    <small>마지막 업데이트</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 추천 코인 목록 -->
+                    <div id="recommendationsContainer">
+                        <div class="table-responsive">
+                            <table id="recommendationsTable" class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>순위</th>
+                                        <th>코인</th>
+                                        <th>현재가</th>
+                                        <th>종합점수</th>
+                                        <th>추천등급</th>
+                                        <th>위험도</th>
+                                        <th>24h 수익률</th>
+                                        <th>기술점수</th>
+                                        <th>거래량점수</th>
+                                        <th>변동성점수</th>
+                                        <th>상세분석</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recommendationsBody">
+                                    <!-- 동적으로 생성됨 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 에러 메시지 -->
+                    <div id="errorContainer" class="alert alert-danger" style="display: none;">
+                        <h5>오류 발생</h5>
+                        <p id="errorMessage"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 상세 분석 모달 -->
+<div class="modal fade" id="coinDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">코인 상세 분석</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">상세 분석 중...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <a id="tradingBtn" href="#" class="btn btn-success">매매하기</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let autoRefreshInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 초기 데이터 로드
+    loadRecommendations();
+
+    // 이벤트 리스너 등록
+    document.getElementById('refreshBtn').addEventListener('click', loadRecommendations);
+    document.getElementById('marketAnalysisBtn').addEventListener('click', showMarketAnalysis);
+    document.getElementById('limitSelect').addEventListener('change', loadRecommendations);
+    document.getElementById('minScoreSelect').addEventListener('change', loadRecommendations);
+    document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
+});
+
+function loadRecommendations() {
+    const limit = document.getElementById('limitSelect').value;
+    const minScore = document.getElementById('minScoreSelect').value;
+
+    // 로딩 상태 표시
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('analysisSummary').style.display = 'none';
+    document.getElementById('recommendationsContainer').style.display = 'none';
+    document.getElementById('errorContainer').style.display = 'none';
+
+    fetch(`/api/coin_recommendations?limit=${limit}&min_score=${minScore}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('loadingIndicator').style.display = 'none';
+
+            if (data.success) {
+                displayRecommendations(data.data);
+                updateSummary(data);
+            } else {
+                showError(data.error || '추천 데이터를 가져오는데 실패했습니다.');
+            }
+        })
+        .catch(error => {
+            document.getElementById('loadingIndicator').style.display = 'none';
+            showError('네트워크 오류: ' + error.message);
+        });
+}
+
+function displayRecommendations(recommendations) {
+    const tbody = document.getElementById('recommendationsBody');
+    tbody.innerHTML = '';
+
+    if (recommendations.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center">추천할 코인이 없습니다.</td></tr>';
+        document.getElementById('recommendationsContainer').style.display = 'block';
+        return;
+    }
+
+    recommendations.forEach((coin, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><span class="badge bg-primary">${index + 1}</span></td>
+            <td>
+                <strong>${coin.name}</strong><br>
+                <small class="text-muted">${coin.ticker}</small>
+            </td>
+            <td>${formatPrice(coin.current_price)}</td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar ${getScoreColor(coin.score)}"
+                         style="width: ${coin.score}%">${coin.score}</div>
+                </div>
+            </td>
+            <td><span class="badge ${getRecommendationBadge(coin.recommendation)}">${coin.recommendation}</span></td>
+            <td><span class="badge ${getRiskBadge(coin.risk_level)}">${coin.risk_level}</span></td>
+            <td class="${coin.performance.return_24h >= 0 ? 'text-success' : 'text-danger'}">
+                ${coin.performance.return_24h.toFixed(2)}%
+            </td>
+            <td>${coin.technical_score}</td>
+            <td>${coin.volume_score}</td>
+            <td>${coin.volatility_score}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary"
+                        onclick="showDetailAnalysis('${coin.ticker}')">
+                    <i class="fas fa-search"></i> 분석
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    document.getElementById('recommendationsContainer').style.display = 'block';
+}
+
+function updateSummary(data) {
+    const now = new Date();
+    document.getElementById('totalAnalyzed').textContent = data.count;
+    document.getElementById('recommendedCount').textContent = data.data.length;
+
+    if (data.data.length > 0) {
+        const avgScore = data.data.reduce((sum, coin) => sum + coin.score, 0) / data.data.length;
+        document.getElementById('avgScore').textContent = avgScore.toFixed(1);
+    } else {
+        document.getElementById('avgScore').textContent = '-';
+    }
+
+    document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+    document.getElementById('analysisSummary').style.display = 'block';
+}
+
+function showDetailAnalysis(ticker) {
+    const modal = new bootstrap.Modal(document.getElementById('coinDetailModal'));
+    document.getElementById('modalTitle').textContent = `${ticker} 상세 분석`;
+    document.getElementById('modalBody').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">상세 분석 중...</p>
+        </div>
+    `;
+
+    // 매매하기 버튼 URL 설정
+    document.getElementById('tradingBtn').href = `/settings?ticker=${ticker}`;
+
+    modal.show();
+
+    fetch(`/api/coin_analysis/${ticker}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayDetailAnalysis(data.data);
+            } else {
+                document.getElementById('modalBody').innerHTML =
+                    `<div class="alert alert-danger">분석 데이터를 가져올 수 없습니다: ${data.error}</div>`;
+            }
+        })
+        .catch(error => {
+            document.getElementById('modalBody').innerHTML =
+                `<div class="alert alert-danger">네트워크 오류: ${error.message}</div>`;
+        });
+}
+
+function displayDetailAnalysis(analysis) {
+    const performance = analysis.performance || {};
+    const modalBody = document.getElementById('modalBody');
+
+    modalBody.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>기본 정보</h6>
+                <table class="table table-sm">
+                    <tr><td>현재가</td><td>${formatPrice(analysis.current_price)}</td></tr>
+                    <tr><td>종합점수</td><td><span class="badge ${getScoreColor(analysis.score)}">${analysis.score}</span></td></tr>
+                    <tr><td>추천등급</td><td><span class="badge ${getRecommendationBadge(analysis.recommendation)}">${analysis.recommendation}</span></td></tr>
+                    <tr><td>위험도</td><td><span class="badge ${getRiskBadge(analysis.risk_level)}">${analysis.risk_level}</span></td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>수익률 정보</h6>
+                <table class="table table-sm">
+                    <tr><td>1시간</td><td class="${performance.return_1h >= 0 ? 'text-success' : 'text-danger'}">${(performance.return_1h || 0).toFixed(2)}%</td></tr>
+                    <tr><td>4시간</td><td class="${performance.return_4h >= 0 ? 'text-success' : 'text-danger'}">${(performance.return_4h || 0).toFixed(2)}%</td></tr>
+                    <tr><td>24시간</td><td class="${performance.return_24h >= 0 ? 'text-success' : 'text-danger'}">${(performance.return_24h || 0).toFixed(2)}%</td></tr>
+                    ${performance.return_1w ? `<tr><td>1주일</td><td class="${performance.return_1w >= 0 ? 'text-success' : 'text-danger'}">${performance.return_1w.toFixed(2)}%</td></tr>` : ''}
+                </table>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <h6>분석 점수 상세</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>${analysis.technical_score}</h5>
+                                <small>기술적 분석</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>${analysis.volume_score}</h5>
+                                <small>거래량 분석</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h5>${analysis.volatility_score}</h5>
+                                <small>변동성 분석</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        ${performance.trade_value_24h ? `
+        <div class="row mt-3">
+            <div class="col-12">
+                <h6>거래 정보</h6>
+                <table class="table table-sm">
+                    <tr><td>24시간 거래대금</td><td>${formatPrice(performance.trade_value_24h)}</td></tr>
+                    <tr><td>24시간 거래량</td><td>${formatVolume(performance.volume_24h)}</td></tr>
+                </table>
+            </div>
+        </div>
+        ` : ''}
+    `;
+}
+
+function showMarketAnalysis() {
+    fetch('/api/market_analysis')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`시장 전체 분석 완료!\n\n분석된 코인: ${data.data.total_analyzed}개\n분석 시간: ${new Date(data.data.analysis_time).toLocaleString()}`);
+            } else {
+                alert('시장 분석에 실패했습니다: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('네트워크 오류: ' + error.message);
+        });
+}
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('autoRefresh');
+
+    if (checkbox.checked) {
+        autoRefreshInterval = setInterval(loadRecommendations, 5 * 60 * 1000); // 5분마다
+        console.log('자동 새로고침 활성화');
+    } else {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+        console.log('자동 새로고침 비활성화');
+    }
+}
+
+function showError(message) {
+    document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorContainer').style.display = 'block';
+    document.getElementById('analysisSummary').style.display = 'none';
+    document.getElementById('recommendationsContainer').style.display = 'none';
+}
+
+// 유틸리티 함수들
+function formatPrice(price) {
+    if (price >= 1000) {
+        return price.toLocaleString() + '원';
+    } else {
+        return price.toFixed(2) + '원';
+    }
+}
+
+function formatVolume(volume) {
+    if (volume >= 1000000) {
+        return (volume / 1000000).toFixed(1) + 'M';
+    } else if (volume >= 1000) {
+        return (volume / 1000).toFixed(1) + 'K';
+    } else {
+        return volume.toFixed(2);
+    }
+}
+
+function getScoreColor(score) {
+    if (score >= 80) return 'bg-success';
+    if (score >= 70) return 'bg-info';
+    if (score >= 60) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function getRecommendationBadge(recommendation) {
+    const badges = {
+        '강력매수': 'bg-success',
+        '매수': 'bg-primary',
+        '약간매수': 'bg-info',
+        '보유': 'bg-secondary',
+        '약간매도': 'bg-warning',
+        '매도': 'bg-danger'
+    };
+    return badges[recommendation] || 'bg-secondary';
+}
+
+function getRiskBadge(riskLevel) {
+    const badges = {
+        '낮음': 'bg-success',
+        '보통': 'bg-warning',
+        '높음': 'bg-danger',
+        '매우높음': 'bg-dark'
+    };
+    return badges[riskLevel] || 'bg-secondary';
+}
+
+// 페이지 언로드 시 자동 새로고침 정리
+window.addEventListener('beforeunload', function() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+});
+</script>
+{% endblock %}
