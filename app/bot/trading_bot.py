@@ -176,10 +176,17 @@ class UpbitTradingBot:
             profit_rate = (current_price - avg_buy_price) / avg_buy_price * 100
             self.logger.info(f"현재 수익률: {profit_rate:.2f}% (현재가: {current_price:,}, 평균가: {avg_buy_price:,})")
 
-            # 손절 라인 체크 (-3%)
+            # 손절 금지 설정 확인
+            prevent_loss_sale = self._get_field_value(getattr(self.args, 'prevent_loss_sale', None), 'N')
+
+            # 손절 라인 체크 (-3%) - prevent_loss_sale이 'Y'이면 손절하지 않음
             if profit_rate <= -3.0:
-                self.logger.warning(f"손절 라인 도달! 수익률: {profit_rate:.2f}%")
-                return {'action': 'STOP_LOSS', 'reason': f'손절 라인 도달 ({profit_rate:.2f}%)', 'portion': 1.0}
+                if prevent_loss_sale == 'Y':
+                    self.logger.info(f"손절 라인 도달하였으나 손절 금지 설정으로 매도하지 않음. 수익률: {profit_rate:.2f}%")
+                    return None  # 손절하지 않음
+                else:
+                    self.logger.warning(f"손절 라인 도달! 수익률: {profit_rate:.2f}%")
+                    return {'action': 'STOP_LOSS', 'reason': f'손절 라인 도달 ({profit_rate:.2f}%)', 'portion': 1.0}
 
             # 익절 라인 체크 (+5%)
             elif profit_rate >= 5.0:

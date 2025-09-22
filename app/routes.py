@@ -9,6 +9,7 @@ from app.utils.logging_utils import setup_logger, get_logger_with_current_date
 from app.utils.async_utils import AsyncHandler
 from app.utils.shared import scheduled_bots
 from app.bot.trading_bot import UpbitTradingBot
+from app.utils.coin_recommender import CoinRecommender
 import time
 import os
 from datetime import datetime
@@ -603,21 +604,29 @@ def start_bot(ticker, strategy_name, settings):
     except Exception as e:
         logger.error(f"기존 스케줄 작업 중지 에러: {e}")
 
+    # API 초기화 (스케줄러 락 외부에서 처리)
+    if user_id not in upbit_apis:
+        logger.info(f"새 API 객체 생성: user_id={user_id}")
+        # UpbitAPI 클래스에서 자동으로 복호화 처리
+        upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+
+        # API 키 유효성 검증
+        is_valid, error_msg = upbit_api.validate_api_keys()
+        if not is_valid:
+            logger.error(f"업비트 키 복호화 에러: {error_msg}")
+            return None
+
+        # API 객체를 캐시에 저장
+        upbit_apis[user_id] = upbit_api
+    else:
+        logger.info(f"기존 API 객체 사용: user_id={user_id}")
+        # 기존 API 객체 사용
+        upbit_api = upbit_apis[user_id]
+
     with scheduler_manager.lock:
         # 초기화
         if user_id not in scheduled_bots:
             scheduled_bots[user_id] = {}
-
-        # API 초기화
-        if user_id not in upbit_apis:
-            # UpbitAPI 클래스에서 자동으로 복호화 처리
-            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
-
-            # API 키 유효성 검증
-            is_valid, error_msg = upbit_api.validate_api_keys()
-            if not is_valid:
-                logger.error("업비트 키 복호화 에러")
-                return None
 
     strategy = create_strategy(strategy_name, upbit_api, logger)
 
@@ -1859,3 +1868,119 @@ def get_scheduler_status():
     except Exception as e:
         logger.error(f"모든 사용자의 스케줄러 상태 조회 중 오류: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+# 코인 추천 관련 API 엔드포인트
+@bp.route('/api/coin_recommendations')
+@login_required
+def get_coin_recommendations():
+    """코인 추천 API"""
+    try:
+        # 사용자 API 객체 가져오기
+        user_id = current_user.id
+        if user_id not in upbit_apis:
+            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+            upbit_apis[user_id] = upbit_api
+        else:
+            upbit_api = upbit_apis[user_id]
+
+        # 추천 시스템 초기화
+        recommender = CoinRecommender(upbit_api, logger)
+
+        # 파라미터 받기
+        limit = request.args.get('limit', 10, type=int)
+        min_score = request.args.get('min_score', 60, type=float)
+
+        # 추천 결과 가져오기
+        recommendations = recommender.get_top_recommendations(limit=limit, min_score=min_score)
+
+        return jsonify({
+            'success': True,
+            'data': recommendations,
+            'count': len(recommendations),
+            'analysis_time': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"코인 추천 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/api/coin_analysis/<ticker>')
+@login_required
+def get_coin_analysis(ticker):
+    """특정 코인 상세 분석 API"""
+    try:
+        # 사용자 API 객체 가져오기
+        user_id = current_user.id
+        if user_id not in upbit_apis:
+            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+            upbit_apis[user_id] = upbit_api
+        else:
+            upbit_api = upbit_apis[user_id]
+
+        # 추천 시스템 초기화
+        recommender = CoinRecommender(upbit_api, logger)
+
+        # 특정 코인 상세 분석
+        analysis = recommender.get_coin_detailed_analysis(ticker)
+
+        if not analysis:
+            return jsonify({
+                'success': False,
+                'error': f'{ticker} 분석 데이터를 가져올 수 없습니다.'
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'data': analysis
+        })
+
+    except Exception as e:
+        logger.error(f"코인 분석 API 오류 ({ticker}): {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/coin_recommendations')
+@login_required
+def coin_recommendations_page():
+    """코인 추천 페이지"""
+    return render_template('coin_recommendations.html', title='코인 추천')
+
+
+@bp.route('/api/market_analysis')
+@login_required
+def get_market_analysis():
+    """전체 시장 분석 API"""
+    try:
+        # 사용자 API 객체 가져오기
+        user_id = current_user.id
+        if user_id not in upbit_apis:
+            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+            upbit_apis[user_id] = upbit_api
+        else:
+            upbit_api = upbit_apis[user_id]
+
+        # 추천 시스템 초기화
+        recommender = CoinRecommender(upbit_api, logger)
+
+        # 전체 시장 분석
+        market_analysis = recommender.get_market_analysis()
+
+        return jsonify({
+            'success': True,
+            'data': market_analysis
+        })
+
+    except Exception as e:
+        logger.error(f"시장 분석 API 오류: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
