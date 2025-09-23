@@ -24,6 +24,100 @@ async_handler = AsyncHandler(max_workers=5)
 upbit_apis = {}  # 사용자별 API 객체 저장
 logger = setup_logger('web', 'INFO', 7)
 
+# 성능 최적화를 위한 캐시
+from functools import lru_cache
+from threading import Lock
+
+# 사용자 정보 캐시 (30초간 유지)
+user_cache = {}
+user_cache_lock = Lock()
+USER_CACHE_TTL = 30  # 30초
+
+# 표준화된 API 응답 함수들
+def success_response(data=None, message=None, status_code=200):
+    """성공 응답 생성"""
+    response = {'success': True}
+    if data is not None:
+        response['data'] = data
+    if message:
+        response['message'] = message
+    return jsonify(response), status_code
+
+def error_response(error_message, status_code=400, error_code=None):
+    """에러 응답 생성"""
+    response = {
+        'success': False,
+        'error': str(error_message)
+    }
+    if error_code:
+        response['error_code'] = error_code
+
+    # 로그 기록
+    if status_code >= 500:
+        logger.error(f"서버 오류 발생: {error_message}")
+    elif status_code >= 400:
+        logger.warning(f"클라이언트 오류: {error_message}")
+
+    return jsonify(response), status_code
+
+def validate_api_access():
+    """API 접근 권한 검증"""
+    if not current_user.is_authenticated:
+        return error_response("인증이 필요합니다.", 401, "AUTH_REQUIRED")
+
+    if not current_user.is_approved:
+        return error_response("계정 승인이 필요합니다.", 403, "APPROVAL_REQUIRED")
+
+    return None
+
+def get_or_create_upbit_api(user_id):
+    """사용자별 UpbitAPI 객체 가져오기 또는 생성 (성능 최적화)"""
+    try:
+        if user_id not in upbit_apis:
+            # 사용자 정보 캐시에서 먼저 확인
+            user = get_cached_user(user_id)
+            if not user:
+                raise ValueError("사용자 정보를 찾을 수 없습니다.")
+
+            upbit_api = UpbitAPI.create_from_user(user, async_handler, logger)
+            upbit_apis[user_id] = upbit_api
+        return upbit_apis[user_id]
+    except Exception as e:
+        logger.error(f"UpbitAPI 생성 실패 (user_id: {user_id}): {str(e)}")
+        raise ValueError(f"API 키 설정을 확인해주세요: {str(e)}")
+
+def get_cached_user(user_id):
+    """사용자 정보 캐시에서 가져오기"""
+    import time
+
+    with user_cache_lock:
+        # 캐시에서 확인
+        if user_id in user_cache:
+            cached_data = user_cache[user_id]
+            # TTL 확인
+            if time.time() - cached_data['timestamp'] < USER_CACHE_TTL:
+                return cached_data['user']
+            else:
+                # 만료된 캐시 삭제
+                del user_cache[user_id]
+
+        # 캐시에 없거나 만료된 경우 DB에서 조회
+        user = User.query.get(user_id)
+        if user:
+            user_cache[user_id] = {
+                'user': user,
+                'timestamp': time.time()
+            }
+        return user
+
+def clear_user_cache(user_id=None):
+    """사용자 캐시 삭제"""
+    with user_cache_lock:
+        if user_id:
+            user_cache.pop(user_id, None)
+        else:
+            user_cache.clear()
+
 # 메인 페이지
 @bp.route('/')
 def index():
@@ -148,17 +242,24 @@ def profile():
 @bp.route('/validate_api_keys', methods=['POST'])
 @login_required
 def validate_api_keys():
+    """API 키 유효성 검증"""
+    auth_error = validate_api_access()
+    if auth_error:
+        return auth_error
+
     try:
-        upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
+        upbit_api = get_or_create_upbit_api(current_user.id)
         is_valid, error_msg = upbit_api.validate_api_keys()
 
         if is_valid:
-            return jsonify({'success': True, 'message': 'API 키가 유효합니다.'})
+            return success_response(message='API 키가 유효합니다.')
         else:
-            return jsonify({'success': False, 'error': error_msg})
+            return error_response(error_msg, 400, "INVALID_API_KEYS")
 
     except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return error_response(f"API 키 검증 실패: {str(e)}", 400, "API_KEY_ERROR")
+    except Exception as e:
+        return error_response(f"서버 오류: {str(e)}", 500, "INTERNAL_ERROR")
 
 
 @bp.route('/dashboard')
@@ -431,13 +532,12 @@ def dashboard():
                 balance_info['total_balance'] = 0
                 balance_info['coins'] = []
 
-            # 오늘의 거래 통계 계산
+            # 오늘의 거래 통계 계산 (성능 최적화: 인덱스 사용)
             today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            today_records = TradeRecord.query.filter_by(
-                user_id=current_user.id
-            ).filter(
+            today_records = TradeRecord.query.filter(
+                TradeRecord.user_id == current_user.id,
                 TradeRecord.timestamp >= today_start
-            ).all()
+            ).order_by(TradeRecord.timestamp.desc()).all()
 
             daily_stats = {}
             if today_records:
@@ -878,26 +978,24 @@ def create_trading_bot_from_favorite(favorite):
 @login_required
 def stop_bot_route(ticker):
     """특정 티커의 봇 중지"""
+    auth_error = validate_api_access()
+    if auth_error:
+        return auth_error
+
     try:
         user_id = current_user.id
         success = stop_bot(user_id, ticker)
 
         if success:
-            return jsonify({
-                'status': 'success',
-                'message': f'{ticker} 봇이 성공적으로 중지되었습니다.'
-            })
+            return success_response(
+                data={'ticker': ticker, 'stopped': True},
+                message=f'{ticker} 봇이 성공적으로 중지되었습니다.'
+            )
         else:
-            return jsonify({
-                'status': 'error',
-                'message': f'{ticker} 봇 중지에 실패했습니다.'
-            })
+            return error_response(f'{ticker} 봇 중지에 실패했습니다.', 400, "BOT_STOP_FAILED")
+
     except Exception as e:
-        logger.error(f"봇 중지 오류: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': f'봇 중지 중 오류가 발생했습니다: {str(e)}'
-        })
+        return error_response(f'봇 중지 중 오류가 발생했습니다: {str(e)}', 500, "INTERNAL_ERROR")
 
 
 # 자동매매 중지
@@ -1247,10 +1345,9 @@ def get_trade_records():
     # 오늘 날짜의 시작 시간 계산 (00:00:00)
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # 오늘 거래 기록만 필터링
-    records = TradeRecord.query.filter_by(
-        user_id=current_user.id
-    ).filter(
+    # 오늘 거래 기록만 필터링 (성능 최적화)
+    records = TradeRecord.query.filter(
+        TradeRecord.user_id == current_user.id,
         TradeRecord.timestamp >= today_start
     ).order_by(
         TradeRecord.timestamp.desc()
@@ -1283,11 +1380,10 @@ def get_ticker_trade_records(ticker):
     # 로그 기록 (디버깅 용도)
     logger.info(f"티커 {ticker}의 오늘 거래 기록 요청됨 (사용자 ID: {current_user.id})")
 
-    # 특정 티커의 오늘 거래 기록만 필터링
-    records = TradeRecord.query.filter_by(
-        user_id=current_user.id,
-        ticker=ticker
-    ).filter(
+    # 특정 티커의 오늘 거래 기록만 필터링 (성능 최적화)
+    records = TradeRecord.query.filter(
+        TradeRecord.user_id == current_user.id,
+        TradeRecord.ticker == ticker,
         TradeRecord.timestamp >= today_start
     ).order_by(
         TradeRecord.timestamp.desc()
@@ -1896,52 +1992,75 @@ def get_scheduler_status():
 @login_required
 def get_coin_recommendations():
     """코인 추천 API"""
+    # 인증 및 승인 확인
+    auth_error = validate_api_access()
+    if auth_error:
+        return auth_error
+
     try:
-        # 사용자 API 객체 가져오기
+        # 파라미터 유효성 검사
+        limit = request.args.get('limit', 10, type=int)
+        min_score = request.args.get('min_score', 60, type=float)
+
+        if limit <= 0 or limit > 100:
+            return error_response("limit은 1-100 사이의 값이어야 합니다.", 400, "INVALID_LIMIT")
+
+        if min_score < 0 or min_score > 100:
+            return error_response("min_score는 0-100 사이의 값이어야 합니다.", 400, "INVALID_MIN_SCORE")
+
+        # 사용자 API 객체 가져오기 (성능 최적화)
         user_id = current_user.id
-        if user_id not in upbit_apis:
-            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
-            upbit_apis[user_id] = upbit_api
-        else:
-            upbit_api = upbit_apis[user_id]
+        upbit_api = get_or_create_upbit_api(user_id)
 
         # 추천 시스템 초기화
         recommender = CoinRecommender(upbit_api, logger)
 
-        # 파라미터 받기
-        limit = request.args.get('limit', 10, type=int)
-        min_score = request.args.get('min_score', 60, type=float)
-
         # 추천 결과 가져오기
         recommendations = recommender.get_top_recommendations(limit=limit, min_score=min_score)
 
-        return jsonify({
-            'success': True,
-            'data': recommendations,
-            'count': len(recommendations),
-            'analysis_time': datetime.now().isoformat()
+        # 전체 분석된 코인 수 계산
+        market_analysis = recommender.get_market_analysis()
+        total_analyzed = market_analysis.get('total_analyzed', 0) if market_analysis else 0
+
+        return success_response({
+            'recommendations': recommendations,
+            'count': total_analyzed,
+            'filtered_count': len(recommendations),
+            'analysis_time': datetime.now().isoformat(),
+            'parameters': {
+                'limit': limit,
+                'min_score': min_score
+            }
         })
 
     except Exception as e:
         logger.error(f"코인 추천 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_response(f"코인 추천 데이터를 가져오는데 실패했습니다: {str(e)}", 500, "RECOMMENDATION_ERROR")
 
 
 @bp.route('/api/coin_analysis/<ticker>')
 @login_required
 def get_coin_analysis(ticker):
     """특정 코인 상세 분석 API"""
+    # 인증 및 승인 확인
+    auth_error = validate_api_access()
+    if auth_error:
+        return auth_error
+
     try:
-        # 사용자 API 객체 가져오기
+        # 티커 유효성 검사
+        if not ticker or not ticker.strip():
+            return error_response("유효한 티커를 입력해주세요.", 400, "INVALID_TICKER")
+
+        ticker = ticker.strip().upper()
+
+        # 티커 형식 검증 (KRW-로 시작하는지 확인)
+        if not ticker.startswith('KRW-'):
+            ticker = f'KRW-{ticker}'
+
+        # 사용자 API 객체 가져오기 (성능 최적화)
         user_id = current_user.id
-        if user_id not in upbit_apis:
-            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
-            upbit_apis[user_id] = upbit_api
-        else:
-            upbit_api = upbit_apis[user_id]
+        upbit_api = get_or_create_upbit_api(user_id)
 
         # 추천 시스템 초기화
         recommender = CoinRecommender(upbit_api, logger)
@@ -1950,22 +2069,17 @@ def get_coin_analysis(ticker):
         analysis = recommender.get_coin_detailed_analysis(ticker)
 
         if not analysis:
-            return jsonify({
-                'success': False,
-                'error': f'{ticker} 분석 데이터를 가져올 수 없습니다.'
-            }), 404
+            return error_response(f'{ticker} 분석 데이터를 찾을 수 없습니다.', 404, "ANALYSIS_NOT_FOUND")
 
-        return jsonify({
-            'success': True,
-            'data': analysis
+        return success_response({
+            'ticker': ticker,
+            'analysis': analysis,
+            'analysis_time': datetime.now().isoformat()
         })
 
     except Exception as e:
         logger.error(f"코인 분석 API 오류 ({ticker}): {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_response(f"코인 분석 데이터를 가져오는데 실패했습니다: {str(e)}", 500, "ANALYSIS_ERROR")
 
 
 @bp.route('/coin_recommendations')
@@ -1979,14 +2093,15 @@ def coin_recommendations_page():
 @login_required
 def get_market_analysis():
     """전체 시장 분석 API"""
+    # 인증 및 승인 확인
+    auth_error = validate_api_access()
+    if auth_error:
+        return auth_error
+
     try:
-        # 사용자 API 객체 가져오기
+        # 사용자 API 객체 가져오기 (성능 최적화)
         user_id = current_user.id
-        if user_id not in upbit_apis:
-            upbit_api = UpbitAPI.create_from_user(current_user, async_handler, logger)
-            upbit_apis[user_id] = upbit_api
-        else:
-            upbit_api = upbit_apis[user_id]
+        upbit_api = get_or_create_upbit_api(user_id)
 
         # 추천 시스템 초기화
         recommender = CoinRecommender(upbit_api, logger)
@@ -1994,14 +2109,14 @@ def get_market_analysis():
         # 전체 시장 분석
         market_analysis = recommender.get_market_analysis()
 
-        return jsonify({
-            'success': True,
-            'data': market_analysis
+        if not market_analysis:
+            return error_response("시장 분석 데이터를 가져올 수 없습니다.", 404, "MARKET_DATA_NOT_FOUND")
+
+        return success_response({
+            'market_analysis': market_analysis,
+            'analysis_time': datetime.now().isoformat()
         })
 
     except Exception as e:
         logger.error(f"시장 분석 API 오류: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_response(f"시장 분석 데이터를 가져오는데 실패했습니다: {str(e)}", 500, "MARKET_ANALYSIS_ERROR")

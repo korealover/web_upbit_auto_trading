@@ -789,16 +789,23 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(response => response.json())
             .then(data => {
-                if (data.status === 'success') {
-                    showNotification('success', data.message);
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1000);
+                // 표준화된 API 응답 형식 처리
+                if (data.success) {
+                    showNotification('success', data.message || `${ticker} 봇이 성공적으로 중지되었습니다.`);
+
+                    // 해당 카드를 즉시 제거
+                    removeBotCard(ticker);
+
+                    // 활성 티커 목록 업데이트
+                    loadActiveTickers();
+
+                    // 거래 기록 새로고침
+                    loadTradeRecords();
                 } else {
-                    showNotification('error', data.message);
+                    showNotification('error', data.error || '봇 중지에 실패했습니다.');
                     if (buttonElement) {
                         buttonElement.disabled = false;
-                        buttonElement.innerHTML = '중지';
+                        buttonElement.innerHTML = '<i class="fas fa-stop me-1"></i>중지';
                     }
                 }
             })
@@ -807,11 +814,59 @@ document.addEventListener('DOMContentLoaded', function() {
                 showNotification('error', '봇 중지 중 오류가 발생했습니다.');
                 if (buttonElement) {
                     buttonElement.disabled = false;
-                    buttonElement.innerHTML = '중지';
+                    buttonElement.innerHTML = '<i class="fas fa-stop me-1"></i>중지';
                 }
             });
         } catch (error) {
             console.error('봇 중지 오류:', error);
+        }
+    }
+
+    function removeBotCard(ticker) {
+        try {
+            // 해당 티커의 카드를 찾아 제거
+            const stopButton = document.querySelector(`[data-ticker="${ticker}"]`);
+            if (stopButton) {
+                // 카드의 최상위 부모 요소(col-md-4) 찾기
+                const cardContainer = stopButton.closest('.col-md-4');
+                if (cardContainer) {
+                    // 부드러운 애니메이션으로 카드 제거
+                    cardContainer.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+                    cardContainer.style.opacity = '0';
+                    cardContainer.style.transform = 'scale(0.95)';
+
+                    setTimeout(() => {
+                        if (cardContainer.parentNode) {
+                            cardContainer.parentNode.removeChild(cardContainer);
+
+                            // 모든 봇이 제거되었는지 확인
+                            const remainingCards = document.querySelectorAll('.col-md-4 .card .stop-bot');
+                            if (remainingCards.length === 0) {
+                                // 실행 중인 봇이 없음을 표시
+                                showNoBotMessage();
+                            }
+                        }
+                    }, 300);
+                }
+            }
+        } catch (error) {
+            console.error('카드 제거 오류:', error);
+        }
+    }
+
+    function showNoBotMessage() {
+        try {
+            const cardBody = document.querySelector('.card-body');
+            if (cardBody && cardBody.querySelector('.row')) {
+                cardBody.innerHTML = `
+                    <div class="text-center">
+                        <p class="mb-3">실행 중인 봇이 없습니다.</p>
+                        <a href="${window.location.origin}/settings" class="btn btn-primary">새 봇 시작하기</a>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('메시지 표시 오류:', error);
         }
     }
 
