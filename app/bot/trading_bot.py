@@ -177,7 +177,7 @@ class UpbitTradingBot:
             self.logger.info(f"현재 수익률: {profit_rate:.2f}% (현재가: {current_price:,}, 평균가: {avg_buy_price:,})")
 
             # 손절 금지 설정 확인
-            prevent_loss_sale = self._get_field_value(getattr(self.args, 'prevent_loss_sale', None), 'N')
+            prevent_loss_sale = self._get_field_value(getattr(self.args, 'prevent_loss_sale', None), 'Y')
 
             # 손절 라인 체크 (-3%) - prevent_loss_sale이 'Y'이면 손절하지 않음
             if profit_rate <= -3.0:
