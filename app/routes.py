@@ -2049,7 +2049,7 @@ def get_coin_analysis(ticker):
 
     try:
         # 티커 유효성 검사
-        if not ticker or not ticker.strip():
+        if not ticker or not isinstance(ticker, str):
             return error_response("유효한 티커를 입력해주세요.", 400, "INVALID_TICKER")
 
         ticker = ticker.strip().upper()
