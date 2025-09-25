@@ -1,11 +1,9 @@
-
 {% extends "base.html" %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>자동 거래 봇 설정</h2>
 </div>
-
 
 <div class="row mt-4">
     <div class="col-md-10 offset-md-1">
@@ -34,29 +32,64 @@
                         </div>
                     </div>
 
-                    <!-- 공통 설정 부분을 모바일 친화적으로 수정 -->
+                    <!-- 공통 설정 - 3줄로 재구성 -->
                     <h6 class="mt-4 mb-3">공통 설정</h6>
+
+                    <!-- 첫 번째 줄: 매수금액, 주문가능금액 (2개만) -->
                     <div class="row mb-3">
-                        <div class="col-md-3 col-12 mb-3">
+                        <div class="col-md-6 col-12 mb-3">
                             {{ form.buy_amount.label(class="form-label") }}
-                            <div class="mobile-slider-container">
-                                <input type="range" class="form-range mobile-slider"
-                                       id="buy_amount_slider"
-                                       min="5000" max="5000000" step="1000"
-                                       value="{{ form.buy_amount.data or 12000 }}">
-                                <div class="slider-value-display">
-                                    <span id="buy_amount_display">{{ "{:,}".format(form.buy_amount.data or 12000) }}원</span>
+                            <!-- 프리셋 버튼들 -->
+                            <div class="preset-buttons mb-2">
+                                <div class="btn-group-sm d-flex flex-wrap gap-1" role="group">
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="10000">1만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="50000">5만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="100000">10만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="500000">50만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="1000000">100만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="5000000">500만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="10000000">1000만원</button>
                                 </div>
                             </div>
-                            {{ form.buy_amount(class="form-control d-none", id="buy_amount_input") }}
+                            <!-- 직접 입력 필드 -->
+                            <div class="input-group">
+                                {{ form.buy_amount(class="form-control currency-input", id="buy_amount_input", placeholder="직접 입력", step="1000") }}
+                                <span class="input-group-text">원</span>
+                            </div>
                             <small class="text-muted">최소 5,000원 이상</small>
                         </div>
-                        <div class="col-md-3 col-12 mb-3">
+
+                        <div class="col-md-6 col-12 mb-3">
+                            {{ form.max_order_amount.label(class="form-label") }}
+                            <!-- 프리셋 버튼들 (큰 금액용) -->
+                            <div class="preset-buttons mb-2">
+                                <div class="btn-group-sm d-flex flex-wrap gap-1" role="group">
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="100000">10만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="300000">30만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="500000">50만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="1000000">100만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="10000000">1천만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="50000000">5천만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="100000000">1억원</button>
+                                </div>
+                            </div>
+                            <!-- 직접 입력 필드 -->
+                            <div class="input-group">
+                                {{ form.max_order_amount(class="form-control currency-input", id="max_order_amount_input", placeholder="직접 입력", step="1000") }}
+                                <span class="input-group-text">원</span>
+                            </div>
+                            <small class="text-muted">코인당 최대 투자 한도</small>
+                        </div>
+                    </div>
+
+                    <!-- 두 번째 줄: 최소보유현금량, 거래간격, 매도 비율 -->
+                    <div class="row mb-3">
+                        <div class="col-md-4 col-12 mb-3">
                             {{ form.min_cash.label(class="form-label") }}
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
                                        id="min_cash_slider"
-                                       min="0" max="2000000" step="5000"
+                                       min="0" max="2000000" step="1000"
                                        value="{{ form.min_cash.data or 50000 }}">
                                 <div class="slider-value-display">
                                     <span id="min_cash_display">{{ "{:,}".format(form.min_cash.data or 50000) }}원</span>
@@ -65,7 +98,7 @@
                             {{ form.min_cash(class="form-control d-none", id="min_cash_input") }}
                             <small class="text-muted">안전 자금</small>
                         </div>
-                        <div class="col-md-3 col-12 mb-3">
+                        <div class="col-md-4 col-12 mb-3">
                             {{ form.sleep_time.label(class="form-label") }}
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
@@ -79,7 +112,7 @@
                             {{ form.sleep_time(class="form-control d-none", id="sleep_time_input") }}
                             <small class="text-muted">신호 확인 간격</small>
                         </div>
-                        <div class="col-md-3 col-12 mb-3">
+                        <div class="col-md-4 col-12 mb-3">
                             {{ form.sell_portion.label(class="form-label") }}
                             <div class="mobile-slider-container">
                                 <input type="range" class="form-range mobile-slider"
@@ -95,35 +128,19 @@
                         </div>
                     </div>
 
-
-                    <!-- 새로 추가: 주문 가능 금액 설정 -->
+                    <!-- 세 번째 줄: 손절금지, 장기투자 -->
                     <div class="row mb-3">
-                        <div class="col-md-3 col-12 mb-3">
-                            {{ form.max_order_amount.label(class="form-label") }}
-                            <div class="mobile-slider-container">
-                                <input type="range" class="form-range mobile-slider"
-                                       id="max_order_amount_slider"
-                                       min="0" max="200000000" step="5000"
-                                       value="{{ form.max_order_amount.data or 50000 }}">
-                                <div class="slider-value-display">
-                                    <span id="max_order_amount_display">{{ "{:,}".format(form.max_order_amount.data or 50000) }}원</span>
-                                </div>
-                            </div>
-                            {{ form.max_order_amount(class="form-control d-none", id="max_order_amount_input") }}
-                            <small class="text-muted">코인당 최대 투자 한도</small>
-                        </div>
-                        <div class="col-md-3 col-12 mb-3">
+                        <div class="col-md-6 col-12 mb-3">
                             {{ form.prevent_loss_sale.label(class="form-label") }}
                             {{ form.prevent_loss_sale(class="form-select") }}
                             <small class="text-muted">매수 평단가 이하 매도 금지</small>
                         </div>
-                        <div class="col-md-3 col-12 mb-3">
+                        <div class="col-md-6 col-12 mb-3">
                             {{ form.long_term_investment.label(class="form-label") }}
                             {{ form.long_term_investment(class="form-select") }}
                             <small class="text-muted">장기 투자(보유)를 위해 매도 금지</small>
                         </div>
                     </div>
-
 
                     <!-- 볼린저 밴드 전략 설정 -->
                     <div id="bollinger-settings" class="strategy-settings">
@@ -299,6 +316,7 @@
                             </ul>
                         </div>
                     </div>
+
                     <div class="d-flex gap-2 mt-4">
                         {{ form.submit(class="btn btn-primary btn-lg flex-fill") }}
                         <button type="button" class="btn btn-outline-success btn-lg" data-bs-toggle="modal" data-bs-target="#saveFavoriteModal">
@@ -393,220 +411,322 @@
 
 {% block scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const strategySelect = document.getElementById('strategy');
-        const strategySettings = document.querySelectorAll('.strategy-settings');
-        const favoriteForm = document.getElementById('favoriteForm');
+document.addEventListener('DOMContentLoaded', function() {
+    const strategySelect = document.getElementById('strategy');
+    const strategySettings = document.querySelectorAll('.strategy-settings');
+    const favoriteForm = document.getElementById('favoriteForm');
 
-        if(favoriteForm) {
-            favoriteForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const mainForm = document.getElementById('settingsForm');
-                const mainFormData = new FormData(mainForm);
+    if(favoriteForm) {
+        favoriteForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const mainForm = document.getElementById('settingsForm');
+            const mainFormData = new FormData(mainForm);
 
-                for (let [key, value] of mainFormData.entries()) {
-                    if (!favoriteForm.querySelector(`[name="${key}"]`)) {
-                        const hiddenInput = document.createElement('input');
-                        hiddenInput.type = 'hidden';
-                        hiddenInput.name = key;
-                        hiddenInput.value = value;
-                        favoriteForm.appendChild(hiddenInput);
-                    }
-                }
-                this.submit();
-            });
-        }
-
-        // 모바일 슬라이더 기능 추가
-        function setupMobileSlider(sliderId, inputId, displayId, formatter) {
-            const slider = document.getElementById(sliderId);
-            const input = document.getElementById(inputId);
-            const display = document.getElementById(displayId);
-
-            if (slider && input && display) {
-                // 슬라이더 값 변경 시 input과 display 업데이트
-                slider.addEventListener('input', function() {
-                    const value = parseFloat(this.value);
-                    input.value = value;
-                    display.textContent = formatter(value);
-                });
-
-                // 초기값 설정
-                slider.value = input.value || slider.min;
-                display.textContent = formatter(parseFloat(slider.value));
-            }
-        }
-
-        // 포맷터 함수들
-        function formatCurrency(amount) {
-            return new Intl.NumberFormat('ko-KR').format(amount) + '원';
-        }
-
-        function formatSeconds(seconds) {
-            if (seconds >= 60) {
-                const minutes = Math.floor(seconds / 60);
-                const remainingSeconds = seconds % 60;
-
-                if (remainingSeconds === 0) {
-                    return minutes + '분';
-                } else {
-                    return minutes + '분 ' + remainingSeconds + '초';
+            for (let [key, value] of mainFormData.entries()) {
+                if (!favoriteForm.querySelector(`[name="${key}"]`)) {
+                    const hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = key;
+                    hiddenInput.value = value;
+                    favoriteForm.appendChild(hiddenInput);
                 }
             }
-            return seconds + '초';
-        }
+            this.submit();
+        });
+    }
 
+    // 모바일 슬라이더 기능 (1000원 단위로 수정)
+    function setupMobileSlider(sliderId, inputId, displayId, formatter) {
+        const slider = document.getElementById(sliderId);
+        const input = document.getElementById(inputId);
+        const display = document.getElementById(displayId);
 
-        function formatPercentage(value) {
-            return Math.round(value * 100) + '%';
-        }
+        if (slider && input && display) {
+            slider.addEventListener('input', function() {
+                let value = parseFloat(this.value);
 
-        // 모든 슬라이더 초기화
-        setupMobileSlider('buy_amount_slider', 'buy_amount_input', 'buy_amount_display', formatCurrency);
-        setupMobileSlider('min_cash_slider', 'min_cash_input', 'min_cash_display', formatCurrency);
-        setupMobileSlider('sleep_time_slider', 'sleep_time_input', 'sleep_time_display', formatSeconds);
-        setupMobileSlider('sell_portion_slider', 'sell_portion_input', 'sell_portion_display', formatPercentage);
-        setupMobileSlider('max_order_amount_slider', 'max_order_amount_input', 'max_order_amount_display', formatCurrency);
+                // 1000원 단위로 반올림 (min_cash_slider의 경우)
+                if (sliderId === 'min_cash_slider') {
+                    value = Math.round(value / 1000) * 1000;
+                    this.value = value; // 슬라이더 위치도 조정
+                }
 
-        function toggleSettings() {
-            // 모든 설정 숨기기
-            strategySettings.forEach(setting => {
-                setting.style.display = 'none';
+                input.value = value;
+                display.textContent = formatter(value);
             });
 
-            // 선택된 전략 설정 보이기
-            const selectedStrategy = strategySelect.value;
-            const targetSetting = document.getElementById(selectedStrategy + '-settings');
+            // 초기값 설정 (1000원 단위로 반올림)
+            let initialValue = parseFloat(input.value || slider.min);
+            if (sliderId === 'min_cash_slider') {
+                initialValue = Math.round(initialValue / 1000) * 1000;
+            }
 
-            if (targetSetting) {
-                targetSetting.style.display = 'block';
+            slider.value = initialValue;
+            input.value = initialValue;
+            display.textContent = formatter(initialValue);
+        }
+    }
+
+    // 포맷터 함수들
+    function formatCurrency(amount) {
+        return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+    }
+
+    function formatSeconds(seconds) {
+        if (seconds >= 60) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            if (remainingSeconds === 0) {
+                return minutes + '분';
+            } else {
+                return minutes + '분 ' + remainingSeconds + '초';
             }
         }
+        return seconds + '초';
+    }
 
-        // 초기 상태 설정
-        toggleSettings();
+    function formatPercentage(value) {
+        return Math.round(value * 100) + '%';
+    }
 
-        // 전략 변경 시 설정 토글
-        strategySelect.addEventListener('change', toggleSettings);
+    // 슬라이더 초기화
+    setupMobileSlider('min_cash_slider', 'min_cash_input', 'min_cash_display', formatCurrency);
+    setupMobileSlider('sleep_time_slider', 'sleep_time_input', 'sleep_time_display', formatSeconds);
+    setupMobileSlider('sell_portion_slider', 'sell_portion_input', 'sell_portion_display', formatPercentage);
 
-        // 앙상블 가중치 실시간 검증
-        const weightInputs = [
-            document.getElementById('ensemble_volatility_weight'),
-            document.getElementById('ensemble_bollinger_weight'),
-            document.getElementById('ensemble_rsi_weight')
-        ];
+    function toggleSettings() {
+        strategySettings.forEach(setting => {
+            setting.style.display = 'none';
+        });
 
-        function validateWeights() {
-            if (!weightInputs.every(input => input)) return;
+        const selectedStrategy = strategySelect.value;
+        const targetSetting = document.getElementById(selectedStrategy + '-settings');
 
-            const total = weightInputs.reduce((sum, input) => sum + parseFloat(input.value || 0), 0);
-            const isValid = Math.abs(total - 1.0) < 0.01;
-
-            weightInputs.forEach(input => {
-                input.classList.toggle('is-invalid', !isValid);
-                input.classList.toggle('is-valid', isValid);
-            });
-
-            // 경고 메시지 표시/숨기기
-            let warningDiv = document.getElementById('weight-warning');
-            if (!isValid && !warningDiv) {
-                warningDiv = document.createElement('div');
-                warningDiv.id = 'weight-warning';
-                warningDiv.className = 'alert alert-danger mt-2';
-                warningDiv.innerHTML = `<small>가중치 합계가 1.0이 아닙니다. (현재: ${total.toFixed(2)})</small>`;
-                weightInputs[0].parentNode.parentNode.appendChild(warningDiv);
-            } else if (isValid && warningDiv) {
-                warningDiv.remove();
-            }
+        if (targetSetting) {
+            targetSetting.style.display = 'block';
         }
+    }
+
+    toggleSettings();
+    strategySelect.addEventListener('change', toggleSettings);
+
+    // 앙상블 가중치 실시간 검증
+    const weightInputs = [
+        document.getElementById('ensemble_volatility_weight'),
+        document.getElementById('ensemble_bollinger_weight'),
+        document.getElementById('ensemble_rsi_weight')
+    ];
+
+    function validateWeights() {
+        if (!weightInputs.every(input => input)) return;
+
+        const total = weightInputs.reduce((sum, input) => sum + parseFloat(input.value || 0), 0);
+        const isValid = Math.abs(total - 1.0) < 0.01;
 
         weightInputs.forEach(input => {
-            if (input) {
-                input.addEventListener('input', validateWeights);
-            }
+            input.classList.toggle('is-invalid', !isValid);
+            input.classList.toggle('is-valid', isValid);
         });
 
+        let warningDiv = document.getElementById('weight-warning');
+        if (!isValid && !warningDiv) {
+            warningDiv = document.createElement('div');
+            warningDiv.id = 'weight-warning';
+            warningDiv.className = 'alert alert-danger mt-2';
+            warningDiv.innerHTML = `<small>가중치 합계가 1.0이 아닙니다. (현재: ${total.toFixed(2)})</small>`;
+            weightInputs[0].parentNode.parentNode.appendChild(warningDiv);
+        } else if (isValid && warningDiv) {
+            warningDiv.remove();
+        }
+    }
 
-        //즐겨찾기 추가 여부
-        const settingsForm = document.getElementById('settingsForm');
-        const saveToFavoritesCheckbox = document.getElementById('saveToFavorites');
-        const favoriteNameSection = document.getElementById('favoriteNameSection');
-        const confirmModal = new bootstrap.Modal(document.getElementById('settingsSaveConfirmModal'));
-        const dateString = new Date().toLocaleDateString('ko-KR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        }).replace(/\D/g, '');
+    weightInputs.forEach(input => {
+        if (input) {
+            input.addEventListener('input', validateWeights);
+        }
+    });
 
+    // 즐겨찾기 관련 로직
+    const settingsForm = document.getElementById('settingsForm');
+    const saveToFavoritesCheckbox = document.getElementById('saveToFavorites');
+    const favoriteNameSection = document.getElementById('favoriteNameSection');
+    const confirmModal = new bootstrap.Modal(document.getElementById('settingsSaveConfirmModal'));
+    const dateString = new Date().toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).replace(/\D/g, '');
 
-        // 즐겨찾기 저장 체크박스 변경 시 이름 입력 섹션 표시/숨김
-        saveToFavoritesCheckbox.addEventListener('change', function() {
-            if (this.checked) {
-                favoriteNameSection.style.display = 'block';
-                // 현재 전략과 티커를 기반으로 기본 이름 생성
-                const ticker = document.querySelector('select[name="ticker"]').value;
-                const strategy = document.querySelector('select[name="strategy"]').value;
-                const defaultName = `${ticker}_${strategy}_${dateString}`;
-                document.getElementById('quickFavoriteName').value = defaultName;
-            } else {
-                favoriteNameSection.style.display = 'none';
-            }
-        });
-
-        // 설정 폼 제출 가로채기
-        settingsForm.addEventListener('submit', function(e) {
-            e.preventDefault(); // 기본 제출 방지
-            confirmModal.show(); // 확인 팝업 표시
-        });
-
-        // 확인 버튼 클릭 시
-        document.getElementById('confirmSettingsSave').addEventListener('click', function() {
-            const shouldSaveToFavorites = saveToFavoritesCheckbox.checked;
-
-            if (shouldSaveToFavorites) {
-                const favoriteName = document.getElementById('quickFavoriteName').value.trim();
-                const startYn = document.getElementById('quickStartYn').checked;
-
-                if (!favoriteName) {
-                    alert('즐겨찾기 이름을 입력해주세요.');
-                    return;
-                }
-
-                // 즐겨찾기 저장을 위한 숨겨진 필드 추가
-                const favoriteNameField = document.createElement('input');
-                favoriteNameField.type = 'hidden';
-                favoriteNameField.name = 'save_to_favorites';
-                favoriteNameField.value = 'true';
-                settingsForm.appendChild(favoriteNameField);
-
-                const favoriteNameValueField = document.createElement('input');
-                favoriteNameValueField.type = 'hidden';
-                favoriteNameValueField.name = 'favorite_name';
-                favoriteNameValueField.value = favoriteName;
-                settingsForm.appendChild(favoriteNameValueField);
-
-                const favoriteStartYnField = document.createElement('input');
-                favoriteStartYnField.type = 'hidden';
-                favoriteStartYnField.name = 'favorite_start_yn';
-                favoriteStartYnField.value = startYn ? 'true' : 'false';
-                settingsForm.appendChild(favoriteStartYnField);
-            }
-
-            // 팝업 닫기
-            confirmModal.hide();
-
-            // 실제 폼 제출
-            HTMLFormElement.prototype.submit.call(settingsForm);
-        });
-
-        // 팝업이 닫힐 때 체크박스 초기화
-        document.getElementById('settingsSaveConfirmModal').addEventListener('hidden.bs.modal', function() {
-            saveToFavoritesCheckbox.checked = false;
+    saveToFavoritesCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            favoriteNameSection.style.display = 'block';
+            const ticker = document.querySelector('select[name="ticker"]').value;
+            const strategy = document.querySelector('select[name="strategy"]').value;
+            const defaultName = `${ticker}_${strategy}_${dateString}`;
+            document.getElementById('quickFavoriteName').value = defaultName;
+        } else {
             favoriteNameSection.style.display = 'none';
-            document.getElementById('quickFavoriteName').value = '';
-            document.getElementById('quickStartYn').checked = false;
+        }
+    });
+
+    settingsForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        confirmModal.show();
+    });
+
+    document.getElementById('confirmSettingsSave').addEventListener('click', function() {
+        const shouldSaveToFavorites = saveToFavoritesCheckbox.checked;
+
+        if (shouldSaveToFavorites) {
+            const favoriteName = document.getElementById('quickFavoriteName').value.trim();
+            const startYn = document.getElementById('quickStartYn').checked;
+
+            if (!favoriteName) {
+                alert('즐겨찾기 이름을 입력해주세요.');
+                return;
+            }
+
+            const favoriteNameField = document.createElement('input');
+            favoriteNameField.type = 'hidden';
+            favoriteNameField.name = 'save_to_favorites';
+            favoriteNameField.value = 'true';
+            settingsForm.appendChild(favoriteNameField);
+
+            const favoriteNameValueField = document.createElement('input');
+            favoriteNameValueField.type = 'hidden';
+            favoriteNameValueField.name = 'favorite_name';
+            favoriteNameValueField.value = favoriteName;
+            settingsForm.appendChild(favoriteNameValueField);
+
+            const favoriteStartYnField = document.createElement('input');
+            favoriteStartYnField.type = 'hidden';
+            favoriteStartYnField.name = 'favorite_start_yn';
+            favoriteStartYnField.value = startYn ? 'true' : 'false';
+            settingsForm.appendChild(favoriteStartYnField);
+        }
+
+        confirmModal.hide();
+        HTMLFormElement.prototype.submit.call(settingsForm);
+    });
+
+    document.getElementById('settingsSaveConfirmModal').addEventListener('hidden.bs.modal', function() {
+        saveToFavoritesCheckbox.checked = false;
+        favoriteNameSection.style.display = 'none';
+        document.getElementById('quickFavoriteName').value = '';
+        document.getElementById('quickStartYn').checked = false;
+    });
+
+    // ===== 프리셋 버튼과 통화 입력 필드 로직 =====
+
+    // 프리셋 버튼 이벤트 핸들러
+    document.querySelectorAll('.preset-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const value = this.getAttribute('data-value');
+            const targetInput = document.getElementById(targetId);
+
+            if (targetInput) {
+                // 숫자 값으로 설정 (콤마 없이)
+                targetInput.value = value;
+
+                // 선택된 버튼 하이라이트
+                const parentGroup = this.parentElement;
+                parentGroup.querySelectorAll('.preset-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                this.classList.add('active');
+
+                // 포맷팅된 표시 업데이트
+                formatInputDisplay(targetInput);
+            }
         });
     });
+
+    // 통화 입력 필드 포맷팅 함수 (1000원 단위 처리)
+    function formatInputDisplay(input) {
+        const rawValue = input.value.replace(/[^\d]/g, '');
+        if (rawValue) {
+            let numValue = parseInt(rawValue);
+
+            // 1000원 단위로 반올림
+            numValue = Math.round(numValue / 1000) * 1000;
+
+            // 화면 표시용 (읽기 전용)
+            input.setAttribute('data-formatted', numValue.toLocaleString('ko-KR'));
+            // 실제 폼 전송값은 숫자만
+            input.value = numValue;
+        }
+    }
+
+    // 통화 입력 필드 이벤트
+    document.querySelectorAll('.currency-input').forEach(input => {
+        // 초기 포맷팅
+        formatInputDisplay(input);
+
+        input.addEventListener('input', function() {
+            // 입력 중에는 숫자만 허용
+            let value = this.value.replace(/[^\d]/g, '');
+            this.value = value;
+        });
+
+        // 포커스 아웃 시 포맷 적용 (1000원 단위로 반올림)
+        input.addEventListener('blur', function() {
+            let rawValue = this.value.replace(/[^\d]/g, '');
+            if (rawValue) {
+                let numValue = parseInt(rawValue);
+                // 1000원 단위로 반올림
+                numValue = Math.round(numValue / 1000) * 1000;
+                this.value = numValue;
+
+                formatInputDisplay(this);
+                // 화면에 콤마 포함된 값 표시
+                if (this.getAttribute('data-formatted')) {
+                    this.style.textAlign = 'right';
+                    this.setAttribute('placeholder', this.getAttribute('data-formatted') + '원');
+                }
+            }
+        });
+
+        // 포커스 시 숫자만 표시
+        input.addEventListener('focus', function() {
+            this.style.textAlign = 'left';
+            this.setAttribute('placeholder', '직접 입력');
+        });
+    });
+
+    // 폼 전송 전 데이터 정리
+    settingsForm.addEventListener('submit', function() {
+        document.querySelectorAll('.currency-input').forEach(input => {
+            // 콤마 제거하고 순수 숫자만 전송
+            const cleanValue = input.value.replace(/[^\d]/g, '');
+            if (cleanValue) {
+                let numValue = parseInt(cleanValue);
+                // 1000원 단위로 반올림
+                numValue = Math.round(numValue / 1000) * 1000;
+                input.value = numValue;
+            }
+        });
+    });
+
+    // 페이지 로드 시 기존 값들에 대한 프리셋 버튼 활성화
+    function activateMatchingPresets() {
+        document.querySelectorAll('.currency-input').forEach(input => {
+            const currentValue = input.value;
+            const targetId = input.id;
+
+            // 해당 입력 필드의 프리셋 버튼들 확인
+            const presetButtons = document.querySelectorAll(`[data-target="${targetId}"]`);
+            presetButtons.forEach(btn => {
+                if (btn.getAttribute('data-value') === currentValue) {
+                    btn.classList.add('active');
+                }
+            });
+        });
+    }
+
+    // 초기 활성화
+    activateMatchingPresets();
+});
 </script>
 
 <style>
@@ -690,6 +810,7 @@
             }
         }
     }
+
     /* 즐겨찾기 여부 팝업 */
     #favoriteNameSection {
         background-color: #f8f9fa;
@@ -708,6 +829,59 @@
 
     #favoriteNameSection .form-text {
         margin-top: 5px;
+    }
+
+    /* 프리셋 버튼 스타일 */
+    .preset-buttons {
+        margin-bottom: 8px;
+    }
+
+    .preset-btn {
+        font-size: 0.8rem;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .preset-btn.active {
+        background-color: var(--bs-primary);
+        color: white;
+        border-color: var(--bs-primary);
+    }
+
+    /* 통화 입력 필드 스타일 */
+    .currency-input {
+        text-align: right;
+        font-weight: 500;
+    }
+
+    .currency-input:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+
+    /* 입력 그룹 스타일 */
+    .input-group-text {
+        background-color: #f8f9fa;
+        border-left: none;
+        font-weight: 500;
+    }
+
+    /* 모바일 반응형 */
+    @media (max-width: 768px) {
+        .preset-buttons .btn-group-sm {
+            justify-content: center;
+        }
+
+        .preset-btn {
+            flex: 1;
+            min-width: 60px;
+        }
     }
 </style>
 {% endblock %}
