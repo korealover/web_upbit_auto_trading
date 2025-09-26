@@ -155,7 +155,14 @@ class UpbitTradingBot:
                 position_multiplier = 1.0
 
             adjusted_amount = int(base_amount * position_multiplier)
-            return max(5000, min(50000, adjusted_amount))  # 최소 5천원, 최대 5만원
+            # return max(5000, min(50000, adjusted_amount))  # 최소 5천원, 최대 5만원
+            if base_amount <= 50000:
+                return max(5000, min(50000, adjusted_amount))  # 기존 로직 유지
+            else:
+                # 큰 금액의 경우 최소/최대 제한을 비례적으로 조정
+                min_amount = max(5000, int(base_amount * 0.1))  # 최소 10%
+                max_amount = min(int(base_amount * 2.0), 10000000)  # 최대 200% 또는 1천만원
+                return max(min_amount, min(max_amount, adjusted_amount))
         except Exception as e:
             self.logger.error(f"변동성 기반 포지션 사이징 오류: {e}")
             return base_amount
