@@ -436,6 +436,18 @@ class UpbitTradingBot:
                     self.logger.info(f"변동성 기반 포지션 조정: {buy_amount:,}원 → {adjusted_buy_amount:,}원")
                     buy_amount = adjusted_buy_amount
 
+                    # 매수금액이 보유현금보다 클 경우 처리
+                    if buy_amount > balance_cash:
+                        # 잔고가 최소보유현금량보다 크고 5,000원보다 큰 경우
+                        if balance_cash > min_cash and balance_cash > 5000:
+                            # 보유현금에서 최소보유현금량을 뺀 금액 전체를 매수
+                            buy_amount = balance_cash - min_cash
+                            self.logger.info(f"매수금액이 보유현금 초과로 조정: 보유현금({balance_cash:,}원) - 최소보유현금({min_cash:,}원) = {buy_amount:,}원")
+                        else:
+                            # 조건을 만족하지 않는 경우 매수 중단
+                            self.logger.info(f"매수 불가: 보유현금({balance_cash:,}원)이 최소보유현금({min_cash:,}원) 또는 5,000원 조건을 만족하지 않음")
+                            return None
+
                     # max_order_amount가 0이 아닌 경우에만 제한 로직 적용
                     if max_order_amount > 0:
                         # 현재 해당 코인의 보유량과 평균매수가 조회
