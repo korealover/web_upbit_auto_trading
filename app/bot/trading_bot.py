@@ -2,25 +2,35 @@ from flask_login import current_user
 from app.utils.scheduler_manager import scheduler_manager
 
 from app.utils.telegram_utils import TelegramNotifier
+
 try:
     from app.utils.thread_monitor import thread_monitor, monitor_trading_thread
+
     THREAD_MONITOR_AVAILABLE = True
 except ImportError:
     THREAD_MONITOR_AVAILABLE = False
+
+
     # 더미 클래스와 데코레이터
     class DummyThreadMonitor:
         def register_thread(self, **kwargs):
             pass
+
         def unregister_thread(self, **kwargs):
             pass
+
         def monitor_thread_context(self, **kwargs):
             from contextlib import nullcontext
             return nullcontext()
-    
+
+
     thread_monitor = DummyThreadMonitor()
+
+
     def monitor_trading_thread(**kwargs):
         def decorator(func):
             return func
+
         return decorator
 
 from config import Config
@@ -28,7 +38,9 @@ import datetime
 import time
 import threading
 from app.utils.shared import trading_bots, lock  # 공유 자원 가져오기
+
 shutdown_event = threading.Event()  # 글로벌 종료 이벤트 정의
+
 
 class UpbitTradingBot:
     """업비트 자동 거래 봇 클래스"""
@@ -105,6 +117,130 @@ class UpbitTradingBot:
 
         return value
 
+    def calculate_dynamic_sleep_time(self, ticker, base_sleep_time):
+        """변동성 기반 동적 거래 간격 계산"""
+        try:
+            # 최근 1시간 데이터로 변동성 계산
+            df = self.api.get_ohlcv_data(ticker, 'minute5', 12)  # 5분봉 12개 = 1시간
+            if df is None or len(df) < 2:
+                return base_sleep_time
+
+            # 변동성 계산 (표준편차)
+            price_changes = df['close'].pct_change().dropna()
+            volatility = price_changes.std()
+
+            # 변동성에 따른 간격 조정
+            if volatility > 0.02:  # 높은 변동성 (2% 이상)
+                adjusted_time = max(30, base_sleep_time * 0.5)  # 최소 30초
+                self.logger.info(f"높은 변동성 감지 ({volatility:.4f}), 거래간격 단축: {adjusted_time}초")
+            elif volatility < 0.005:  # 낮은 변동성 (0.5% 미만)
+                adjusted_time = min(300, base_sleep_time * 2)  # 최대 5분
+                self.logger.info(f"낮은 변동성 감지 ({volatility:.4f}), 거래간격 연장: {adjusted_time}초")
+            else:
+                adjusted_time = base_sleep_time
+
+            return int(adjusted_time)
+        except Exception as e:
+            self.logger.error(f"동적 거래간격 계산 오류: {e}")
+            return base_sleep_time
+
+    def calculate_volatility_based_position_size(self, ticker, base_amount):
+        """변동성 기반 포지션 사이징"""
+        try:
+            # 최근 24시간 데이터로 변동성 계산
+            df = self.api.get_ohlcv_data(ticker, 'minute60', 24)  # 1시간봉 24개 = 24시간
+            if df is None or len(df) < 2:
+                return base_amount
+
+            # 일일 변동성 계산
+            price_changes = df['close'].pct_change().dropna()
+            daily_volatility = price_changes.std() * (24 ** 0.5)  # 일일 변동성으로 스케일링
+
+            # 변동성에 따른 포지션 사이즈 조정
+            if daily_volatility > 0.1:  # 높은 변동성 (10% 이상)
+                position_multiplier = 0.7  # 포지션 크기 축소
+                self.logger.info(f"높은 일일 변동성 ({daily_volatility:.4f}), 포지션 크기 축소")
+            elif daily_volatility < 0.03:  # 낮은 변동성 (3% 미만)
+                position_multiplier = 1.3  # 포지션 크기 확대
+                self.logger.info(f"낮은 일일 변동성 ({daily_volatility:.4f}), 포지션 크기 확대")
+            else:
+                position_multiplier = 1.0
+
+            adjusted_amount = int(base_amount * position_multiplier)
+            # return max(5000, min(50000, adjusted_amount))  # 최소 5천원, 최대 5만원
+            if base_amount <= 50000:
+                return max(5000, min(50000, adjusted_amount))  # 기존 로직 유지
+            else:
+                # 큰 금액의 경우 최소/최대 제한을 비례적으로 조정
+                min_amount = max(5000, int(base_amount * 0.1))  # 최소 10%
+                max_amount = min(int(base_amount * 2.0), 10000000)  # 최대 200% 또는 1천만원
+                return max(min_amount, min(max_amount, adjusted_amount))
+        except Exception as e:
+            self.logger.error(f"변동성 기반 포지션 사이징 오류: {e}")
+            return base_amount
+
+    def check_profit_loss_management(self, ticker, balance_coin):
+        """손익 관리 기능 - 손절/익절 체크"""
+        try:
+            if not balance_coin or balance_coin <= 0:
+                return None
+
+            current_price = self.api.get_current_price(ticker)
+            avg_buy_price = self.api.get_buy_avg(ticker)
+
+            if not current_price or not avg_buy_price:
+                return None
+
+            # 수익률 계산
+            profit_rate = (current_price - avg_buy_price) / avg_buy_price * 100
+            self.logger.info(f"현재 수익률: {profit_rate:.2f}% (현재가: {current_price:,}, 평균가: {avg_buy_price:,})")
+
+            # 손절 금지 설정 확인
+            prevent_loss_sale = self._get_field_value(getattr(self.args, 'prevent_loss_sale', None), 'Y')
+
+            # 손절 라인 체크 (-3%) - prevent_loss_sale이 'Y'이면 손절하지 않음
+            if profit_rate <= -3.0:
+                if prevent_loss_sale == 'Y':
+                    self.logger.info(f"손절 라인 도달하였으나 손절 금지 설정으로 매도하지 않음. 수익률: {profit_rate:.2f}%")
+                    return None  # 손절하지 않음
+                else:
+                    self.logger.warning(f"손절 라인 도달! 수익률: {profit_rate:.2f}%")
+                    return {'action': 'STOP_LOSS', 'reason': f'손절 라인 도달 ({profit_rate:.2f}%)', 'portion': 1.0}
+
+            # 익절 라인 체크 (+5%)
+            elif profit_rate >= 5.0:
+                self.logger.info(f"익절 라인 도달! 수익률: {profit_rate:.2f}%")
+                return {'action': 'TAKE_PROFIT', 'reason': f'익절 라인 도달 ({profit_rate:.2f}%)', 'portion': 0.5}
+
+            # 트레일링 스톱 체크 (최고점 대비 -2%)
+            trailing_result = self.check_trailing_stop(ticker, current_price, profit_rate)
+            if trailing_result:
+                return trailing_result
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"손익 관리 체크 중 오류: {e}")
+            return None
+
+    def check_trailing_stop(self, ticker, current_price, current_profit_rate):
+        """트레일링 스톱 체크"""
+        try:
+            # 최고점 추적을 위한 간단한 구현 (실제로는 더 정교한 구현 필요)
+            if current_profit_rate > 3.0:  # 3% 이상 수익 시에만 트레일링 스톱 적용
+                # 최근 15분간 최고가 대비 체크
+                df = self.api.get_ohlcv_data(ticker, 'minute1', 15)
+                if df is not None and len(df) > 0:
+                    recent_high = df['high'].max()
+                    if current_price < recent_high * 0.98:  # 최고점 대비 2% 하락
+                        self.logger.info(f"트레일링 스톱 발동! 최고점: {recent_high:,}, 현재가: {current_price:,}")
+                        return {'action': 'TRAILING_STOP', 'reason': '최고점 대비 2% 하락', 'portion': 0.7}
+
+            return None
+        except Exception as e:
+            self.logger.error(f"트레일링 스톱 체크 중 오류: {e}")
+            return None
+
     def get_ticker(self):
         """ticker 값을 안전하게 가져오기"""
         if isinstance(self.args, dict):
@@ -148,7 +284,7 @@ class UpbitTradingBot:
                 'Y'
             )
             # 장기 투자
-            long_term_investment= self._get_field_value(
+            long_term_investment = self._get_field_value(
                 self.args.get('long_term_investment') if isinstance(self.args, dict) else getattr(self.args, 'long_term_investment', None),
                 'N'
             )
@@ -264,6 +400,7 @@ class UpbitTradingBot:
                 if balance_cash is not None:
                     self.logger.info(f"보유 현금: {balance_cash:,.2f}원")
 
+                # 보유 코인 로깅 및 손익 관리
                 if balance_coin is not None and balance_coin > 0:
                     avg_price = self.api.get_buy_avg(ticker)
                     current_price = self.api.get_current_price(ticker)
@@ -271,10 +408,58 @@ class UpbitTradingBot:
                     if avg_price and current_price:
                         profit_loss = (current_price - avg_price) / avg_price * 100
                         value = balance_coin * current_price
-                        self.logger.info(f"보유 {ticker}: {balance_coin} (평균가: {avg_price:,.2f}, 현재가치: {value:,.2f}원, 수익률: {profit_loss:.2f}%)")
+                        self.logger.info(f"보유 {ticker}: {balance_coin} (현재가: {current_price:,.2f} / 평균가: {avg_price:,.2f}, 현재가치: {value:,.2f}원, 수익률: {profit_loss:.2f}%)")
+
+                    # 손익 관리 체크 (기존 전략보다 우선)
+                    profit_loss_action = self.check_profit_loss_management(ticker, balance_coin)
+                    if profit_loss_action:
+                        self.logger.info(f"손익 관리 발동: {profit_loss_action['action']} - {profit_loss_action['reason']}")
+
+                        # 손익 관리에 의한 매도 실행
+                        sell_portion = profit_loss_action['portion']
+                        if sell_portion >= 1.0:
+                            # 전량 매도
+                            order_result = self.api.order_sell_market(ticker, balance_coin)
+                            self.logger.info(f"손익 관리에 의한 전량 매도 실행")
+                        else:
+                            # 부분 매도
+                            order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+                            self.logger.info(f"손익 관리에 의한 부분 매도 실행 ({sell_portion * 100:.1f}%)")
+
+                        if order_result and 'error' not in order_result:
+                            # 거래 기록 저장
+                            current_price = self.api.get_current_price(ticker)
+                            volume = balance_coin * sell_portion
+                            amount = volume * current_price if current_price else 0
+                            avg_buy_price = self.api.get_buy_avg(ticker)
+                            profit_rate = ((current_price - avg_buy_price) / avg_buy_price * 100) if avg_buy_price else None
+
+                            self.record_trade('SELL', ticker, current_price, volume, amount, profit_rate)
+
+                            # 텔레그램 알림
+                            self.send_trade_notification('SELL', ticker, {'volume': volume})
+
+                        return order_result
 
                 # 매매 신호에 따른 주문 처리
                 if signal == 'BUY' and balance_cash and balance_cash > min_cash:
+                    # 변동성 기반 포지션 사이징 적용
+                    adjusted_buy_amount = self.calculate_volatility_based_position_size(ticker, buy_amount)
+                    self.logger.info(f"변동성 기반 포지션 조정: {buy_amount:,}원 → {adjusted_buy_amount:,}원")
+                    buy_amount = adjusted_buy_amount
+
+                    # 매수금액이 보유현금보다 클 경우 처리
+                    if buy_amount > balance_cash:
+                        # 잔고가 최소보유현금량보다 크고 5,000원보다 큰 경우
+                        if balance_cash > min_cash and balance_cash > 5000:
+                            # 보유현금에서 최소보유현금량을 뺀 금액 전체를 매수
+                            buy_amount = balance_cash - min_cash
+                            self.logger.info(f"매수금액이 보유현금 초과로 조정: 보유현금({balance_cash:,}원) - 최소보유현금({min_cash:,}원) = {buy_amount:,}원")
+                        else:
+                            # 조건을 만족하지 않는 경우 매수 중단
+                            self.logger.info(f"매수 불가: 보유현금({balance_cash:,}원)이 최소보유현금({min_cash:,}원) 또는 5,000원 조건을 만족하지 않음")
+                            return None
+
                     # max_order_amount가 0이 아닌 경우에만 제한 로직 적용
                     if max_order_amount > 0:
                         # 현재 해당 코인의 보유량과 평균매수가 조회
@@ -390,7 +575,7 @@ class UpbitTradingBot:
                             return None
 
                     # 분할 매도 처리
-                    sell_portion = self._get_field_value(self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None),1.0)
+                    sell_portion = self._get_field_value(self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None), 1.0)
 
                     # 매도 전략 결정
                     if sell_portion < 1.0:
@@ -587,7 +772,13 @@ class UpbitTradingBot:
 
         # 간격 설정 (기본값: args에서 가져오기)
         if interval_seconds is None:
-            interval_seconds = self._get_field_value(getattr(self.args, 'sleep_time', None), 60)
+            base_interval = self._get_field_value(getattr(self.args, 'sleep_time', None), 60)
+            # 동적 거래 간격 적용
+            ticker = self._get_field_value(getattr(self.args, 'ticker', None))
+            if ticker:
+                interval_seconds = self.calculate_dynamic_sleep_time(ticker, base_interval)
+            else:
+                interval_seconds = base_interval
 
         # interval_seconds를 정수로 변환
         try:
