@@ -17,6 +17,7 @@ dependencies = [
     "flask-wtf>=1.2.2",
     "gunicorn>=23.0.0",
     "matplotlib>=3.10.3",
+    "mcp>=1.0.0",
     "pandas>=2.3.0",
     "pandas-stubs==2.2.3.250527",
     "psutil>=7.0.0",

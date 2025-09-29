@@ -18,7 +18,7 @@ migrate = Migrate()
 socketio = SocketIO()
 
 
-def create_app():
+def create_app(enable_scheduler=True):
     """Flask 앱 팩토리"""
     app = Flask(__name__)
 
@@ -51,9 +51,10 @@ def create_app():
         app.logger.setLevel(logging.INFO)
         app.logger.info('Application startup')
 
-    # 스케줄러 초기화 (애플리케이션 컨텍스트에서 실행)
-    with app.app_context():
-        initialize_scheduler(app)
+    # 스케줄러 초기화 (애플리케이션 컨텍스트에서 실행) - 옵션에 따라
+    if enable_scheduler:
+        with app.app_context():
+            initialize_scheduler(app)
 
     return app
 

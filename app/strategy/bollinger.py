@@ -45,12 +45,13 @@ class BollingerBandsStrategy:
 
             self.logger.info(f"기본 매도 압력 데이터({ticker}): {volume_data}")
 
-            # 기본 매도 압력 기준 (RSI 관계없이)
-            if volume_data['sell_buy_ratio'] > 2.0:
+            # 강화된 매도 압력 기준 (기존 2.0 → 1.5로 조정)
+            if volume_data['sell_buy_ratio'] > 1.5:
                 self.logger.info(f"높은 매도 압력으로 매수 지연 (매도/매수 비율: {volume_data['sell_buy_ratio']:.2f})")
                 return True
 
-            if volume_data['volume_ratio'] > 3.0:
+            # 거래량 급증 기준도 강화 (기존 3.0 → 2.5로 조정)
+            if volume_data['volume_ratio'] > 2.5:
                 self.logger.info(f"거래량 급증으로 매수 지연 (거래량 비율: {volume_data['volume_ratio']:.2f})")
                 return True
 

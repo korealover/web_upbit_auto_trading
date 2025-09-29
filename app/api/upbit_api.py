@@ -73,8 +73,13 @@ class UpbitAPI:
         API 키 새로고침 (사용자가 키를 업데이트한 경우)
         """
         try:
-            # 사용자 정보 새로고침
-            self.user = User.query.get(self.user_id)
+            # 세션 분리 문제 해결을 위해 사용자 정보를 다시 조회
+            from app import db
+            user = db.session.get(User, self.user_id)
+            if not user:
+                raise ValueError(f"사용자 ID {self.user_id}를 찾을 수 없습니다.")
+
+            self.user = user
             self.access_key, self.secret_key = self.user.get_upbit_keys()
 
             if not self.access_key or not self.secret_key:
@@ -122,7 +127,20 @@ class UpbitAPI:
                 self.logger.warning(f"예상하지 못한 balance 응답: {type(balance)} - {balance}")
                 return False, "API 응답 형식이 올바르지 않습니다."
 
-            self.logger.info(f"사용자 {self.user.username}의 API 키 유효성 검증 성공 (잔고: {balance})")
+            # Flask 애플리케이션 컨텍스트에서 데이터베이스 접근
+            from app import db, app
+            username = f"ID:{self.user_id}"  # 기본값 설정
+
+            try:
+                with app.app_context():
+                    user = db.session.get(User, self.user_id)
+                    if user:
+                        username = user.username
+            except Exception as db_error:
+                # 데이터베이스 접근 실패해도 API 키 검증은 계속 진행
+                self.logger.warning(f"사용자 정보 조회 실패: {str(db_error)}")
+
+            self.logger.info(f"사용자 {username}의 API 키 유효성 검증 성공 (잔고: {balance})")
             return True, None
 
         except Exception as e:
@@ -574,3 +592,54 @@ class UpbitAPI:
         except Exception as e:
             self.logger.error(f"캔들 데이터 조회 실패: {ticker}, 오류: {e}")
             return []
+
+    @cache_with_timeout(seconds=Config.CACHE_DURATION_PRICE)
+    def get_ticker(self, ticker):
+        """티커 정보 조회 (24시간 거래량, 거래대금 등)"""
+        try:
+            self._log_api_call()
+
+            # OHLCV 데이터에서 24시간 정보 추출
+            import pyupbit
+
+            # 24시간 데이터 가져오기 (1일봉 2개 - 어제, 오늘)
+            df = pyupbit.get_ohlcv(ticker, interval="day", count=2)
+            if df is None or len(df) == 0:
+                self.logger.warning(f"OHLCV 데이터를 가져올 수 없습니다: {ticker}")
+                return None
+
+            # 현재가 조회
+            current_price = self.get_current_price(ticker)
+            if not current_price:
+                self.logger.warning(f"현재가를 가져올 수 없습니다: {ticker}")
+                return None
+
+            # 최신 데이터 (오늘)
+            latest = df.iloc[-1]
+
+            # 어제 종가 (변화율 계산용)
+            prev_close = df.iloc[-2]['close'] if len(df) > 1 else latest['open']
+
+            # 24시간 거래량 및 거래대금 계산
+            volume_24h = latest['volume']
+            trade_value_24h = volume_24h * current_price
+
+            # 변화율 계산
+            change_rate = ((current_price - prev_close) / prev_close) if prev_close > 0 else 0
+
+            # 필요한 정보 반환
+            return {
+                'market': ticker,
+                'trade_price': current_price,
+                'acc_trade_volume_24h': volume_24h,
+                'acc_trade_price_24h': trade_value_24h,
+                'change_rate': change_rate,
+                'prev_closing_price': prev_close,
+                'high_price': latest['high'],
+                'low_price': latest['low'],
+                'opening_price': latest['open']
+            }
+
+        except Exception as e:
+            self.logger.error(f"티커 정보 조회 실패 ({ticker}): {str(e)}")
+            return None

@@ -117,6 +117,10 @@ class UpbitTradingBot:
     def trading(self):
         """트레이딩 로직 실행"""
         try:
+            # 기본 검증 먼저 수행
+            if not self._validate_trading_conditions():
+                return None
+
             # 스레드 모니터링 등록 (사용 가능한 경우만)
             if THREAD_MONITOR_AVAILABLE:
                 ticker_value = self._get_field_value(self.args.get('ticker') if isinstance(self.args, dict) else getattr(self.args, 'ticker', None))
@@ -147,6 +151,11 @@ class UpbitTradingBot:
             long_term_investment= self._get_field_value(
                 self.args.get('long_term_investment') if isinstance(self.args, dict) else getattr(self.args, 'long_term_investment', None),
                 'N'
+            )
+            # 최대 주문 금액 추가
+            max_order_amount = self._get_field_value(
+                self.args.get('max_order_amount') if isinstance(self.args, dict) else getattr(self.args, 'max_order_amount', None),
+                0  # 기본값 5만원
             )
 
             # 전략 이름 안전하게 가져오기 - 개선된 부분
@@ -239,10 +248,13 @@ class UpbitTradingBot:
 
                 if strategy_name == 'bollinger_asymmetric':
                     # 매매 신호 생성 (비대칭 볼린저 밴드 전략에 맞는 매개변수 전달)
-                    signal = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier, use_rsi_filter, rsi_threshold)
+                    signal_result = self.strategy.generate_signal(ticker, prices, window, buy_multiplier, sell_multiplier, use_rsi_filter, rsi_threshold, interval)
                 else:
                     # 매매 신호 생성 (볼린저 밴드 전략에 맞는 매개변수 전달)
-                    signal = self.strategy.generate_signal(ticker, prices, window, multiplier, use_rsi_filter, rsi_threshold)
+                    signal_result = self.strategy.generate_signal(ticker, prices, window, multiplier, use_rsi_filter, rsi_threshold, interval)
+
+                signal = signal_result['signal']
+                sell_ratio = signal_result.get('sell_ratio', 1.0)
 
                 # 잔고 조회
                 balance_cash = self.api.get_balance_cash()
@@ -263,8 +275,46 @@ class UpbitTradingBot:
 
                 # 매매 신호에 따른 주문 처리
                 if signal == 'BUY' and balance_cash and balance_cash > min_cash:
-                    self.logger.info(f"매수 시그널 발생: {buy_amount:,.2f}원 매수 시도")
-                    order_result = self.api.order_buy_market(ticker, buy_amount)
+                    # max_order_amount가 0이 아닌 경우에만 제한 로직 적용
+                    if max_order_amount > 0:
+                        # 현재 해당 코인의 보유량과 평균매수가 조회
+                        current_balance = self.api.get_balance_coin(ticker) or 0
+                        avg_buy_price = self.api.get_buy_avg(ticker) or 0
+
+                        # 현재까지 투자한 총 금액 계산
+                        total_invested_amount = current_balance * avg_buy_price if current_balance > 0 and avg_buy_price > 0 else 0
+
+                        self.logger.info(f"({ticker}) - 현재 보유량: {current_balance}, 평균매수가: {avg_buy_price:,.2f}원")
+                        self.logger.info(f"({ticker}) - 현재까지 투자한 총 금액: {total_invested_amount:,.2f}원")
+                        self.logger.info(f"({ticker}) - 최대 주문 가능 금액: {max_order_amount:,.2f}원")
+
+                        # 이미 투자한 금액이 최대 주문 금액을 초과하는 경우
+                        if total_invested_amount >= max_order_amount:
+                            self.logger.info(f"({ticker}) - 최대 주문 금액 초과로 매수를 건너뜁니다. (투자금액: {total_invested_amount:,.2f}원 >= 제한금액: {max_order_amount:,.2f}원)")
+                            return None
+
+                        # 남은 주문 가능 금액 계산
+                        remaining_amount = max_order_amount - total_invested_amount
+
+                        # 실제 매수 금액을 남은 금액과 비교하여 조정
+                        actual_buy_amount = min(buy_amount, remaining_amount)
+
+                        if actual_buy_amount != buy_amount:
+                            self.logger.info(
+                                f"매수 금액이 남은 주문 가능 금액으로 조정됨: {buy_amount:,.2f}원 → {actual_buy_amount:,.2f}원")
+
+                        # 조정된 매수 금액이 최소 주문 금액보다 작은 경우
+                        if actual_buy_amount < 5000:
+                            self.logger.info(f"남은 주문 가능 금액이 최소 주문 금액(5,000원) 미만입니다. (남은 금액: {actual_buy_amount:,.2f}원)")
+                            return None
+
+                    else:
+                        # max_order_amount가 0인 경우 제한 없이 매수
+                        actual_buy_amount = buy_amount
+                        self.logger.info("최대 주문 금액 제한 없음 (max_order_amount = 0)")
+
+                    self.logger.info(f"매수 시그널 발생: {actual_buy_amount:,.2f}원 매수 시도")
+                    order_result = self.api.order_buy_market(ticker, actual_buy_amount)
 
                     # 매수 완료 텔레그램 알림 전송
                     if order_result and not isinstance(order_result, int) and 'error' not in order_result:
@@ -289,7 +339,7 @@ class UpbitTradingBot:
                             self.logger.info(f"매수 체결 확인: {actual_volume} {ticker.split('-')[1]} 매수됨")
 
                             # 매수 금액 (실제 지불한 금액)
-                            amount = buy_amount  # 주문 금액 사용
+                            amount = actual_buy_amount  # 주문 금액 사용
 
                             # 텔레그램 알림 전송
                             self.send_trade_notification('BUY', ticker, {
@@ -303,14 +353,14 @@ class UpbitTradingBot:
                             self.logger.warning(f"매수 주문이 접수되었으나 아직 체결되지 않았습니다. UUID: {order_uuid}")
 
                             # 체결되지 않은 경우, 예상 수량으로 기록
-                            estimated_volume = buy_amount / current_price if current_price else 0
+                            estimated_volume = actual_buy_amount / current_price if current_price else 0
                             self.logger.info(f"예상 매수 수량: {estimated_volume} (현재가 기준)")
 
                             # 거래 기록 저장 (예상 수량 사용)
-                            self.record_trade('BUY', ticker, current_price, estimated_volume, buy_amount)
+                            self.record_trade('BUY', ticker, current_price, estimated_volume, actual_buy_amount)
 
                     return order_result
-                elif signal == 'SELL' and balance_coin and balance_coin > 0:
+                elif signal == 'SELL' or signal == 'PARTIAL_SELL' and balance_coin and balance_coin > 0:
                     self.logger.info(f"매도 시그널 발생: {balance_coin} {ticker.split('-')[1]} 매도 시도")
 
                     # 현재가 조회하여 보유 코인 가치 확인
@@ -340,30 +390,63 @@ class UpbitTradingBot:
                             return None
 
                     # 분할 매도 처리
-                    sell_portion = self._get_field_value(
-                        self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None),
-                        1.0
-                    )
+                    sell_portion = self._get_field_value(self.args.get('sell_portion') if isinstance(self.args, dict) else getattr(self.args, 'sell_portion', None),1.0)
 
                     # 매도 전략 결정
                     if sell_portion < 1.0:
-                        self.logger.info(f"분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
-                        order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+                        # 현재 보유량과 가치 확인
+                        balance = self.api.get_balance_coin(ticker)
+                        current_price = self.api.get_current_price(ticker)
 
-                        # 분할 매도에서 오류가 발생한 경우 처리
-                        if order_result and 'error' in order_result:
-                            error_name = order_result['error'].get('name', '')
+                        if balance and current_price:
+                            total_value = balance * current_price
+                            estimated_sell_value = total_value * sell_portion
+                            min_order_value = 5000
 
-                            if error_name == 'insufficient_total_value':
-                                self.logger.warning("보유 코인 가치가 부족하여 매도를 건너뜁니다.")
-                                return None
-                            elif error_name == 'too_small_volume':
-                                self.logger.warning("매도 수량이 너무 적어 전량 매도로 전환합니다.")
-                                # 전량 매도로 재시도
-                                order_result = self.api.order_sell_market(ticker, balance_coin)
+                            # 최소 매도 금액 체크 및 조정
+                            if estimated_sell_value < min_order_value:
+                                if min_order_value <= total_value < 10000:
+                                    # 전체 보유가 5,000원 이상 10,000원 미만인 경우 전량 매도
+                                    self.logger.info(f"{ticker} 예상 매도 금액({estimated_sell_value:,.0f}원)이 최소 금액 미만으로 전량 매도로 변경")
+                                    sell_portion = 1.0
+                                    order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+                                elif total_value < min_order_value:
+                                    # 전체 보유가 최소 금액 미만인 경우 매도 보류
+                                    self.logger.warning(f"{ticker} 전체 보유가치({total_value:,.0f}원)가 최소 매도 금액 미만으로 매도 보류")
+                                    order_result = {"error": {"name": "insufficient_value", "message": "최소 매도 금액 미만"}}
+                                else:
+                                    # 보유가치가 충분하지만 분할 매도 금액이 부족한 경우
+                                    # 최소 금액을 충족하는 매도 비율로 조정
+                                    adjusted_portion = min(1.0, (min_order_value + 1000) / total_value)  # 여유분 추가
+                                    self.logger.info(f"{ticker} 매도 비율을 최소 금액 충족을 위해 {sell_portion:.2f}에서 {adjusted_portion:.2f}로 조정")
+                                    sell_portion = adjusted_portion
+                                    order_result = self.api.order_sell_market_partial(ticker, sell_portion)
                             else:
-                                self.logger.error(f"분할 매도 오류: {order_result['error']['message']}")
-                                return None
+                                # 정상적인 분할 매도 진행
+                                if signal == 'PARTIAL_SELL':
+                                    sell_portion = sell_portion * sell_ratio
+                                    self.logger.info(f"{ticker} 분할 매도 시도 및 RSI보조지표 사용(PARTIAL_SELL): 보유량의 {sell_portion * 100:.1f}% 매도, RSI보조지표: {sell_ratio}")
+                                else:
+                                    self.logger.info(f"{ticker} 분할 매도 시도: 보유량의 {sell_portion * 100:.1f}% 매도")
+                                order_result = self.api.order_sell_market_partial(ticker, sell_portion)
+
+                            # 분할 매도에서 오류가 발생한 경우 처리
+                            if order_result and 'error' in order_result:
+                                error_name = order_result['error'].get('name', '')
+
+                                if error_name == 'insufficient_total_value':
+                                    self.logger.warning("보유 코인 가치가 부족하여 매도를 건너뜁니다.")
+                                    return None
+                                elif error_name == 'too_small_volume':
+                                    self.logger.warning("매도 수량이 너무 적어 전량 매도로 전환합니다.")
+                                    # 전량 매도로 재시도
+                                    order_result = self.api.order_sell_market(ticker, balance_coin)
+                                else:
+                                    self.logger.error(f"분할 매도 오류: {order_result['error']['message']}")
+                                    return None
+                        else:
+                            self.logger.error(f"{ticker} 보유량 또는 현재가 정보를 가져올 수 없음")
+                            return None
                     else:
                         self.logger.info(f"전량 매도 시도: {balance_coin} {ticker.split('-')[1]}")
                         order_result = self.api.order_sell_market(ticker, balance_coin)
@@ -564,3 +647,23 @@ class UpbitTradingBot:
         except Exception as e:
             self.logger.error(f"스케줄링된 트레이딩 사이클 실행 중 오류: {e}", exc_info=True)
 
+    def _validate_trading_conditions(self):
+        """거래 실행 전 기본 조건 검증"""
+        try:
+            # API 키 유효성 검증
+            is_valid, error_msg = self.api.validate_api_keys()
+            if not is_valid:
+                self.logger.error(f"API 키 검증 실패: {error_msg}")
+                return False
+
+            # 현금 잔고 조회 가능한지 확인
+            cash_balance = self.api.get_balance_cash()
+            if cash_balance is None:
+                self.logger.error("현금 잔고 조회에 실패했습니다.")
+                return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"거래 조건 검증 중 오류: {e}")
+            return False
