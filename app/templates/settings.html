@@ -43,6 +43,7 @@
                             <div class="preset-buttons mb-2">
                                 <div class="btn-group-sm d-flex flex-wrap gap-1" role="group">
                                     <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="10000">1만원</button>
+                                    <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="30000">3만원</button>
                                     <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="50000">5만원</button>
                                     <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="100000">10만원</button>
                                     <button type="button" class="btn btn-outline-secondary preset-btn" data-target="buy_amount_input" data-value="500000">50만원</button>
@@ -64,10 +65,11 @@
                             <!-- 프리셋 버튼들 (큰 금액용) -->
                             <div class="preset-buttons mb-2">
                                 <div class="btn-group-sm d-flex flex-wrap gap-1" role="group">
-                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="100000">10만원</button>
-                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="300000">30만원</button>
-                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="500000">50만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="10000">1만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="50000">5만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="500000">10만원</button>
                                     <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="1000000">100만원</button>
+                                    <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="5000000">500만원</button>
                                     <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="10000000">1천만원</button>
                                     <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="50000000">5천만원</button>
                                     <button type="button" class="btn btn-outline-info preset-btn" data-target="max_order_amount_input" data-value="100000000">1억원</button>
@@ -78,7 +80,7 @@
                                 {{ form.max_order_amount(class="form-control currency-input", id="max_order_amount_input", placeholder="직접 입력", step="1000") }}
                                 <span class="input-group-text">원</span>
                             </div>
-                            <small class="text-muted">코인당 최대 투자 한도</small>
+                            <small class="text-muted">코인당 최대 투자 한도(입력된 금액까지만 투자 가능/0원이면 보유현금한도에서 투자)</small>
                         </div>
                     </div>
 
@@ -96,7 +98,7 @@
                                 </div>
                             </div>
                             {{ form.min_cash(class="form-control d-none", id="min_cash_input") }}
-                            <small class="text-muted">안전 자금</small>
+                            <small class="text-muted">안전 자금(투자 후 보유할 최소 자금)</small>
                         </div>
                         <div class="col-md-4 col-12 mb-3">
                             {{ form.sleep_time.label(class="form-label") }}
@@ -110,7 +112,7 @@
                                 </div>
                             </div>
                             {{ form.sleep_time(class="form-control d-none", id="sleep_time_input") }}
-                            <small class="text-muted">신호 확인 간격</small>
+                            <small class="text-muted">매수/매도 신호 간격(분/초)</small>
                         </div>
                         <div class="col-md-4 col-12 mb-3">
                             {{ form.sell_portion.label(class="form-label") }}

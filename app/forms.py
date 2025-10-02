@@ -81,7 +81,7 @@ class TradingSettingsForm(FlaskForm):
     # 기존 SelectField를 IntegerField와 FloatField로 변경
     buy_amount = IntegerField('매수 금액 (원)', validators=[NumberRange(min=5000, max=10000000)], default=12000)
     min_cash = IntegerField('최소 보유 현금량', validators=[NumberRange(min=0, max=2000000)], default=50000)
-    sleep_time = IntegerField('거래 간격 (초)', validators=[NumberRange(min=10, max=600)], default=60)
+    sleep_time = IntegerField('거래 간격 (분/초)', validators=[NumberRange(min=10, max=600)], default=60)
     sell_portion = FloatField('매도 비율', validators=[NumberRange(min=0.1, max=1.0)], default=0.5)
 
     # 새로 추가: 주문 가능 금액 필드
